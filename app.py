@@ -17,8 +17,12 @@ def get_data(symbol):
 
 if ticker:
     df = get_data(ticker)
-    
+        
     if not df.empty:
+        # --- KRİTİK DÜZELTME BURADA ---
+        # Eğer yfinance veriyi katmanlı (MultiIndex) gönderirse, onu düzleştiriyoruz.
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
         # --- 1. TEKNİK HESAPLAMALAR ---
         close = df['Close']
         

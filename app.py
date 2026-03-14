@@ -6,7 +6,7 @@ import numpy as np
 # Sayfa Konfigürasyonu
 st.set_page_config(page_title="Algo-Trader Signal Pro", layout="wide")
 
-st.title("📈 Yatırım Bankerliği Algoritma Simülatörü")
+st.title("📈 Yatırım Simülatörü")
 ticker = st.text_input("Hisse veya Emtia Ticker Giriniz (Örn: AAPL, GC=F, BTC-USD):", "GC=F")
 
 # Veri Çekme

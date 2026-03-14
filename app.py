@@ -11,7 +11,7 @@ st.set_page_config(page_title="Algo-Trader Pro v3.0", layout="wide")
 # 2. OTOMATİK YENİLEME (60 Saniyede bir sayfayı günceller)
 st_autorefresh(interval=60 * 1000, key="terminal_refresh")
 
-st.title("📈 Canlı Yatırım Algoritmaları Terminali")
+st.title("📈 Yatırım Algoritmaları Terminali")
 st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı olarak çekilmektedir.")
 
 # 3. YAN PANEL (SIDEBAR) - KONTROL MERKEZİ

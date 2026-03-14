@@ -7,8 +7,8 @@ import plotly.graph_objects as go
 # Sayfa Konfigürasyonu
 st.set_page_config(page_title="Algo-Trader Signal Pro", layout="wide")
 
-st.title("📈 Yatırım Bankerliği Algoritma Simülatörü")
-ticker = st.text_input("Hisse veya Emtia Ticker Giriniz (Örn: AAPL, GC=F, BTC-USD):", "GC=F")
+st.title("📈 Yatırım Algortimaları Simülatörü")
+ticker = st.text_input("Hisse veya Emtia Ticker Giriniz. Bilmiyorsanız ticker'ı Gemini'ye sorunuz. Bu uygulama yatırım tavsiyesi içermez. (Örn: AAPL, GC=F, BTC-USD):", "GC=F")
 
 @st.cache_data
 def get_data(symbol):

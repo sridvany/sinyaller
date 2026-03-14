@@ -123,3 +123,7 @@ if ticker:
             return f'color: {color}; font-weight: bold'
 
         st.table(res_df.style.applymap(color_decision, subset=['Karar']))
+
+# Tablonun hemen altına eklenebilir
+al_sayisi = len([r for r in results if r[0] == "AL"])
+st.metric(label="Algoritmik Güven Skoru", value=f"{al_sayisi}/5 AL", delta=f"{al_sayisi*20}% Pozitif")

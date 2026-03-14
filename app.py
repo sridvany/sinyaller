@@ -7,7 +7,7 @@ import numpy as np
 st.set_page_config(page_title="Algo-Trader Signal Pro", layout="wide")
 
 st.title("📈 Yatırım Simülatörü")
-ticker = st.text_input("Hisse veya Emtia için ilgili varlığın ticker'ını Gemini'ye sorabilirsiniz (Örn: AAPL, GC=F, BTC-USD):", "GC=F")
+ticker = st.text_input("Hisse veya Emtia için ilgili varlığın ticker'ını Gemini'ye sorabilirsiniz. Bu bir simülatördür yatırım tavsiyesi değildir. (Örn: AAPL, GC=F, BTC-USD):", "GC=F")
 
 # Veri Çekme
 @st.cache_data

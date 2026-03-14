@@ -12,7 +12,7 @@ st.set_page_config(page_title="Algo-Trader Pro v2.0", layout="wide")
 st_autorefresh(interval=60 * 1000, key="data_refresh")
 
 st.title("📈 Yatırım Algoritmaları Simülatörü")
-st.caption("Veriler 60 saniyede bir otomatik olarak güncellenir.")
+st.caption("Veriler 60 saniyede bir otomatik olarak güncellenir. Yatırım tavsiyesi içermez.")
 
 # 3. YAN PANEL (SIDEBAR) AYARLARI
 with st.sidebar:

@@ -21,7 +21,7 @@ st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı o
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri & Algoritma Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "PAXG-USD")
+    ticker = st.text_input("Ticker Sembolü:", "GC=F")
 
     # PERİYOT SEÇİMİ
     period = st.selectbox(
@@ -85,6 +85,11 @@ with st.sidebar:
     commission_pct = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
     slippage_pct = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
     initial_capital = st.number_input("Başlangıç Sermayesi ($):", min_value=100, value=10000, step=100)
+
+    st.write("---")
+    st.subheader("🧬 Parametre Optimizasyonu")
+    run_optimization = st.button("🚀 Optimize Et", use_container_width=True)
+    st.caption("Walk-forward: %70 in-sample, %30 out-of-sample")
 
     st.write("---")
     st.info(
@@ -953,6 +958,303 @@ if ticker:
                 "Bu veri aralığında konsensüs eşiğini karşılayan trade sinyali bulunamadı. "
                 "Eşiği düşürmeyi veya veri süresini artırmayı deneyin."
             )
+
+        # -------------------------------------------------------
+        # PARAMETRE OPTİMİZASYONU (Walk-Forward)
+        # -------------------------------------------------------
+        if run_optimization:
+            st.write("---")
+            st.header("🧬 Parametre Optimizasyonu")
+            st.caption(
+                "Walk-forward optimizasyon: Verinin ilk %70'inde en iyi parametre seti aranır, "
+                "son %30'unda doğrulanır. Out-of-sample'da da iyi çalışıyorsa parametreler güvenilirdir."
+            )
+
+            opt_progress = st.progress(0, text="Optimizasyon başlatılıyor...")
+
+            # Parametre aralıkları (daha dar tutuldu — hız için)
+            param_grid = {
+                "sma_s": [10, 15, 20, 25, 30],
+                "sma_l": [50, 75, 100, 125, 150],
+                "rsi_lower": [25, 30, 35],
+                "rsi_upper": [65, 70, 75],
+                "z_thresh": [1.5, 2.0, 2.5],
+                "cons_thresh": [4, 5, 6, 7],
+            }
+
+            # Toplam kombinasyon sayısı
+            from itertools import product as iter_product
+            keys = list(param_grid.keys())
+            values = list(param_grid.values())
+            all_combos = list(iter_product(*values))
+            total_combos = len(all_combos)
+
+            # Walk-forward split
+            split_idx = int(len(df) * 0.7)
+            df_in = df.iloc[:split_idx].copy()
+            df_out = df.iloc[split_idx:].copy()
+            close_in = close.iloc[:split_idx]
+            close_out = close.iloc[split_idx:]
+
+            def run_backtest_with_params(data_slice, close_slice, p_sma_s, p_sma_l,
+                                          p_rsi_lower, p_rsi_upper, p_z_thresh, p_cons_thresh):
+                """Verilen parametre setiyle konsensüs backtest çalıştırır."""
+                d = data_slice.copy()
+                c = close_slice.copy()
+                h = d["High"].squeeze() if "High" in d.columns else c
+                l = d["Low"].squeeze() if "Low" in d.columns else c
+                v = d["Volume"].squeeze() if "Volume" in d.columns else pd.Series(0, index=c.index)
+
+                # SMA
+                sma_sh = c.rolling(window=p_sma_s, min_periods=p_sma_s).mean()
+                sma_lo = c.rolling(window=p_sma_l, min_periods=p_sma_l).mean()
+                sig_sma = np.where(sma_sh > sma_lo, 1, -1)
+                sig_sma = np.where(sma_sh.isna() | sma_lo.isna(), 0, sig_sma)
+
+                # RSI
+                delta = c.diff()
+                gain = delta.where(delta > 0, 0.0).rolling(window=14).mean()
+                loss_s = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
+                rs = gain / loss_s.replace(0, np.nan)
+                rsi = 100 - (100 / (1 + rs))
+                sig_rsi = np.where(rsi < p_rsi_lower, 1, np.where(rsi > p_rsi_upper, -1, 0))
+
+                # Bollinger
+                mid = c.rolling(window=20).mean()
+                std = c.rolling(window=20).std()
+                up = mid + (std * 2)
+                lo_bb = mid - (std * 2)
+                sig_bb = np.where(c < lo_bb, 1, np.where(c > up, -1, 0))
+
+                # MACD
+                e12 = c.ewm(span=12, adjust=False).mean()
+                e26 = c.ewm(span=26, adjust=False).mean()
+                macd = e12 - e26
+                macd_s = macd.ewm(span=9, adjust=False).mean()
+                sig_macd = np.where(macd > macd_s, 1, -1)
+
+                # Z-Score
+                z_mean = c.rolling(30).mean()
+                z_std = c.rolling(30).std().replace(0, np.nan)
+                z_val = (c - z_mean) / z_std
+                sig_z = np.where(z_val < -p_z_thresh, 1, np.where(z_val > p_z_thresh, -1, 0))
+
+                # OBV
+                obv_sign = np.sign(c.diff()).fillna(0)
+                obv = (v * obv_sign).cumsum()
+                obv_s = obv.rolling(window=10, min_periods=10).mean()
+                obv_l = obv.rolling(window=30, min_periods=30).mean()
+                sig_obv = np.where(obv_s > obv_l, 1, -1)
+                sig_obv = np.where(obv_s.isna() | obv_l.isna(), 0, sig_obv)
+
+                # ADX
+                adx_v, pdi, mdi = calc_adx(h, l, c, period=14)
+                sig_adx = np.where(adx_v > 25, np.where(pdi > mdi, 1, -1), 0)
+
+                # Stoch RSI
+                rsi_min = rsi.rolling(window=14, min_periods=14).min()
+                rsi_max = rsi.rolling(window=14, min_periods=14).max()
+                rsi_rng = (rsi_max - rsi_min).replace(0, np.nan)
+                stoch_k = ((rsi - rsi_min) / rsi_rng) * 100
+                sig_stoch = np.where(stoch_k < 20, 1, np.where(stoch_k > 80, -1, 0))
+
+                # Ichimoku
+                tenkan = (h.rolling(window=9).max() + l.rolling(window=9).min()) / 2
+                kijun = (h.rolling(window=26).max() + l.rolling(window=26).min()) / 2
+                senkou_a = ((tenkan + kijun) / 2).shift(26)
+                senkou_b = ((h.rolling(window=52).max() + l.rolling(window=52).min()) / 2).shift(26)
+                cloud_top = pd.concat([senkou_a, senkou_b], axis=1).max(axis=1)
+                cloud_bot = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
+                sig_ichi = np.where((tenkan > kijun) & (c > cloud_top), 1,
+                                    np.where((tenkan < kijun) & (c < cloud_bot), -1, 0))
+
+                # VWAP (intraday only)
+                if is_intraday:
+                    tp = (h + l + c) / 3
+                    cv = v.cumsum()
+                    vwap = (tp * v).cumsum() / cv.replace(0, np.nan)
+                    sig_vwap = np.where(c > vwap, 1, -1)
+                    sig_vwap = np.where(vwap.isna(), 0, sig_vwap)
+                else:
+                    sig_vwap = np.zeros(len(c))
+
+                # Konsensüs
+                all_sigs = np.column_stack([
+                    sig_sma, sig_rsi, sig_bb, sig_macd, sig_z,
+                    sig_obv, sig_adx, sig_vwap, sig_stoch, sig_ichi
+                ])
+                al_count = (all_sigs == 1).sum(axis=1)
+                sat_count = (all_sigs == -1).sum(axis=1)
+                consensus = np.zeros(len(c))
+                consensus[al_count >= p_cons_thresh] = 1
+                consensus[sat_count >= p_cons_thresh] = -1
+
+                # Backtest
+                cost = (commission_pct + slippage_pct) / 100
+                c_arr = c.values
+                bt_trades = []
+                in_pos = False
+                entry_p = 0.0
+
+                for i in range(1, len(consensus)):
+                    if not in_pos and consensus[i] == 1 and consensus[i - 1] != 1:
+                        entry_p = float(c_arr[i])
+                        in_pos = True
+                    elif in_pos and consensus[i] == -1 and consensus[i - 1] != -1:
+                        exit_p = float(c_arr[i])
+                        net_e = entry_p * (1 + cost)
+                        net_x = exit_p * (1 - cost)
+                        bt_trades.append(((net_x - net_e) / net_e) * 100)
+                        in_pos = False
+
+                if in_pos:
+                    exit_p = float(c_arr[-1])
+                    net_e = entry_p * (1 + cost)
+                    net_x = exit_p * (1 - cost)
+                    bt_trades.append(((net_x - net_e) / net_e) * 100)
+
+                if not bt_trades:
+                    return 0.0, 0.0, 0, 0.0
+
+                returns_arr = np.array(bt_trades)
+                cumul = 1.0
+                peak_c = 1.0
+                max_dd = 0.0
+                for r in returns_arr:
+                    cumul *= (1 + r / 100)
+                    if cumul > peak_c:
+                        peak_c = cumul
+                    dd = ((peak_c - cumul) / peak_c) * 100
+                    if dd > max_dd:
+                        max_dd = dd
+
+                total_ret = (cumul - 1) * 100
+                wr = (len(returns_arr[returns_arr > 0]) / len(returns_arr)) * 100
+                sharpe_r = 0.0
+                if len(returns_arr) > 1 and np.std(returns_arr) > 0:
+                    sharpe_r = float(np.mean(returns_arr) / np.std(returns_arr)) * np.sqrt(len(returns_arr))
+
+                return total_ret, sharpe_r, len(bt_trades), max_dd
+
+            # Grid search çalıştır
+            best_sharpe = -999
+            best_params = {}
+            best_in_result = {}
+            results_list = []
+
+            for idx, combo in enumerate(all_combos):
+                p = dict(zip(keys, combo))
+
+                # Minimum veri kontrolü
+                if len(close_in) < max(p["sma_l"], 52) + 30:
+                    continue
+
+                ret, sharpe_r, n_trades, mdd = run_backtest_with_params(
+                    df_in, close_in,
+                    p["sma_s"], p["sma_l"], p["rsi_lower"], p["rsi_upper"],
+                    p["z_thresh"], p["cons_thresh"]
+                )
+
+                results_list.append({**p, "Getiri": ret, "Sharpe": sharpe_r,
+                                      "Trade": n_trades, "Max DD": mdd})
+
+                if sharpe_r > best_sharpe and n_trades >= 2:
+                    best_sharpe = sharpe_r
+                    best_params = p.copy()
+                    best_in_result = {"Getiri": ret, "Sharpe": sharpe_r,
+                                      "Trade": n_trades, "Max DD": mdd}
+
+                # Progress güncelle
+                if idx % 10 == 0:
+                    opt_progress.progress(
+                        (idx + 1) / total_combos,
+                        text=f"Test ediliyor: {idx + 1}/{total_combos}"
+                    )
+
+            opt_progress.progress(1.0, text="Optimizasyon tamamlandı!")
+
+            if best_params:
+                # Out-of-sample doğrulama
+                out_ret, out_sharpe, out_trades, out_mdd = run_backtest_with_params(
+                    df_out, close_out,
+                    best_params["sma_s"], best_params["sma_l"],
+                    best_params["rsi_lower"], best_params["rsi_upper"],
+                    best_params["z_thresh"], best_params["cons_thresh"]
+                )
+
+                st.subheader("🏆 En İyi Parametre Seti")
+
+                # Parametre tablosu
+                param_display = {
+                    "Hızlı SMA": best_params["sma_s"],
+                    "Yavaş SMA": best_params["sma_l"],
+                    "RSI Alt": best_params["rsi_lower"],
+                    "RSI Üst": best_params["rsi_upper"],
+                    "Z-Score Eşik": best_params["z_thresh"],
+                    "Konsensüs Eşik": best_params["cons_thresh"],
+                }
+                p1, p2, p3 = st.columns(3)
+                p1.metric("Hızlı SMA", best_params["sma_s"])
+                p1.metric("RSI Alt", best_params["rsi_lower"])
+                p2.metric("Yavaş SMA", best_params["sma_l"])
+                p2.metric("RSI Üst", best_params["rsi_upper"])
+                p3.metric("Z-Score Eşik", best_params["z_thresh"])
+                p3.metric("Konsensüs Eşik", best_params["cons_thresh"])
+
+                # In-sample vs Out-of-sample karşılaştırma
+                st.subheader("📊 Walk-Forward Doğrulama")
+                wf1, wf2 = st.columns(2)
+
+                with wf1:
+                    st.markdown("**In-Sample (%70)**")
+                    st.metric("Getiri", f"%{best_in_result['Getiri']:.2f}")
+                    st.metric("Sharpe Ratio", f"{best_in_result['Sharpe']:.2f}")
+                    st.metric("Trade Sayısı", f"{best_in_result['Trade']}")
+                    st.metric("Max Drawdown", f"%{best_in_result['Max DD']:.2f}")
+
+                with wf2:
+                    st.markdown("**Out-of-Sample (%30)**")
+                    st.metric("Getiri", f"%{out_ret:.2f}")
+                    st.metric("Sharpe Ratio", f"{out_sharpe:.2f}")
+                    st.metric("Trade Sayısı", f"{out_trades}")
+                    st.metric("Max Drawdown", f"%{out_mdd:.2f}")
+
+                # Overfitting değerlendirmesi
+                if out_ret > 0 and out_sharpe > 0:
+                    st.success(
+                        "✅ Out-of-sample pozitif getiri ve Sharpe — parametreler güvenilir görünüyor."
+                    )
+                elif out_ret > 0:
+                    st.warning(
+                        "⚠️ Out-of-sample pozitif getiri ama düşük Sharpe — dikkatli kullanın."
+                    )
+                else:
+                    st.error(
+                        "❌ Out-of-sample negatif getiri — overfitting riski yüksek. "
+                        "Bu parametrelere güvenmeyin."
+                    )
+
+                # Top 10 kombinasyon tablosu
+                if results_list:
+                    st.subheader("📋 En İyi 10 Kombinasyon (In-Sample)")
+                    res_opt_df = pd.DataFrame(results_list)
+                    res_opt_df = res_opt_df[res_opt_df["Trade"] >= 2]
+                    res_opt_df = res_opt_df.sort_values("Sharpe", ascending=False).head(10)
+                    res_opt_df.columns = [
+                        "SMA Kısa", "SMA Uzun", "RSI Alt", "RSI Üst",
+                        "Z Eşik", "Kons. Eşik", "Getiri (%)", "Sharpe",
+                        "Trade", "Max DD (%)"
+                    ]
+                    res_opt_df["Getiri (%)"] = res_opt_df["Getiri (%)"].round(2)
+                    res_opt_df["Sharpe"] = res_opt_df["Sharpe"].round(2)
+                    res_opt_df["Max DD (%)"] = res_opt_df["Max DD (%)"].round(2)
+                    st.dataframe(res_opt_df, use_container_width=True, hide_index=True)
+
+            else:
+                st.warning(
+                    "Hiçbir kombinasyon yeterli trade üretemedi. "
+                    "Veri süresini artırmayı deneyin."
+                )
 
     else:
         st.error(

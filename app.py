@@ -49,14 +49,14 @@ with st.sidebar:
 
     st.write("---")
     st.subheader("Algoritma Hassasiyeti")
-    sma_s = st.slider("Hızlı SMA (Kısa):", 5, 50, 20)
-    sma_l = st.slider("Yavaş SMA (Uzun):", 50, 200, 100)
+    sma_s = st.slider("Hızlı SMA (Kısa):", 5, 50, 20, key="k_sma_s")
+    sma_l = st.slider("Yavaş SMA (Uzun):", 50, 200, 100, key="k_sma_l")
 
     st.write("---")
     st.subheader("RSI & Z-Score Eşikleri")
-    rsi_lower = st.slider("RSI Alt Eşik (Aşırı Satım):", 10, 40, 30)
-    rsi_upper = st.slider("RSI Üst Eşik (Aşırı Alım):", 60, 90, 70)
-    z_threshold = st.slider("Z-Score Eşik (±):", 1.0, 3.0, 2.0, step=0.1)
+    rsi_lower = st.slider("RSI Alt Eşik (Aşırı Satım):", 10, 40, 30, key="k_rsi_lower")
+    rsi_upper = st.slider("RSI Üst Eşik (Aşırı Alım):", 60, 90, 70, key="k_rsi_upper")
+    z_threshold = st.slider("Z-Score Eşik (±):", 1.0, 3.0, 2.0, step=0.1, key="k_z_thresh")
 
     st.write("---")
     st.subheader("ADX & ATR Ayarları")
@@ -79,7 +79,7 @@ with st.sidebar:
     st.write("---")
     st.subheader("Konsensüs Ayarları")
     consensus_threshold = st.slider(
-        "Minimum AL/SAT çoğunluğu (10 sinyalden):", 3, 9, 6
+        "Minimum AL/SAT çoğunluğu (10 sinyalden):", 3, 9, 6, key="k_cons_thresh"
     )
 
     st.write("---")
@@ -1235,6 +1235,17 @@ if ticker:
                         "❌ Out-of-sample negatif getiri — overfitting riski yüksek. "
                         "Bu parametrelere güvenmeyin."
                     )
+
+                # Optimizasyon sonuçlarını uygula butonu
+                st.write("")
+                if st.button("✅ Optimizasyon Sonuçlarını Uygula", use_container_width=True, type="primary"):
+                    st.session_state["k_sma_s"] = best_params["sma_s"]
+                    st.session_state["k_sma_l"] = best_params["sma_l"]
+                    st.session_state["k_rsi_lower"] = best_params["rsi_lower"]
+                    st.session_state["k_rsi_upper"] = best_params["rsi_upper"]
+                    st.session_state["k_z_thresh"] = best_params["z_thresh"]
+                    st.session_state["k_cons_thresh"] = best_params["cons_thresh"]
+                    st.rerun()
 
                 # Top 10 kombinasyon tablosu
                 if results_list:

@@ -10,8 +10,10 @@ from streamlit_autorefresh import st_autorefresh
 # ============================================================
 st.set_page_config(page_title="Algo-Trader Pro v3.3", layout="wide")
 
-# 2. OTOMATİK YENİLEME (55 sn → cache TTL=50 sn ile uyumlu)
-st_autorefresh(interval=55 * 1000, key="terminal_refresh")
+# 2. OTOMATİK YENİLEME (toggle ile kontrol)
+auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
+if auto_refresh_on:
+    st_autorefresh(interval=55 * 1000, key="terminal_refresh")
 
 st.title("📈 Yatırım Algoritmaları Terminali")
 st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı olarak çekilmektedir.")
@@ -21,7 +23,7 @@ st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı o
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri & Algoritma Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "GC=F")
+    ticker = st.text_input("Ticker Sembolü:", "PAXG-USD")
 
     # PERİYOT SEÇİMİ
     period = st.selectbox(

@@ -21,7 +21,7 @@ st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı o
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri & Algoritma Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "PAXG-USD")
+    ticker = st.text_input("Ticker Sembolü:", "GC=F")
 
     # PERİYOT SEÇİMİ
     period = st.selectbox(
@@ -791,71 +791,6 @@ if ticker:
                 st.error(f"❌ Konsensüs stratejisi Buy & Hold'un **%{abs(alpha):.2f}** gerisinde kaldı.")
             else:
                 st.info("➡️ Konsensüs stratejisi Buy & Hold ile aynı performansı gösterdi.")
-
-            # ---- Equity Curve Grafiği ----
-            st.subheader("💰 Equity Curve")
-            fig_equity = go.Figure()
-
-            # Strateji equity
-            trade_labels = [f"Başlangıç"] + [f"Trade {i+1}" for i in range(len(returns))]
-            fig_equity.add_trace(go.Scatter(
-                x=list(range(len(equity))),
-                y=equity,
-                name="Konsensüs Stratejisi",
-                line=dict(color="lime", width=2),
-                text=trade_labels,
-                hovertemplate="%{text}<br>Sermaye: $%{y:,.2f}<extra></extra>"
-            ))
-
-            # Buy & Hold equity
-            bh_equity = [initial_capital]
-            bh_daily = close / close.iloc[0]
-            # Trade noktalarındaki B&H değerini hesapla
-            trade_indices = [0]
-            for t in trades:
-                entry_d = t["Giriş Tarihi"]
-                exit_d = t["Çıkış Tarihi"]
-                if isinstance(exit_d, str) and "(açık)" in exit_d:
-                    exit_idx = len(df) - 1
-                else:
-                    exit_idx = df.index.get_loc(exit_d) if exit_d in df.index else len(df) - 1
-                trade_indices.append(exit_idx)
-
-            for idx in trade_indices[1:]:
-                bh_val = initial_capital * float(bh_daily.iloc[idx])
-                bh_equity.append(bh_val)
-
-            fig_equity.add_trace(go.Scatter(
-                x=list(range(len(bh_equity))),
-                y=bh_equity,
-                name="Buy & Hold",
-                line=dict(color="gray", width=1, dash="dash"),
-            ))
-
-            fig_equity.update_layout(
-                template="plotly_dark", height=300,
-                xaxis_title="Trade #", yaxis_title="Sermaye ($)",
-                margin=dict(t=30, b=30)
-            )
-            st.plotly_chart(fig_equity, use_container_width=True)
-
-            # ---- Drawdown Grafiği ----
-            st.subheader("📉 Drawdown")
-            fig_dd = go.Figure()
-            fig_dd.add_trace(go.Scatter(
-                x=list(range(len(drawdowns))),
-                y=[-d for d in drawdowns],
-                fill="tozeroy",
-                name="Drawdown",
-                line=dict(color="red"),
-                fillcolor="rgba(255,75,75,0.3)"
-            ))
-            fig_dd.update_layout(
-                template="plotly_dark", height=200,
-                yaxis_title="Drawdown (%)",
-                margin=dict(t=30, b=30)
-            )
-            st.plotly_chart(fig_dd, use_container_width=True)
 
             # ---- Trade Tablosu ----
             st.subheader("📋 Trade Geçmişi")

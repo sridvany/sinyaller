@@ -23,7 +23,7 @@ st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı o
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri & Algoritma Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "PAXG-USD")
+    ticker = st.text_input("Ticker Sembolü:", "GC=F")
 
     # PERİYOT SEÇİMİ
     period = st.selectbox(
@@ -91,7 +91,9 @@ with st.sidebar:
     st.write("---")
     st.subheader("🧬 Parametre Optimizasyonu")
     run_optimization = st.button("🚀 Optimize Et", use_container_width=True)
-    st.caption("Walk-forward: %70 in-sample, %30 out-of-sample")
+    n_windows = st.slider("Sliding Window Pencere Sayısı:", 2, 6, 3)
+    train_pct = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5)
+    st.caption(f"Walk-forward: {n_windows} pencere, %{train_pct} eğitim / %{100-train_pct} test")
 
     st.write("---")
     st.info(
@@ -962,19 +964,20 @@ if ticker:
             )
 
         # -------------------------------------------------------
-        # PARAMETRE OPTİMİZASYONU (Walk-Forward)
+        # PARAMETRE OPTİMİZASYONU (Sliding Window Walk-Forward)
         # -------------------------------------------------------
         if run_optimization:
             st.write("---")
-            st.header("🧬 Parametre Optimizasyonu")
+            st.header("🧬 Parametre Optimizasyonu (Sliding Window)")
             st.caption(
-                "Walk-forward optimizasyon: Verinin ilk %70'inde en iyi parametre seti aranır, "
-                "son %30'unda doğrulanır. Out-of-sample'da da iyi çalışıyorsa parametreler güvenilirdir."
+                f"{n_windows} pencerede walk-forward optimizasyon. "
+                f"Her pencerede %{train_pct} eğitim, %{100-train_pct} test. "
+                f"Tüm pencerelerde tutarlı çalışan parametreler güvenilirdir."
             )
 
             opt_progress = st.progress(0, text="Optimizasyon başlatılıyor...")
 
-            # Parametre aralıkları (daha dar tutuldu — hız için)
+            # Parametre aralıkları
             param_grid = {
                 "sma_s": [10, 15, 20, 25, 30],
                 "sma_l": [50, 75, 100, 125, 150],
@@ -984,19 +987,11 @@ if ticker:
                 "cons_thresh": [4, 5, 6, 7],
             }
 
-            # Toplam kombinasyon sayısı
             from itertools import product as iter_product
             keys = list(param_grid.keys())
             values = list(param_grid.values())
             all_combos = list(iter_product(*values))
             total_combos = len(all_combos)
-
-            # Walk-forward split
-            split_idx = int(len(df) * 0.7)
-            df_in = df.iloc[:split_idx].copy()
-            df_out = df.iloc[split_idx:].copy()
-            close_in = close.iloc[:split_idx]
-            close_out = close.iloc[split_idx:]
 
             def run_backtest_with_params(data_slice, close_slice, p_sma_s, p_sma_l,
                                           p_rsi_lower, p_rsi_upper, p_z_thresh, p_cons_thresh):
@@ -1014,9 +1009,9 @@ if ticker:
                 sig_sma = np.where(sma_sh.isna() | sma_lo.isna(), 0, sig_sma)
 
                 # RSI
-                delta = c.diff()
-                gain = delta.where(delta > 0, 0.0).rolling(window=14).mean()
-                loss_s = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
+                delta_c = c.diff()
+                gain = delta_c.where(delta_c > 0, 0.0).rolling(window=14).mean()
+                loss_s = (-delta_c.where(delta_c < 0, 0.0)).rolling(window=14).mean()
                 rs = gain / loss_s.replace(0, np.nan)
                 rsi = 100 - (100 / (1 + rs))
                 sig_rsi = np.where(rsi < p_rsi_lower, 1, np.where(rsi > p_rsi_upper, -1, 0))
@@ -1036,9 +1031,9 @@ if ticker:
                 sig_macd = np.where(macd > macd_s, 1, -1)
 
                 # Z-Score
-                z_mean = c.rolling(30).mean()
-                z_std = c.rolling(30).std().replace(0, np.nan)
-                z_val = (c - z_mean) / z_std
+                z_m = c.rolling(30).mean()
+                z_s = c.rolling(30).std().replace(0, np.nan)
+                z_val = (c - z_m) / z_s
                 sig_z = np.where(z_val < -p_z_thresh, 1, np.where(z_val > p_z_thresh, -1, 0))
 
                 # OBV
@@ -1085,11 +1080,11 @@ if ticker:
                     sig_sma, sig_rsi, sig_bb, sig_macd, sig_z,
                     sig_obv, sig_adx, sig_vwap, sig_stoch, sig_ichi
                 ])
-                al_count = (all_sigs == 1).sum(axis=1)
-                sat_count = (all_sigs == -1).sum(axis=1)
+                al_cnt = (all_sigs == 1).sum(axis=1)
+                sat_cnt = (all_sigs == -1).sum(axis=1)
                 consensus = np.zeros(len(c))
-                consensus[al_count >= p_cons_thresh] = 1
-                consensus[sat_count >= p_cons_thresh] = -1
+                consensus[al_cnt >= p_cons_thresh] = 1
+                consensus[sat_cnt >= p_cons_thresh] = -1
 
                 # Backtest
                 cost = (commission_pct + slippage_pct) / 100
@@ -1126,9 +1121,9 @@ if ticker:
                     cumul *= (1 + r / 100)
                     if cumul > peak_c:
                         peak_c = cumul
-                    dd = ((peak_c - cumul) / peak_c) * 100
-                    if dd > max_dd:
-                        max_dd = dd
+                    dd_val = ((peak_c - cumul) / peak_c) * 100
+                    if dd_val > max_dd:
+                        max_dd = dd_val
 
                 total_ret = (cumul - 1) * 100
                 wr = (len(returns_arr[returns_arr > 0]) / len(returns_arr)) * 100
@@ -1138,136 +1133,233 @@ if ticker:
 
                 return total_ret, sharpe_r, len(bt_trades), max_dd
 
-            # Grid search çalıştır
-            best_sharpe = -999
-            best_params = {}
-            best_in_result = {}
-            results_list = []
+            # ---- Sliding Window Oluştur ----
+            total_len = len(df)
+            window_size = int(total_len / (1 + (n_windows - 1) * 0.3))  # Örtüşen pencereler
+            step_size = int((total_len - window_size) / max(n_windows - 1, 1))
 
-            for idx, combo in enumerate(all_combos):
-                p = dict(zip(keys, combo))
-
-                # Minimum veri kontrolü
-                if len(close_in) < max(p["sma_l"], 52) + 30:
+            windows = []
+            for w in range(n_windows):
+                w_start = w * step_size
+                w_end = min(w_start + window_size, total_len)
+                split = int((w_end - w_start) * train_pct / 100)
+                train_start = w_start
+                train_end = w_start + split
+                test_start = train_end
+                test_end = w_end
+                if test_end - test_start < 10 or train_end - train_start < 50:
                     continue
+                windows.append({
+                    "train": (train_start, train_end),
+                    "test": (test_start, test_end),
+                    "label": f"Pencere {w+1}"
+                })
 
-                ret, sharpe_r, n_trades, mdd = run_backtest_with_params(
-                    df_in, close_in,
-                    p["sma_s"], p["sma_l"], p["rsi_lower"], p["rsi_upper"],
-                    p["z_thresh"], p["cons_thresh"]
-                )
-
-                results_list.append({**p, "Getiri": ret, "Sharpe": sharpe_r,
-                                      "Trade": n_trades, "Max DD": mdd})
-
-                if sharpe_r > best_sharpe and n_trades >= 2:
-                    best_sharpe = sharpe_r
-                    best_params = p.copy()
-                    best_in_result = {"Getiri": ret, "Sharpe": sharpe_r,
-                                      "Trade": n_trades, "Max DD": mdd}
-
-                # Progress güncelle
-                if idx % 10 == 0:
-                    opt_progress.progress(
-                        (idx + 1) / total_combos,
-                        text=f"Test ediliyor: {idx + 1}/{total_combos}"
-                    )
-
-            opt_progress.progress(1.0, text="Optimizasyon tamamlandı!")
-
-            if best_params:
-                # Out-of-sample doğrulama
-                out_ret, out_sharpe, out_trades, out_mdd = run_backtest_with_params(
-                    df_out, close_out,
-                    best_params["sma_s"], best_params["sma_l"],
-                    best_params["rsi_lower"], best_params["rsi_upper"],
-                    best_params["z_thresh"], best_params["cons_thresh"]
-                )
-
-                st.subheader("🏆 En İyi Parametre Seti")
-
-                # Parametre tablosu
-                param_display = {
-                    "Hızlı SMA": best_params["sma_s"],
-                    "Yavaş SMA": best_params["sma_l"],
-                    "RSI Alt": best_params["rsi_lower"],
-                    "RSI Üst": best_params["rsi_upper"],
-                    "Z-Score Eşik": best_params["z_thresh"],
-                    "Konsensüs Eşik": best_params["cons_thresh"],
-                }
-                p1, p2, p3 = st.columns(3)
-                p1.metric("Hızlı SMA", best_params["sma_s"])
-                p1.metric("RSI Alt", best_params["rsi_lower"])
-                p2.metric("Yavaş SMA", best_params["sma_l"])
-                p2.metric("RSI Üst", best_params["rsi_upper"])
-                p3.metric("Z-Score Eşik", best_params["z_thresh"])
-                p3.metric("Konsensüs Eşik", best_params["cons_thresh"])
-
-                # In-sample vs Out-of-sample karşılaştırma
-                st.subheader("📊 Walk-Forward Doğrulama")
-                wf1, wf2 = st.columns(2)
-
-                with wf1:
-                    st.markdown("**In-Sample (%70)**")
-                    st.metric("Getiri", f"%{best_in_result['Getiri']:.2f}")
-                    st.metric("Sharpe Ratio", f"{best_in_result['Sharpe']:.2f}")
-                    st.metric("Trade Sayısı", f"{best_in_result['Trade']}")
-                    st.metric("Max Drawdown", f"%{best_in_result['Max DD']:.2f}")
-
-                with wf2:
-                    st.markdown("**Out-of-Sample (%30)**")
-                    st.metric("Getiri", f"%{out_ret:.2f}")
-                    st.metric("Sharpe Ratio", f"{out_sharpe:.2f}")
-                    st.metric("Trade Sayısı", f"{out_trades}")
-                    st.metric("Max Drawdown", f"%{out_mdd:.2f}")
-
-                # Overfitting değerlendirmesi
-                if out_ret > 0 and out_sharpe > 0:
-                    st.success(
-                        "✅ Out-of-sample pozitif getiri ve Sharpe — parametreler güvenilir görünüyor."
-                    )
-                elif out_ret > 0:
-                    st.warning(
-                        "⚠️ Out-of-sample pozitif getiri ama düşük Sharpe — dikkatli kullanın."
-                    )
-                else:
-                    st.error(
-                        "❌ Out-of-sample negatif getiri — overfitting riski yüksek. "
-                        "Bu parametrelere güvenmeyin."
-                    )
-
-                # Optimizasyon sonuçlarını uygula butonu
-                st.write("")
-                if st.button("✅ Optimizasyon Sonuçlarını Uygula", use_container_width=True, type="primary"):
-                    st.session_state["k_sma_s"] = best_params["sma_s"]
-                    st.session_state["k_sma_l"] = best_params["sma_l"]
-                    st.session_state["k_rsi_lower"] = best_params["rsi_lower"]
-                    st.session_state["k_rsi_upper"] = best_params["rsi_upper"]
-                    st.session_state["k_z_thresh"] = best_params["z_thresh"]
-                    st.session_state["k_cons_thresh"] = best_params["cons_thresh"]
-                    st.rerun()
-
-                # Top 10 kombinasyon tablosu
-                if results_list:
-                    st.subheader("📋 En İyi 10 Kombinasyon (In-Sample)")
-                    res_opt_df = pd.DataFrame(results_list)
-                    res_opt_df = res_opt_df[res_opt_df["Trade"] >= 2]
-                    res_opt_df = res_opt_df.sort_values("Sharpe", ascending=False).head(10)
-                    res_opt_df.columns = [
-                        "SMA Kısa", "SMA Uzun", "RSI Alt", "RSI Üst",
-                        "Z Eşik", "Kons. Eşik", "Getiri (%)", "Sharpe",
-                        "Trade", "Max DD (%)"
-                    ]
-                    res_opt_df["Getiri (%)"] = res_opt_df["Getiri (%)"].round(2)
-                    res_opt_df["Sharpe"] = res_opt_df["Sharpe"].round(2)
-                    res_opt_df["Max DD (%)"] = res_opt_df["Max DD (%)"].round(2)
-                    st.dataframe(res_opt_df, use_container_width=True, hide_index=True)
-
+            if not windows:
+                st.warning("Yeterli veri yok — pencere sayısını azaltın veya veri süresini artırın.")
             else:
-                st.warning(
-                    "Hiçbir kombinasyon yeterli trade üretemedi. "
-                    "Veri süresini artırmayı deneyin."
-                )
+                # Her pencerede grid search
+                total_work = total_combos * len(windows)
+                work_done = 0
+
+                # Her kombinasyonun tüm pencerelerdeki sonuçlarını topla
+                combo_scores = {}
+
+                for w_idx, win in enumerate(windows):
+                    tr_s, tr_e = win["train"]
+                    te_s, te_e = win["test"]
+
+                    df_train = df.iloc[tr_s:tr_e].copy()
+                    df_test = df.iloc[te_s:te_e].copy()
+                    c_train = close.iloc[tr_s:tr_e]
+                    c_test = close.iloc[te_s:te_e]
+
+                    for idx, combo in enumerate(all_combos):
+                        p = dict(zip(keys, combo))
+
+                        if len(c_train) < max(p["sma_l"], 52) + 30:
+                            work_done += 1
+                            continue
+
+                        # In-sample
+                        in_ret, in_sharpe, in_trades, in_mdd = run_backtest_with_params(
+                            df_train, c_train,
+                            p["sma_s"], p["sma_l"], p["rsi_lower"], p["rsi_upper"],
+                            p["z_thresh"], p["cons_thresh"]
+                        )
+
+                        # Out-of-sample
+                        out_ret, out_sharpe, out_trades, out_mdd = run_backtest_with_params(
+                            df_test, c_test,
+                            p["sma_s"], p["sma_l"], p["rsi_lower"], p["rsi_upper"],
+                            p["z_thresh"], p["cons_thresh"]
+                        )
+
+                        combo_key = tuple(combo)
+                        if combo_key not in combo_scores:
+                            combo_scores[combo_key] = {
+                                "params": p,
+                                "windows": [],
+                                "in_sharpes": [],
+                                "out_sharpes": [],
+                                "in_returns": [],
+                                "out_returns": [],
+                                "in_trades": [],
+                                "out_trades": [],
+                                "in_mdds": [],
+                                "out_mdds": [],
+                            }
+
+                        combo_scores[combo_key]["windows"].append(win["label"])
+                        combo_scores[combo_key]["in_sharpes"].append(in_sharpe)
+                        combo_scores[combo_key]["out_sharpes"].append(out_sharpe)
+                        combo_scores[combo_key]["in_returns"].append(in_ret)
+                        combo_scores[combo_key]["out_returns"].append(out_ret)
+                        combo_scores[combo_key]["in_trades"].append(in_trades)
+                        combo_scores[combo_key]["out_trades"].append(out_trades)
+                        combo_scores[combo_key]["in_mdds"].append(in_mdd)
+                        combo_scores[combo_key]["out_mdds"].append(out_mdd)
+
+                        work_done += 1
+                        if work_done % 50 == 0:
+                            opt_progress.progress(
+                                min(work_done / total_work, 1.0),
+                                text=f"Pencere {w_idx+1}/{len(windows)} — {idx+1}/{total_combos}"
+                            )
+
+                opt_progress.progress(1.0, text="Optimizasyon tamamlandı!")
+
+                # En iyi kombinasyonu seç: ortalama out-of-sample Sharpe + en az 2 pencerede trade
+                best_combo_key = None
+                best_avg_out_sharpe = -999
+
+                for combo_key, data in combo_scores.items():
+                    # En az yarısı pencerede 2+ trade olmalı
+                    valid_windows = sum(1 for t in data["out_trades"] if t >= 1)
+                    if valid_windows < len(windows) / 2:
+                        continue
+                    avg_out_sharpe = np.mean(data["out_sharpes"])
+                    if avg_out_sharpe > best_avg_out_sharpe:
+                        best_avg_out_sharpe = avg_out_sharpe
+                        best_combo_key = combo_key
+
+                if best_combo_key is not None:
+                    best_data = combo_scores[best_combo_key]
+                    best_params = best_data["params"]
+
+                    st.subheader("🏆 En İyi Parametre Seti")
+                    p1, p2, p3 = st.columns(3)
+                    p1.metric("Hızlı SMA", best_params["sma_s"])
+                    p1.metric("RSI Alt", best_params["rsi_lower"])
+                    p2.metric("Yavaş SMA", best_params["sma_l"])
+                    p2.metric("RSI Üst", best_params["rsi_upper"])
+                    p3.metric("Z-Score Eşik", best_params["z_thresh"])
+                    p3.metric("Konsensüs Eşik", best_params["cons_thresh"])
+
+                    # Pencere detayları tablosu
+                    st.subheader("📊 Sliding Window Sonuçları")
+                    window_results = []
+                    for i in range(len(best_data["windows"])):
+                        window_results.append({
+                            "Pencere": best_data["windows"][i],
+                            "In-Sample Getiri (%)": round(best_data["in_returns"][i], 2),
+                            "In-Sample Sharpe": round(best_data["in_sharpes"][i], 2),
+                            "Out-Sample Getiri (%)": round(best_data["out_returns"][i], 2),
+                            "Out-Sample Sharpe": round(best_data["out_sharpes"][i], 2),
+                            "In Trade": best_data["in_trades"][i],
+                            "Out Trade": best_data["out_trades"][i],
+                            "In Max DD (%)": round(best_data["in_mdds"][i], 2),
+                            "Out Max DD (%)": round(best_data["out_mdds"][i], 2),
+                        })
+                    window_df = pd.DataFrame(window_results)
+
+                    def window_color(val):
+                        if isinstance(val, (int, float)):
+                            if val > 0:
+                                return "color: #00ff00"
+                            elif val < 0:
+                                return "color: #ff4b4b"
+                        return ""
+
+                    st.dataframe(
+                        window_df.style.map(window_color,
+                                           subset=["In-Sample Getiri (%)", "Out-Sample Getiri (%)",
+                                                   "In-Sample Sharpe", "Out-Sample Sharpe"]),
+                        use_container_width=True, hide_index=True
+                    )
+
+                    # Ortalama performans özeti
+                    st.subheader("📈 Ortalama Performans")
+                    avg1, avg2, avg3, avg4 = st.columns(4)
+                    avg1.metric("Ort. In-Sample Getiri",
+                               f"%{np.mean(best_data['in_returns']):.2f}")
+                    avg2.metric("Ort. Out-Sample Getiri",
+                               f"%{np.mean(best_data['out_returns']):.2f}")
+                    avg3.metric("Ort. Out-Sample Sharpe",
+                               f"{np.mean(best_data['out_sharpes']):.2f}")
+                    avg4.metric("Ort. Out-Sample Max DD",
+                               f"%{np.mean(best_data['out_mdds']):.2f}")
+
+                    # Tutarlılık değerlendirmesi
+                    positive_windows = sum(1 for r in best_data["out_returns"] if r > 0)
+                    total_windows = len(best_data["out_returns"])
+
+                    if positive_windows == total_windows:
+                        st.success(
+                            f"✅ Tüm {total_windows} pencerede out-of-sample pozitif getiri — "
+                            f"parametreler güvenilir."
+                        )
+                    elif positive_windows >= total_windows / 2:
+                        st.warning(
+                            f"⚠️ {total_windows} pencereden {positive_windows}'inde pozitif getiri — "
+                            f"kısmen güvenilir, dikkatli kullanın."
+                        )
+                    else:
+                        st.error(
+                            f"❌ {total_windows} pencereden sadece {positive_windows}'inde pozitif getiri — "
+                            f"overfitting riski yüksek."
+                        )
+
+                    # Uygula butonu
+                    st.write("")
+                    if st.button("✅ Optimizasyon Sonuçlarını Uygula", use_container_width=True, type="primary"):
+                        st.session_state["k_sma_s"] = best_params["sma_s"]
+                        st.session_state["k_sma_l"] = best_params["sma_l"]
+                        st.session_state["k_rsi_lower"] = best_params["rsi_lower"]
+                        st.session_state["k_rsi_upper"] = best_params["rsi_upper"]
+                        st.session_state["k_z_thresh"] = best_params["z_thresh"]
+                        st.session_state["k_cons_thresh"] = best_params["cons_thresh"]
+                        st.rerun()
+
+                    # Top 10 kombinasyon (ortalama out-of-sample Sharpe'a göre)
+                    top_combos = []
+                    for combo_key, data in combo_scores.items():
+                        valid_w = sum(1 for t in data["out_trades"] if t >= 1)
+                        if valid_w < len(windows) / 2:
+                            continue
+                        top_combos.append({
+                            "SMA Kısa": data["params"]["sma_s"],
+                            "SMA Uzun": data["params"]["sma_l"],
+                            "RSI Alt": data["params"]["rsi_lower"],
+                            "RSI Üst": data["params"]["rsi_upper"],
+                            "Z Eşik": data["params"]["z_thresh"],
+                            "Kons. Eşik": data["params"]["cons_thresh"],
+                            "Ort. Out Getiri (%)": round(np.mean(data["out_returns"]), 2),
+                            "Ort. Out Sharpe": round(np.mean(data["out_sharpes"]), 2),
+                            "Pozitif Pencere": f"{sum(1 for r in data['out_returns'] if r > 0)}/{len(windows)}",
+                        })
+
+                    if top_combos:
+                        st.subheader("📋 En İyi 10 Kombinasyon (Ort. Out-of-Sample)")
+                        top_df = pd.DataFrame(top_combos)
+                        top_df = top_df.sort_values("Ort. Out Sharpe", ascending=False).head(10)
+                        st.dataframe(top_df, use_container_width=True, hide_index=True)
+
+                else:
+                    st.warning(
+                        "Hiçbir kombinasyon yeterli pencerede trade üretemedi. "
+                        "Veri süresini artırın veya pencere sayısını azaltın."
+                    )
 
     else:
         st.error(

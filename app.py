@@ -91,7 +91,7 @@ def flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 # 5. VERİ ÇEKME MOTORU
 # ============================================================
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=50)
 def fetch_live_data(symbol: str, p: str, i: str) -> pd.DataFrame:
     try:
         data = yf.download(symbol, period=p, interval=i, progress=False)

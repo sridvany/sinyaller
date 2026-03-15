@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
 # ============================================================
-st.set_page_config(page_title="Algo-Trader Pro v3.2", layout="wide")
+st.set_page_config(page_title="Algo-Trader Pro v3.3", layout="wide")
 
 # 2. OTOMATİK YENİLEME (55 sn → cache TTL=50 sn ile uyumlu)
 st_autorefresh(interval=55 * 1000, key="terminal_refresh")
@@ -63,9 +63,21 @@ with st.sidebar:
     atr_period = st.slider("ATR Periyodu:", 7, 30, 14)
 
     st.write("---")
+    st.subheader("Stochastic RSI Ayarları")
+    stoch_rsi_period = st.slider("Stoch RSI Periyodu:", 7, 21, 14)
+    stoch_lower = st.slider("Stoch RSI Alt Eşik:", 5, 30, 20)
+    stoch_upper = st.slider("Stoch RSI Üst Eşik:", 70, 95, 80)
+
+    st.write("---")
+    st.subheader("Ichimoku Ayarları")
+    ichi_tenkan = st.slider("Tenkan-sen (Dönüşüm):", 5, 20, 9)
+    ichi_kijun = st.slider("Kijun-sen (Baz):", 20, 40, 26)
+    ichi_senkou_b = st.slider("Senkou Span B:", 40, 65, 52)
+
+    st.write("---")
     st.subheader("Konsensüs Ayarları")
     consensus_threshold = st.slider(
-        "Minimum AL/SAT çoğunluğu (8 algoritmadan):", 3, 7, 5
+        "Minimum AL/SAT çoğunluğu (10 sinyalden):", 3, 9, 6
     )
 
     st.write("---")
@@ -248,10 +260,54 @@ if ticker:
             0  # Trendsiz: nötr
         )
 
+        # 9. VWAP (sadece intraday interval'larda aktif)
+        is_intraday = interval in ["1m", "2m", "5m", "15m", "30m", "60m", "1h"]
+        if is_intraday and "Volume" in df.columns:
+            typical_price = (high + low + close) / 3
+            cum_vol = volume.cumsum()
+            cum_tp_vol = (typical_price * volume).cumsum()
+            df["VWAP"] = cum_tp_vol / cum_vol.replace(0, np.nan)
+            df["Sig_VWAP"] = np.where(close > df["VWAP"], 1, -1)
+            df.loc[df["VWAP"].isna(), "Sig_VWAP"] = 0
+        else:
+            df["VWAP"] = np.nan
+            df["Sig_VWAP"] = 0  # Günlük+ → devre dışı, konsensüse katılmaz
+
+        # 10. Stochastic RSI
+        rsi_series = df["RSI"]
+        rsi_min = rsi_series.rolling(window=stoch_rsi_period, min_periods=stoch_rsi_period).min()
+        rsi_max = rsi_series.rolling(window=stoch_rsi_period, min_periods=stoch_rsi_period).max()
+        rsi_range = (rsi_max - rsi_min).replace(0, np.nan)
+        df["StochRSI_K"] = ((rsi_series - rsi_min) / rsi_range) * 100
+        df["StochRSI_D"] = df["StochRSI_K"].rolling(window=3).mean()  # %D = 3-period SMA of %K
+        df["Sig_StochRSI"] = np.where(
+            df["StochRSI_K"] < stoch_lower, 1,
+            np.where(df["StochRSI_K"] > stoch_upper, -1, 0)
+        )
+
+        # 11. Ichimoku Cloud
+        tenkan = (high.rolling(window=ichi_tenkan).max() + low.rolling(window=ichi_tenkan).min()) / 2
+        kijun = (high.rolling(window=ichi_kijun).max() + low.rolling(window=ichi_kijun).min()) / 2
+        senkou_a = ((tenkan + kijun) / 2).shift(ichi_kijun)
+        senkou_b = ((high.rolling(window=ichi_senkou_b).max() + low.rolling(window=ichi_senkou_b).min()) / 2).shift(ichi_kijun)
+        df["Tenkan"] = tenkan
+        df["Kijun"] = kijun
+        df["Senkou_A"] = senkou_a
+        df["Senkou_B"] = senkou_b
+        df["Chikou"] = close.shift(-ichi_kijun)
+
+        # Ichimoku sinyal: Tenkan > Kijun + fiyat bulutun üstünde = AL, tersi SAT
+        cloud_top = pd.concat([senkou_a, senkou_b], axis=1).max(axis=1)
+        cloud_bottom = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
+        ichi_bullish = (tenkan > kijun) & (close > cloud_top)
+        ichi_bearish = (tenkan < kijun) & (close < cloud_bottom)
+        df["Sig_Ichimoku"] = np.where(ichi_bullish, 1, np.where(ichi_bearish, -1, 0))
+
         # -------------------------------------------------------
         # KONSENSÜS HESABI (her satır için)
         # -------------------------------------------------------
-        signal_cols = ["Sig_SMA", "Sig_RSI", "Sig_BB", "Sig_MACD", "Sig_Z", "Sig_OBV", "Sig_ADX"]
+        signal_cols = ["Sig_SMA", "Sig_RSI", "Sig_BB", "Sig_MACD", "Sig_Z",
+                       "Sig_OBV", "Sig_ADX", "Sig_VWAP", "Sig_StochRSI", "Sig_Ichimoku"]
 
         # ATR filtresi: düşük volatilitede trend sinyallerini bastır
         trend_signals = ["Sig_SMA", "Sig_MACD"]
@@ -303,6 +359,17 @@ if ticker:
             )
         )
 
+        # VWAP (intraday'de görünür)
+        if is_intraday:
+            fig.add_trace(
+                go.Scatter(
+                    x=df.index,
+                    y=df["VWAP"],
+                    name="VWAP",
+                    line=dict(color="yellow", dash="dash", width=1.5),
+                )
+            )
+
         # Konsensüs bazlı AL/SAT okları
         buys = df[df["Consensus_Change"] > 0]  # Nötr/SAT → AL geçişi
         if not buys.empty:
@@ -338,7 +405,7 @@ if ticker:
         # -------------------------------------------------------
         # ALT GRAFİKLER: RSI, MACD, ADX, OBV
         # -------------------------------------------------------
-        tab1, tab2, tab3, tab4 = st.tabs(["RSI", "MACD", "ADX", "OBV"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku"])
 
         with tab1:
             fig_rsi = go.Figure()
@@ -374,6 +441,32 @@ if ticker:
             fig_obv.add_trace(go.Scatter(x=df.index, y=obv_sma_long, name="OBV SMA 30", line=dict(color="cyan", dash="dot")))
             fig_obv.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
             st.plotly_chart(fig_obv, use_container_width=True)
+
+        with tab5:
+            fig_stoch = go.Figure()
+            fig_stoch.add_trace(go.Scatter(x=df.index, y=df["StochRSI_K"], name="%K", line=dict(color="magenta")))
+            fig_stoch.add_trace(go.Scatter(x=df.index, y=df["StochRSI_D"], name="%D", line=dict(color="orange", dash="dot")))
+            fig_stoch.add_hline(y=stoch_lower, line_dash="dash", line_color="lime", annotation_text=f"Aşırı Satım ({stoch_lower})")
+            fig_stoch.add_hline(y=stoch_upper, line_dash="dash", line_color="red", annotation_text=f"Aşırı Alım ({stoch_upper})")
+            fig_stoch.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
+            st.plotly_chart(fig_stoch, use_container_width=True)
+
+        with tab6:
+            fig_ichi = go.Figure()
+            fig_ichi.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
+                                               low=df["Low"], close=df["Close"], name="Fiyat"))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Tenkan"], name="Tenkan-sen",
+                                          line=dict(color="cyan", width=1)))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Kijun"], name="Kijun-sen",
+                                          line=dict(color="red", width=1)))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Senkou_A"], name="Senkou A",
+                                          line=dict(color="lime", width=0.5, dash="dot")))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Senkou_B"], name="Senkou B",
+                                          line=dict(color="red", width=0.5, dash="dot"),
+                                          fill="tonexty", fillcolor="rgba(100,100,100,0.15)"))
+            fig_ichi.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False,
+                                   margin=dict(t=30, b=30))
+            st.plotly_chart(fig_ichi, use_container_width=True)
 
         # -------------------------------------------------------
         # KARAR TABLOSU
@@ -469,6 +562,39 @@ if ticker:
             res.append([adx_decision, "ADX", adx_note])
         else:
             res.append(["N/A", "ADX", "Yetersiz veri."])
+
+        # 8 - VWAP (intraday only)
+        if is_intraday:
+            last_vwap = safe_scalar(last["VWAP"])
+            if not np.isnan(last_vwap):
+                vwap_decision = "AL" if last_close > last_vwap else "SAT"
+                res.append([vwap_decision, "VWAP", f"VWAP: {last_vwap:.2f}"])
+            else:
+                res.append(["N/A", "VWAP", "Yetersiz veri."])
+        else:
+            res.append(["N/A", "VWAP", "Günlük+ periyotta devre dışı."])
+
+        # 9 - Stochastic RSI
+        last_stoch_k = safe_scalar(last["StochRSI_K"])
+        if not np.isnan(last_stoch_k):
+            if last_stoch_k < stoch_lower:
+                stoch_decision = "AL"
+            elif last_stoch_k > stoch_upper:
+                stoch_decision = "SAT"
+            else:
+                stoch_decision = "TUT"
+            res.append([stoch_decision, "Stoch RSI", f"%K: {last_stoch_k:.1f}"])
+        else:
+            res.append(["N/A", "Stoch RSI", "Yetersiz veri."])
+
+        # 10 - Ichimoku
+        last_ichi_sig = safe_scalar(last["Sig_Ichimoku"])
+        if last_ichi_sig == 1:
+            res.append(["AL", "Ichimoku", "Tenkan > Kijun, fiyat bulut üstünde."])
+        elif last_ichi_sig == -1:
+            res.append(["SAT", "Ichimoku", "Tenkan < Kijun, fiyat bulut altında."])
+        else:
+            res.append(["TUT", "Ichimoku", "Karışık sinyal / bulut içinde."])
 
         # 8 - ATR Volatilite Durumu (bilgi amaçlı, AL/SAT vermez)
         last_atr = safe_scalar(last["ATR"])

@@ -81,6 +81,12 @@ with st.sidebar:
     )
 
     st.write("---")
+    st.subheader("📊 Backtest Ayarları")
+    commission_pct = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
+    slippage_pct = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
+    initial_capital = st.number_input("Başlangıç Sermayesi ($):", min_value=100, value=10000, step=100)
+
+    st.write("---")
     st.info(
         "İpucu: 1 dakikalık analizler için Periyot: 5d, Mum Aralığı: 1m seçiniz."
     )
@@ -641,6 +647,238 @@ if ticker:
             return "color: #808495; font-weight: bold"
 
         st.table(res_df.style.map(color_map, subset=["Karar"]))
+
+        # -------------------------------------------------------
+        # BACKTEST MOTORU (Konsensüs Bazlı)
+        # -------------------------------------------------------
+        st.write("---")
+        st.header("📊 Konsensüs Backtest Sonuçları")
+        st.caption(
+            "⚠️ Geçmiş performans gelecekteki sonuçların garantisi değildir. "
+            "Backtest overfitting riski içerir — parametreleri geçmişe optimize etmek "
+            "canlıda aynı sonucu garanti etmez."
+        )
+
+        # Trade listesi oluştur: Consensus AL'da gir, SAT'ta çık
+        trades = []
+        in_position = False
+        entry_price = 0.0
+        entry_date = None
+        entry_idx = 0
+
+        close_arr = close.values
+        consensus_arr = df["Consensus"].values
+        index_arr = df.index
+
+        for i in range(1, len(df)):
+            if not in_position and consensus_arr[i] == 1 and consensus_arr[i - 1] != 1:
+                # AL sinyali — pozisyon aç
+                entry_price = float(close_arr[i])
+                entry_date = index_arr[i]
+                entry_idx = i
+                in_position = True
+            elif in_position and consensus_arr[i] == -1 and consensus_arr[i - 1] != -1:
+                # SAT sinyali — pozisyon kapat
+                exit_price = float(close_arr[i])
+                exit_date = index_arr[i]
+
+                # Komisyon + slippage hesabı
+                cost_pct = (commission_pct + slippage_pct) / 100
+                net_entry = entry_price * (1 + cost_pct)
+                net_exit = exit_price * (1 - cost_pct)
+                pnl_pct = ((net_exit - net_entry) / net_entry) * 100
+                duration = i - entry_idx
+
+                trades.append({
+                    "Giriş Tarihi": entry_date,
+                    "Çıkış Tarihi": exit_date,
+                    "Giriş Fiyatı": round(entry_price, 2),
+                    "Çıkış Fiyatı": round(exit_price, 2),
+                    "Getiri (%)": round(pnl_pct, 2),
+                    "Süre (mum)": duration,
+                })
+                in_position = False
+
+        # Açık pozisyon varsa son fiyatla kapat (bilgi amaçlı)
+        if in_position:
+            exit_price = float(close_arr[-1])
+            cost_pct = (commission_pct + slippage_pct) / 100
+            net_entry = entry_price * (1 + cost_pct)
+            net_exit = exit_price * (1 - cost_pct)
+            pnl_pct = ((net_exit - net_entry) / net_entry) * 100
+            duration = len(df) - 1 - entry_idx
+            trades.append({
+                "Giriş Tarihi": entry_date,
+                "Çıkış Tarihi": f"{index_arr[-1]} (açık)",
+                "Giriş Fiyatı": round(entry_price, 2),
+                "Çıkış Fiyatı": round(exit_price, 2),
+                "Getiri (%)": round(pnl_pct, 2),
+                "Süre (mum)": duration,
+            })
+
+        if trades:
+            trades_df = pd.DataFrame(trades)
+
+            # ---- Performans Metrikleri ----
+            returns = trades_df["Getiri (%)"].values
+            wins = returns[returns > 0]
+            losses = returns[returns <= 0]
+
+            total_trades = len(returns)
+            win_count = len(wins)
+            loss_count = len(losses)
+            win_rate = (win_count / total_trades) * 100 if total_trades > 0 else 0
+
+            # Kümülatif getiri (bileşik)
+            cumulative = 1.0
+            for r in returns:
+                cumulative *= (1 + r / 100)
+            total_return = (cumulative - 1) * 100
+
+            avg_win = float(wins.mean()) if len(wins) > 0 else 0
+            avg_loss = float(losses.mean()) if len(losses) > 0 else 0
+            best_trade = float(returns.max())
+            worst_trade = float(returns.min())
+            profit_factor = abs(wins.sum() / losses.sum()) if len(losses) > 0 and losses.sum() != 0 else float("inf")
+
+            # Equity Curve
+            equity = [initial_capital]
+            for r in returns:
+                equity.append(equity[-1] * (1 + r / 100))
+
+            peak = equity[0]
+            drawdowns = []
+            for e in equity:
+                if e > peak:
+                    peak = e
+                dd = ((peak - e) / peak) * 100
+                drawdowns.append(dd)
+            max_drawdown = max(drawdowns)
+
+            # Sharpe Ratio (basitleştirilmiş — trade bazlı)
+            if len(returns) > 1 and np.std(returns) > 0:
+                sharpe = float(np.mean(returns) / np.std(returns)) * np.sqrt(len(returns))
+            else:
+                sharpe = 0.0
+
+            # Buy & Hold karşılaştırması
+            first_close = float(close_arr[0])
+            last_close_val = float(close_arr[-1])
+            bh_return = ((last_close_val - first_close) / first_close) * 100
+
+            # ---- Metrikler Gösterimi ----
+            st.subheader("📈 Performans Özeti")
+
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Toplam Getiri", f"%{total_return:.2f}")
+            m2.metric("Buy & Hold", f"%{bh_return:.2f}")
+            m3.metric("Win Rate", f"%{win_rate:.1f}")
+            m4.metric("Max Drawdown", f"%{max_drawdown:.2f}")
+            m5.metric("Sharpe Ratio", f"{sharpe:.2f}")
+
+            m6, m7, m8, m9, m10 = st.columns(5)
+            m6.metric("Toplam Trade", f"{total_trades}")
+            m7.metric("Kazançlı", f"{win_count}")
+            m8.metric("Zararlı", f"{loss_count}")
+            m9.metric("Profit Factor", f"{profit_factor:.2f}" if profit_factor != float("inf") else "∞")
+            m10.metric("Ort. Kazanç/Kayıp", f"{avg_win:.2f}% / {avg_loss:.2f}%")
+
+            # ---- Strateji vs Buy & Hold karşılaştırması ----
+            alpha = total_return - bh_return
+            if alpha > 0:
+                st.success(f"✅ Konsensüs stratejisi Buy & Hold'u **%{alpha:.2f}** geride bıraktı.")
+            elif alpha < 0:
+                st.error(f"❌ Konsensüs stratejisi Buy & Hold'un **%{abs(alpha):.2f}** gerisinde kaldı.")
+            else:
+                st.info("➡️ Konsensüs stratejisi Buy & Hold ile aynı performansı gösterdi.")
+
+            # ---- Equity Curve Grafiği ----
+            st.subheader("💰 Equity Curve")
+            fig_equity = go.Figure()
+
+            # Strateji equity
+            trade_labels = [f"Başlangıç"] + [f"Trade {i+1}" for i in range(len(returns))]
+            fig_equity.add_trace(go.Scatter(
+                x=list(range(len(equity))),
+                y=equity,
+                name="Konsensüs Stratejisi",
+                line=dict(color="lime", width=2),
+                text=trade_labels,
+                hovertemplate="%{text}<br>Sermaye: $%{y:,.2f}<extra></extra>"
+            ))
+
+            # Buy & Hold equity
+            bh_equity = [initial_capital]
+            bh_daily = close / close.iloc[0]
+            # Trade noktalarındaki B&H değerini hesapla
+            trade_indices = [0]
+            for t in trades:
+                entry_d = t["Giriş Tarihi"]
+                exit_d = t["Çıkış Tarihi"]
+                if isinstance(exit_d, str) and "(açık)" in exit_d:
+                    exit_idx = len(df) - 1
+                else:
+                    exit_idx = df.index.get_loc(exit_d) if exit_d in df.index else len(df) - 1
+                trade_indices.append(exit_idx)
+
+            for idx in trade_indices[1:]:
+                bh_val = initial_capital * float(bh_daily.iloc[idx])
+                bh_equity.append(bh_val)
+
+            fig_equity.add_trace(go.Scatter(
+                x=list(range(len(bh_equity))),
+                y=bh_equity,
+                name="Buy & Hold",
+                line=dict(color="gray", width=1, dash="dash"),
+            ))
+
+            fig_equity.update_layout(
+                template="plotly_dark", height=300,
+                xaxis_title="Trade #", yaxis_title="Sermaye ($)",
+                margin=dict(t=30, b=30)
+            )
+            st.plotly_chart(fig_equity, use_container_width=True)
+
+            # ---- Drawdown Grafiği ----
+            st.subheader("📉 Drawdown")
+            fig_dd = go.Figure()
+            fig_dd.add_trace(go.Scatter(
+                x=list(range(len(drawdowns))),
+                y=[-d for d in drawdowns],
+                fill="tozeroy",
+                name="Drawdown",
+                line=dict(color="red"),
+                fillcolor="rgba(255,75,75,0.3)"
+            ))
+            fig_dd.update_layout(
+                template="plotly_dark", height=200,
+                yaxis_title="Drawdown (%)",
+                margin=dict(t=30, b=30)
+            )
+            st.plotly_chart(fig_dd, use_container_width=True)
+
+            # ---- Trade Tablosu ----
+            st.subheader("📋 Trade Geçmişi")
+
+            def trade_color(val):
+                if isinstance(val, (int, float)):
+                    if val > 0:
+                        return "color: #00ff00"
+                    elif val < 0:
+                        return "color: #ff4b4b"
+                return ""
+
+            st.dataframe(
+                trades_df.style.map(trade_color, subset=["Getiri (%)"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        else:
+            st.info(
+                "Bu veri aralığında konsensüs eşiğini karşılayan trade sinyali bulunamadı. "
+                "Eşiği düşürmeyi veya veri süresini artırmayı deneyin."
+            )
 
     else:
         st.error(

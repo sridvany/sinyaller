@@ -874,7 +874,146 @@ if ticker:
                 hide_index=True,
             )
 
+        # -------------------------------------------------------
+        # BİREYSEL ALGORİTMA PERFORMANS KARŞILAŞTIRMASI
+        # (Konsensüs backtest'inden bağımsız, her zaman gösterilir)
+        # -------------------------------------------------------
+        st.write("---")
+        st.header("🏆 Bireysel Algoritma Performansları")
+        st.caption(
+            "Her algoritmanın tek başına AL/SAT sinyallerini takip etmenin "
+            "geçmiş performansı. Komisyon ve slippage dahildir."
+        )
+
+        algo_signal_map = {
+            "SMA Crossover": "Sig_SMA",
+            "RSI (14)": "Sig_RSI",
+            "Bollinger Bands": "Sig_BB",
+            "MACD": "Sig_MACD",
+            "Mean Reversion": "Sig_Z",
+            "OBV": "Sig_OBV",
+            "ADX": "Sig_ADX",
+            "Stoch RSI": "Sig_StochRSI",
+            "Ichimoku": "Sig_Ichimoku",
+        }
+        if is_intraday:
+            algo_signal_map["VWAP"] = "Sig_VWAP"
+
+        def backtest_single_signal(signal_series):
+            """Tek bir sinyal serisinin backtest'ini yapar."""
+            sig_arr = signal_series.values
+            s_trades = []
+            s_in_pos = False
+            s_entry = 0.0
+            cost_pct = (commission_pct + slippage_pct) / 100
+
+            for i in range(1, len(sig_arr)):
+                if not s_in_pos and sig_arr[i] == 1 and sig_arr[i - 1] != 1:
+                    s_entry = float(close_arr[i])
+                    s_in_pos = True
+                elif s_in_pos and sig_arr[i] == -1 and sig_arr[i - 1] != -1:
+                    s_exit = float(close_arr[i])
+                    net_e = s_entry * (1 + cost_pct)
+                    net_x = s_exit * (1 - cost_pct)
+                    pnl = ((net_x - net_e) / net_e) * 100
+                    s_trades.append(pnl)
+                    s_in_pos = False
+
+            # Açık pozisyon → son fiyatla kapat
+            if s_in_pos:
+                s_exit = float(close_arr[-1])
+                net_e = s_entry * (1 + cost_pct)
+                net_x = s_exit * (1 - cost_pct)
+                pnl = ((net_x - net_e) / net_e) * 100
+                s_trades.append(pnl)
+
+            if not s_trades:
+                return {
+                    "Trade": 0, "Getiri (%)": 0.0, "Win Rate (%)": 0.0,
+                    "Ort. Kazanç (%)": 0.0, "Ort. Kayıp (%)": 0.0,
+                    "Max DD (%)": 0.0, "Profit Factor": 0.0
+                }
+
+            returns_arr = np.array(s_trades)
+            wins_arr = returns_arr[returns_arr > 0]
+            losses_arr = returns_arr[returns_arr <= 0]
+
+            cumul = 1.0
+            peak_c = 1.0
+            max_dd = 0.0
+            for r in returns_arr:
+                cumul *= (1 + r / 100)
+                if cumul > peak_c:
+                    peak_c = cumul
+                dd = ((peak_c - cumul) / peak_c) * 100
+                if dd > max_dd:
+                    max_dd = dd
+
+            total_ret = (cumul - 1) * 100
+            wr = (len(wins_arr) / len(returns_arr)) * 100
+            avg_w = float(wins_arr.mean()) if len(wins_arr) > 0 else 0.0
+            avg_l = float(losses_arr.mean()) if len(losses_arr) > 0 else 0.0
+            pf = abs(wins_arr.sum() / losses_arr.sum()) if len(losses_arr) > 0 and losses_arr.sum() != 0 else float("inf")
+
+            return {
+                "Trade": len(returns_arr),
+                "Getiri (%)": round(total_ret, 2),
+                "Win Rate (%)": round(wr, 1),
+                "Ort. Kazanç (%)": round(avg_w, 2),
+                "Ort. Kayıp (%)": round(avg_l, 2),
+                "Max DD (%)": round(max_dd, 2),
+                "Profit Factor": round(pf, 2) if pf != float("inf") else "∞"
+            }
+
+        algo_results = []
+        for algo_name, sig_col in algo_signal_map.items():
+            if sig_col in df.columns:
+                result = backtest_single_signal(df[sig_col])
+                result["Algoritma"] = algo_name
+                algo_results.append(result)
+
+        if algo_results:
+            algo_df = pd.DataFrame(algo_results)
+            # Algoritma sütununu başa al
+            cols = ["Algoritma"] + [c for c in algo_df.columns if c != "Algoritma"]
+            algo_df = algo_df[cols]
+
+            # Trade'i olmayan algoritmaları filtrele
+            active_algos = algo_df[algo_df["Trade"] > 0].copy()
+
+            if not active_algos.empty:
+                # En iyi algoritmayı bul (getiriye göre)
+                # Profit Factor string olabilir (∞), sayısal karşılaştırma için getiri kullan
+                best_idx = active_algos["Getiri (%)"].idxmax()
+                best_algo = active_algos.loc[best_idx]
+
+                st.success(
+                    f"🥇 En iyi performans: **{best_algo['Algoritma']}** — "
+                    f"Getiri: %{best_algo['Getiri (%)']}, "
+                    f"Win Rate: %{best_algo['Win Rate (%)']}, "
+                    f"{int(best_algo['Trade'])} trade"
+                )
+
+                # Tablo renklendirmesi
+                def algo_return_color(val):
+                    if isinstance(val, (int, float)):
+                        if val > 0:
+                            return "color: #00ff00"
+                        elif val < 0:
+                            return "color: #ff4b4b"
+                    return ""
+
+                st.dataframe(
+                    algo_df.style.map(algo_return_color, subset=["Getiri (%)"]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("Hiçbir algoritma bu veri aralığında trade üretmedi.")
         else:
+            st.info("Algoritma performansı hesaplanamadı.")
+
+        if not trades:
             st.info(
                 "Bu veri aralığında konsensüs eşiğini karşılayan trade sinyali bulunamadı. "
                 "Eşiği düşürmeyi veya veri süresini artırmayı deneyin."

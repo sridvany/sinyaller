@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
 # ============================================================
-st.set_page_config(page_title="Algo-Trader Pro v3.3", layout="wide")
+st.set_page_config(page_title="Algo-Trader Pro v3.4", layout="wide")
 
 # 2. OTOMATİK YENİLEME (toggle ile kontrol)
 auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
@@ -25,14 +25,12 @@ with st.sidebar:
     st.header("⚙️ Veri & Algoritma Ayarları")
     ticker = st.text_input("Ticker Sembolü:", "PAXG-USD")
 
-    # PERİYOT SEÇİMİ
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=["1d", "5d", "1mo", "6mo", "1y", "5y", "max"],
         index=1,
     )
 
-    # ARALIK (INTERVAL) SEÇİMİ
     if period in ["1d", "5d"]:
         interval_options = ["1m", "2m", "5m", "15m", "30m", "60m", "1h", "1d"]
         default_int_idx = 0
@@ -77,6 +75,25 @@ with st.sidebar:
     ichi_senkou_b = st.slider("Senkou Span B:", 40, 65, 52)
 
     st.write("---")
+    st.subheader("SuperTrend Ayarları")
+    st_period = st.slider("SuperTrend ATR Periyodu:", 5, 20, 10)
+    st_multiplier = st.slider("SuperTrend Çarpan:", 1.0, 5.0, 3.0, step=0.5)
+
+    st.write("---")
+    st.subheader("KAMA Ayarları")
+    kama_period = st.slider("KAMA Etkinlik Periyodu:", 5, 20, 10)
+
+    st.write("---")
+    st.subheader("Linear Regression Channel Ayarları")
+    lrc_period = st.slider("LRC Periyodu:", 20, 100, 50)
+    lrc_std_mult = st.slider("LRC Standart Sapma Çarpanı:", 1.0, 3.0, 2.0, step=0.5)
+
+    st.write("---")
+    st.subheader("Nadaraya-Watson Ayarları")
+    nw_bandwidth = st.slider("NW Bant Genişliği (h):", 3, 20, 8)
+    nw_window = st.slider("NW Pencere (son N bar):", 50, 300, 100)
+
+    st.write("---")
     st.subheader("Konsensüs Ayarları")
     consensus_threshold = st.slider(
         "Minimum AL/SAT çoğunluğu (10 sinyalden):", 3, 9, 6, key="k_cons_thresh"
@@ -105,7 +122,6 @@ with st.sidebar:
 # 4. YARDIMCI FONKSİYONLAR
 # ============================================================
 def safe_scalar(value):
-    """Pandas Series / numpy scalar'ı güvenli şekilde Python float'a çevirir."""
     if isinstance(value, (pd.Series, np.ndarray)):
         return float(value.iloc[0]) if len(value) > 0 else np.nan
     try:
@@ -115,7 +131,6 @@ def safe_scalar(value):
 
 
 def flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """MultiIndex sütunları güvenli şekilde düzleştirir."""
     if isinstance(df.columns, pd.MultiIndex):
         unique_tickers = df.columns.get_level_values(1).unique()
         if len(unique_tickers) <= 1:
@@ -126,18 +141,11 @@ def flatten_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def calc_adx(high, low, close, period=14):
-    """
-    ADX (Average Directional Index) hesaplama.
-    Wilder smoothing kullanır.
-    Döndürür: adx, plus_di, minus_di Series'leri.
-    """
-    # True Range
     tr1 = high - low
     tr2 = (high - close.shift(1)).abs()
     tr3 = (low - close.shift(1)).abs()
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    # Directional Movement
     up_move = high - high.shift(1)
     down_move = low.shift(1) - low
 
@@ -147,21 +155,141 @@ def calc_adx(high, low, close, period=14):
     plus_dm = pd.Series(plus_dm, index=high.index, dtype=float)
     minus_dm = pd.Series(minus_dm, index=high.index, dtype=float)
 
-    # Wilder Smoothing (EMA with alpha=1/period)
     alpha = 1.0 / period
     atr = tr.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
     smooth_plus = plus_dm.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
     smooth_minus = minus_dm.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
 
-    # DI hesaplama
     plus_di = 100 * (smooth_plus / atr.replace(0, np.nan))
     minus_di = 100 * (smooth_minus / atr.replace(0, np.nan))
 
-    # DX ve ADX
     dx = 100 * ((plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan))
     adx = dx.ewm(alpha=alpha, min_periods=period, adjust=False).mean()
 
     return adx, plus_di, minus_di
+
+
+def calc_kama(close, period=10):
+    """Kaufman Adaptive Moving Average (KAMA)"""
+    close_arr = close.values.astype(float)
+    kama = np.full(len(close_arr), np.nan)
+    # İlk geçerli değer
+    kama[period - 1] = close_arr[period - 1]
+
+    fast_sc = 2.0 / (2 + 1)
+    slow_sc = 2.0 / (30 + 1)
+
+    for i in range(period, len(close_arr)):
+        direction = abs(close_arr[i] - close_arr[i - period])
+        volatility = np.sum(np.abs(np.diff(close_arr[i - period:i + 1])))
+        if volatility == 0:
+            er = 0.0
+        else:
+            er = direction / volatility
+        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+        kama[i] = kama[i - 1] + sc * (close_arr[i] - kama[i - 1])
+
+    return pd.Series(kama, index=close.index)
+
+
+def calc_supertrend(high, low, close, period=10, multiplier=3.0):
+    """SuperTrend indikatörü"""
+    tr1 = high - low
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+
+    hl2 = (high + low) / 2
+    upper_band = hl2 + multiplier * atr
+    lower_band = hl2 - multiplier * atr
+
+    supertrend = pd.Series(np.nan, index=close.index)
+    direction = pd.Series(1, index=close.index)  # 1=bullish, -1=bearish
+
+    upper_band_final = upper_band.copy()
+    lower_band_final = lower_band.copy()
+
+    for i in range(1, len(close)):
+        # Upper band
+        if upper_band.iloc[i] < upper_band_final.iloc[i - 1] or close.iloc[i - 1] > upper_band_final.iloc[i - 1]:
+            upper_band_final.iloc[i] = upper_band.iloc[i]
+        else:
+            upper_band_final.iloc[i] = upper_band_final.iloc[i - 1]
+
+        # Lower band
+        if lower_band.iloc[i] > lower_band_final.iloc[i - 1] or close.iloc[i - 1] < lower_band_final.iloc[i - 1]:
+            lower_band_final.iloc[i] = lower_band.iloc[i]
+        else:
+            lower_band_final.iloc[i] = lower_band_final.iloc[i - 1]
+
+        # Direction
+        if close.iloc[i] > upper_band_final.iloc[i - 1]:
+            direction.iloc[i] = 1
+        elif close.iloc[i] < lower_band_final.iloc[i - 1]:
+            direction.iloc[i] = -1
+        else:
+            direction.iloc[i] = direction.iloc[i - 1]
+
+        supertrend.iloc[i] = lower_band_final.iloc[i] if direction.iloc[i] == 1 else upper_band_final.iloc[i]
+
+    return supertrend, direction, lower_band_final, upper_band_final
+
+
+def calc_linear_regression_channel(close, period=50, std_mult=2.0):
+    """Linear Regression Channel"""
+    n = len(close)
+    mid = np.full(n, np.nan)
+    upper = np.full(n, np.nan)
+    lower = np.full(n, np.nan)
+
+    for i in range(period - 1, n):
+        y = close.values[i - period + 1:i + 1].astype(float)
+        x = np.arange(period)
+        # Linear regression
+        slope, intercept = np.polyfit(x, y, 1)
+        y_pred = slope * x + intercept
+        residuals = y - y_pred
+        std = np.std(residuals)
+        mid[i] = y_pred[-1]
+        upper[i] = y_pred[-1] + std_mult * std
+        lower[i] = y_pred[-1] - std_mult * std
+
+    return (
+        pd.Series(mid, index=close.index),
+        pd.Series(upper, index=close.index),
+        pd.Series(lower, index=close.index),
+    )
+
+
+def calc_nadaraya_watson(close, bandwidth=8, window=100):
+    """
+    Nadaraya-Watson Kernel Regression Envelope (non-repainting).
+    Son `window` bar üzerinde hesaplanır, sadece görsel amaçlı.
+    """
+    n = len(close)
+    nw_line = np.full(n, np.nan)
+
+    start = max(0, n - window)
+    y = close.values[start:].astype(float)
+    m = len(y)
+
+    for i in range(m):
+        weights = np.array([
+            np.exp(-((i - j) ** 2) / (2 * bandwidth ** 2))
+            for j in range(m)
+        ])
+        nw_line[start + i] = np.sum(weights * y) / np.sum(weights)
+
+    nw_series = pd.Series(nw_line, index=close.index)
+
+    # Envelope: ±2 * MAE
+    residuals = close.values[start:] - nw_line[start:]
+    mae = np.nanmean(np.abs(residuals))
+    nw_upper = nw_series + 2 * mae
+    nw_lower = nw_series - 2 * mae
+
+    return nw_series, nw_upper, nw_lower
 
 
 # ============================================================
@@ -188,7 +316,6 @@ if ticker:
     if not df.empty:
         df = flatten_columns(df)
 
-        # Gerekli sütunların varlığını kontrol et
         required_cols = ["Open", "High", "Low", "Close", "Volume"]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
@@ -200,7 +327,6 @@ if ticker:
         low = df["Low"].squeeze()
         volume = df["Volume"].squeeze()
 
-        # Minimum veri kontrolü
         min_required = max(sma_l, 30, adx_period * 3)
         if len(close) < min_required:
             st.warning(
@@ -246,7 +372,7 @@ if ticker:
         df["Z"] = (close - z_mean) / z_std
         df["Sig_Z"] = np.where(df["Z"] < -z_threshold, 1, np.where(df["Z"] > z_threshold, -1, 0))
 
-        # 6. OBV (On-Balance Volume)
+        # 6. OBV
         obv_sign = np.sign(close.diff()).fillna(0)
         df["OBV"] = (volume * obv_sign).cumsum()
         obv_sma_short = df["OBV"].rolling(window=10, min_periods=10).mean()
@@ -254,28 +380,24 @@ if ticker:
         df["Sig_OBV"] = np.where(obv_sma_short > obv_sma_long, 1, -1)
         df.loc[obv_sma_short.isna() | obv_sma_long.isna(), "Sig_OBV"] = 0
 
-        # 7. ATR (Average True Range) — volatilite filtresi
+        # 7. ATR
         tr1 = high - low
         tr2 = (high - close.shift(1)).abs()
         tr3 = (low - close.shift(1)).abs()
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         df["ATR"] = tr.ewm(alpha=1.0 / atr_period, min_periods=atr_period, adjust=False).mean()
         atr_ma = df["ATR"].rolling(window=30, min_periods=30).mean()
-        # ATR filtresi: düşük volatilitede TUT (0), yüksekte mevcut trende eşlik et
         df["ATR_High"] = df["ATR"] > atr_ma
-        # ATR tek başına AL/SAT vermez, konsensüste filtre olarak kullanılacak
 
-        # 8. ADX (Average Directional Index)
+        # 8. ADX
         df["ADX"], df["PLUS_DI"], df["MINUS_DI"] = calc_adx(high, low, close, period=adx_period)
-        # ADX > eşik → trend var, DI yönüne göre sinyal
-        # ADX < eşik → trend yok, mean reversion sinyallerini güçlendir
         df["Sig_ADX"] = np.where(
             df["ADX"] > adx_threshold,
-            np.where(df["PLUS_DI"] > df["MINUS_DI"], 1, -1),  # Trendli: DI yönü
-            0  # Trendsiz: nötr
+            np.where(df["PLUS_DI"] > df["MINUS_DI"], 1, -1),
+            0
         )
 
-        # 9. VWAP (sadece intraday interval'larda aktif)
+        # 9. VWAP
         is_intraday = interval in ["1m", "2m", "5m", "15m", "30m", "60m", "1h"]
         if is_intraday and "Volume" in df.columns:
             typical_price = (high + low + close) / 3
@@ -286,7 +408,7 @@ if ticker:
             df.loc[df["VWAP"].isna(), "Sig_VWAP"] = 0
         else:
             df["VWAP"] = np.nan
-            df["Sig_VWAP"] = 0  # Günlük+ → devre dışı, konsensüse katılmaz
+            df["Sig_VWAP"] = 0
 
         # 10. Stochastic RSI
         rsi_series = df["RSI"]
@@ -294,13 +416,13 @@ if ticker:
         rsi_max = rsi_series.rolling(window=stoch_rsi_period, min_periods=stoch_rsi_period).max()
         rsi_range = (rsi_max - rsi_min).replace(0, np.nan)
         df["StochRSI_K"] = ((rsi_series - rsi_min) / rsi_range) * 100
-        df["StochRSI_D"] = df["StochRSI_K"].rolling(window=3).mean()  # %D = 3-period SMA of %K
+        df["StochRSI_D"] = df["StochRSI_K"].rolling(window=3).mean()
         df["Sig_StochRSI"] = np.where(
             df["StochRSI_K"] < stoch_lower, 1,
             np.where(df["StochRSI_K"] > stoch_upper, -1, 0)
         )
 
-        # 11. Ichimoku Cloud
+        # 11. Ichimoku
         tenkan = (high.rolling(window=ichi_tenkan).max() + low.rolling(window=ichi_tenkan).min()) / 2
         kijun = (high.rolling(window=ichi_kijun).max() + low.rolling(window=ichi_kijun).min()) / 2
         senkou_a = ((tenkan + kijun) / 2).shift(ichi_kijun)
@@ -311,7 +433,6 @@ if ticker:
         df["Senkou_B"] = senkou_b
         df["Chikou"] = close.shift(-ichi_kijun)
 
-        # Ichimoku sinyal: Tenkan > Kijun + fiyat bulutun üstünde = AL, tersi SAT
         cloud_top = pd.concat([senkou_a, senkou_b], axis=1).max(axis=1)
         cloud_bottom = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
         ichi_bullish = (tenkan > kijun) & (close > cloud_top)
@@ -319,28 +440,58 @@ if ticker:
         df["Sig_Ichimoku"] = np.where(ichi_bullish, 1, np.where(ichi_bearish, -1, 0))
 
         # -------------------------------------------------------
-        # KONSENSÜS HESABI (her satır için)
+        # YENİ İNDİKATÖRLER
         # -------------------------------------------------------
-        signal_cols = ["Sig_SMA", "Sig_RSI", "Sig_BB", "Sig_MACD", "Sig_Z",
-                       "Sig_OBV", "Sig_ADX", "Sig_VWAP", "Sig_StochRSI", "Sig_Ichimoku"]
 
-        # ATR filtresi: düşük volatilitede trend sinyallerini bastır
+        # 12. KAMA
+        df["KAMA"] = calc_kama(close, period=kama_period)
+        df["Sig_KAMA"] = np.where(close > df["KAMA"], 1, np.where(close < df["KAMA"], -1, 0))
+        df.loc[df["KAMA"].isna(), "Sig_KAMA"] = 0
+
+        # 13. SuperTrend
+        df["SuperTrend"], df["ST_Direction"], df["ST_Lower"], df["ST_Upper"] = calc_supertrend(
+            high, low, close, period=st_period, multiplier=st_multiplier
+        )
+        df["Sig_SuperTrend"] = df["ST_Direction"]
+        df.loc[df["SuperTrend"].isna(), "Sig_SuperTrend"] = 0
+
+        # 14. Linear Regression Channel
+        df["LRC_Mid"], df["LRC_Upper"], df["LRC_Lower"] = calc_linear_regression_channel(
+            close, period=lrc_period, std_mult=lrc_std_mult
+        )
+        df["Sig_LRC"] = np.where(
+            close < df["LRC_Lower"], 1,
+            np.where(close > df["LRC_Upper"], -1, 0)
+        )
+        df.loc[df["LRC_Mid"].isna(), "Sig_LRC"] = 0
+
+        # 15. Nadaraya-Watson (SADECE GÖRSEL — konsensüse dahil değil)
+        df["NW_Line"], df["NW_Upper"], df["NW_Lower"] = calc_nadaraya_watson(
+            close, bandwidth=nw_bandwidth, window=nw_window
+        )
+
+        # -------------------------------------------------------
+        # KONSENSÜS HESABI
+        # -------------------------------------------------------
+        signal_cols = [
+            "Sig_SMA", "Sig_RSI", "Sig_BB", "Sig_MACD", "Sig_Z",
+            "Sig_OBV", "Sig_ADX", "Sig_VWAP", "Sig_StochRSI", "Sig_Ichimoku",
+            "Sig_KAMA", "Sig_SuperTrend", "Sig_LRC"
+        ]
+
         trend_signals = ["Sig_SMA", "Sig_MACD"]
         for col in trend_signals:
             df[col] = np.where(df["ATR_High"] | (df[col] == 0), df[col], 0)
 
-        # AL sayısı (sinyal=1) ve SAT sayısı (sinyal=-1)
         sig_df = df[signal_cols]
         df["AL_Count"] = (sig_df == 1).sum(axis=1)
         df["SAT_Count"] = (sig_df == -1).sum(axis=1)
         df["Valid_Count"] = (sig_df != 0).sum(axis=1)
 
-        # Konsensüs: eşik aşılırsa sinyal, aksi halde nötr
         df["Consensus"] = 0
         df.loc[df["AL_Count"] >= consensus_threshold, "Consensus"] = 1
         df.loc[df["SAT_Count"] >= consensus_threshold, "Consensus"] = -1
 
-        # Konsensüs değişim noktaları (ok basılacak yerler)
         df["Consensus_Change"] = df["Consensus"].diff()
 
         # -------------------------------------------------------
@@ -349,78 +500,70 @@ if ticker:
         fig = go.Figure()
         fig.add_trace(
             go.Candlestick(
-                x=df.index,
-                open=df["Open"],
-                high=df["High"],
-                low=df["Low"],
-                close=df["Close"],
-                name="Fiyat",
+                x=df.index, open=df["Open"], high=df["High"],
+                low=df["Low"], close=df["Close"], name="Fiyat",
             )
         )
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df["SMA_SHORT"],
-                name=f"SMA {sma_s}",
-                line=dict(color="orange"),
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df["SMA_LONG"],
-                name=f"SMA {sma_l}",
-                line=dict(color="cyan"),
-            )
-        )
+        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"], name=f"SMA {sma_s}", line=dict(color="orange")))
+        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"], name=f"SMA {sma_l}", line=dict(color="cyan")))
 
-        # VWAP (intraday'de görünür)
+        # KAMA
+        fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"], name="KAMA", line=dict(color="violet", width=1.5)))
+
+        # SuperTrend
+        bull_st = df["ST_Direction"] == 1
+        bear_st = df["ST_Direction"] == -1
+        fig.add_trace(go.Scatter(
+            x=df.index[bull_st], y=df["SuperTrend"][bull_st],
+            name="SuperTrend (Boğa)", mode="markers",
+            marker=dict(color="lime", size=4, symbol="circle")
+        ))
+        fig.add_trace(go.Scatter(
+            x=df.index[bear_st], y=df["SuperTrend"][bear_st],
+            name="SuperTrend (Ayı)", mode="markers",
+            marker=dict(color="red", size=4, symbol="circle")
+        ))
+
+        # Linear Regression Channel
+        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"], name="LRC Orta", line=dict(color="white", width=1, dash="dash")))
+        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"], name="LRC Üst", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")))
+        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"], name="LRC Alt", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
+                                 fill="tonexty", fillcolor="rgba(150,150,150,0.05)"))
+
+        # Nadaraya-Watson Envelope (görsel)
+        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"], name="NW Orta", line=dict(color="gold", width=1.5)))
+        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"], name="NW Üst", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")))
+        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"], name="NW Alt", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
+                                 fill="tonexty", fillcolor="rgba(255,215,0,0.04)"))
+
         if is_intraday:
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index,
-                    y=df["VWAP"],
-                    name="VWAP",
-                    line=dict(color="yellow", dash="dash", width=1.5),
-                )
-            )
+            fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"], name="VWAP", line=dict(color="yellow", dash="dash", width=1.5)))
 
-        # Konsensüs bazlı AL/SAT okları
-        buys = df[df["Consensus_Change"] > 0]  # Nötr/SAT → AL geçişi
+        buys = df[df["Consensus_Change"] > 0]
         if not buys.empty:
-            fig.add_trace(
-                go.Scatter(
-                    x=buys.index,
-                    y=buys["Low"] * 0.995,
-                    mode="markers",
-                    name=f"AL ({consensus_threshold}+ sinyal)",
-                    marker=dict(symbol="triangle-up", size=15, color="lime"),
-                )
-            )
+            fig.add_trace(go.Scatter(
+                x=buys.index, y=buys["Low"] * 0.995, mode="markers",
+                name=f"AL ({consensus_threshold}+ sinyal)",
+                marker=dict(symbol="triangle-up", size=15, color="lime"),
+            ))
 
-        sells = df[df["Consensus_Change"] < 0]  # Nötr/AL → SAT geçişi
+        sells = df[df["Consensus_Change"] < 0]
         if not sells.empty:
-            fig.add_trace(
-                go.Scatter(
-                    x=sells.index,
-                    y=sells["High"] * 1.005,
-                    mode="markers",
-                    name=f"SAT ({consensus_threshold}+ sinyal)",
-                    marker=dict(symbol="triangle-down", size=15, color="red"),
-                )
-            )
+            fig.add_trace(go.Scatter(
+                x=sells.index, y=sells["High"] * 1.005, mode="markers",
+                name=f"SAT ({consensus_threshold}+ sinyal)",
+                marker=dict(symbol="triangle-down", size=15, color="red"),
+            ))
 
-        fig.update_layout(
-            template="plotly_dark",
-            height=550,
-            xaxis_rangeslider_visible=False,
-        )
+        fig.update_layout(template="plotly_dark", height=550, xaxis_rangeslider_visible=False)
         st.plotly_chart(fig, use_container_width=True)
 
         # -------------------------------------------------------
-        # ALT GRAFİKLER: RSI, MACD, ADX, OBV
+        # ALT GRAFİKLER
         # -------------------------------------------------------
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku"])
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+            "RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku", "SuperTrend", "KAMA & LRC"
+        ])
 
         with tab1:
             fig_rsi = go.Figure()
@@ -470,18 +613,43 @@ if ticker:
             fig_ichi = go.Figure()
             fig_ichi.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
                                                low=df["Low"], close=df["Close"], name="Fiyat"))
-            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Tenkan"], name="Tenkan-sen",
-                                          line=dict(color="cyan", width=1)))
-            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Kijun"], name="Kijun-sen",
-                                          line=dict(color="red", width=1)))
-            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Senkou_A"], name="Senkou A",
-                                          line=dict(color="lime", width=0.5, dash="dot")))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Tenkan"], name="Tenkan-sen", line=dict(color="cyan", width=1)))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Kijun"], name="Kijun-sen", line=dict(color="red", width=1)))
+            fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Senkou_A"], name="Senkou A", line=dict(color="lime", width=0.5, dash="dot")))
             fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Senkou_B"], name="Senkou B",
                                           line=dict(color="red", width=0.5, dash="dot"),
                                           fill="tonexty", fillcolor="rgba(100,100,100,0.15)"))
-            fig_ichi.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False,
-                                   margin=dict(t=30, b=30))
+            fig_ichi.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False, margin=dict(t=30, b=30))
             st.plotly_chart(fig_ichi, use_container_width=True)
+
+        with tab7:
+            fig_st = go.Figure()
+            fig_st.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
+                                             low=df["Low"], close=df["Close"], name="Fiyat"))
+            fig_st.add_trace(go.Scatter(
+                x=df.index[bull_st], y=df["SuperTrend"][bull_st],
+                name="SuperTrend (Boğa)", mode="lines",
+                line=dict(color="lime", width=2)
+            ))
+            fig_st.add_trace(go.Scatter(
+                x=df.index[bear_st], y=df["SuperTrend"][bear_st],
+                name="SuperTrend (Ayı)", mode="lines",
+                line=dict(color="red", width=2)
+            ))
+            fig_st.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False, margin=dict(t=30, b=30))
+            st.plotly_chart(fig_st, use_container_width=True)
+
+        with tab8:
+            fig_kama = go.Figure()
+            fig_kama.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat", line=dict(color="white", width=1)))
+            fig_kama.add_trace(go.Scatter(x=df.index, y=df["KAMA"], name="KAMA", line=dict(color="violet", width=2)))
+            fig_kama.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"], name="LRC Orta", line=dict(color="white", dash="dash", width=1)))
+            fig_kama.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"], name="LRC Üst", line=dict(color="rgba(200,200,200,0.6)", dash="dot")))
+            fig_kama.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"], name="LRC Alt",
+                                          line=dict(color="rgba(200,200,200,0.6)", dash="dot"),
+                                          fill="tonexty", fillcolor="rgba(150,150,150,0.07)"))
+            fig_kama.update_layout(template="plotly_dark", height=350, margin=dict(t=30, b=30))
+            st.plotly_chart(fig_kama, use_container_width=True)
 
         # -------------------------------------------------------
         # KARAR TABLOSU
@@ -505,7 +673,7 @@ if ticker:
 
         res = []
 
-        # 1 - SMA Crossover
+        # 1 - SMA
         if not np.isnan(last_sma_s) and not np.isnan(last_sma_l):
             sma_decision = "AL" if last_sma_s > last_sma_l else "SAT"
             if not last_atr_high:
@@ -526,7 +694,7 @@ if ticker:
         else:
             res.append(["N/A", "RSI (14)", "Yetersiz veri."])
 
-        # 3 - Bollinger Bands
+        # 3 - BB
         if not any(np.isnan(v) for v in [last_close, last_low_bb, last_up]):
             if last_close < last_low_bb:
                 bb_decision = "AL"
@@ -547,7 +715,7 @@ if ticker:
         else:
             res.append(["N/A", "MACD", "Yetersiz veri."])
 
-        # 5 - Mean Reversion (Z-Score)
+        # 5 - Z-Score
         if not np.isnan(last_z):
             if last_z < -z_threshold:
                 z_decision = "AL"
@@ -578,7 +746,7 @@ if ticker:
         else:
             res.append(["N/A", "ADX", "Yetersiz veri."])
 
-        # 8 - VWAP (intraday only)
+        # 8 - VWAP
         if is_intraday:
             last_vwap = safe_scalar(last["VWAP"])
             if not np.isnan(last_vwap):
@@ -589,7 +757,7 @@ if ticker:
         else:
             res.append(["N/A", "VWAP", "Günlük+ periyotta devre dışı."])
 
-        # 9 - Stochastic RSI
+        # 9 - Stoch RSI
         last_stoch_k = safe_scalar(last["StochRSI_K"])
         if not np.isnan(last_stoch_k):
             if last_stoch_k < stoch_lower:
@@ -611,7 +779,38 @@ if ticker:
         else:
             res.append(["TUT", "Ichimoku", "Karışık sinyal / bulut içinde."])
 
-        # 8 - ATR Volatilite Durumu (bilgi amaçlı, AL/SAT vermez)
+        # 11 - KAMA
+        last_kama = safe_scalar(last["KAMA"])
+        if not np.isnan(last_kama):
+            kama_decision = "AL" if last_close > last_kama else "SAT"
+            res.append([kama_decision, "KAMA", f"KAMA: {last_kama:.2f}"])
+        else:
+            res.append(["N/A", "KAMA", "Yetersiz veri."])
+
+        # 12 - SuperTrend
+        last_st_dir = safe_scalar(last["ST_Direction"])
+        last_st = safe_scalar(last["SuperTrend"])
+        if not np.isnan(last_st):
+            st_decision = "AL" if last_st_dir == 1 else "SAT"
+            res.append([st_decision, "SuperTrend", f"Seviye: {last_st:.2f}"])
+        else:
+            res.append(["N/A", "SuperTrend", "Yetersiz veri."])
+
+        # 13 - LRC
+        last_lrc_sig = safe_scalar(last["Sig_LRC"])
+        last_lrc_mid = safe_scalar(last["LRC_Mid"])
+        if not np.isnan(last_lrc_mid):
+            if last_lrc_sig == 1:
+                lrc_decision = "AL"
+            elif last_lrc_sig == -1:
+                lrc_decision = "SAT"
+            else:
+                lrc_decision = "TUT"
+            res.append([lrc_decision, "LR Channel", f"Orta: {last_lrc_mid:.2f}"])
+        else:
+            res.append(["N/A", "LR Channel", "Yetersiz veri."])
+
+        # ATR Filtre (bilgi)
         last_atr = safe_scalar(last["ATR"])
         if not np.isnan(last_atr):
             vol_status = "Yüksek ↑" if last_atr_high else "Düşük ↓"
@@ -619,13 +818,26 @@ if ticker:
         else:
             res.append(["N/A", "ATR Filtre", "Yetersiz veri."])
 
+        # NW (bilgi)
+        last_nw = safe_scalar(last["NW_Line"])
+        last_nw_up = safe_scalar(last["NW_Upper"])
+        last_nw_lo = safe_scalar(last["NW_Lower"])
+        if not np.isnan(last_nw):
+            if last_close > last_nw_up:
+                nw_note = f"Üst zarfın üstünde (aşırı alım bölgesi)"
+            elif last_close < last_nw_lo:
+                nw_note = f"Alt zarfın altında (aşırı satım bölgesi)"
+            else:
+                nw_note = f"Zarf içinde. NW: {last_nw:.2f}"
+            res.append(["BİLGİ", "Nadaraya-Watson", nw_note])
+        else:
+            res.append(["N/A", "Nadaraya-Watson", "Yetersiz veri."])
+
         # Güven Skoru
         valid_signals = [x for x in res if x[0] in ("AL", "SAT")]
         al_count = len([x for x in valid_signals if x[0] == "AL"])
         sat_count = len([x for x in valid_signals if x[0] == "SAT"])
-        total_valid = len(valid_signals)
 
-        # Konsensüs kararı
         if al_count >= consensus_threshold:
             consensus_label = "🟢 AL"
         elif sat_count >= consensus_threshold:
@@ -658,7 +870,7 @@ if ticker:
         st.table(res_df.style.map(color_map, subset=["Karar"]))
 
         # -------------------------------------------------------
-        # BACKTEST MOTORU (Konsensüs Bazlı)
+        # BACKTEST MOTORU
         # -------------------------------------------------------
         st.write("---")
         st.header("📊 Konsensüs Backtest Sonuçları")
@@ -668,7 +880,6 @@ if ticker:
             "canlıda aynı sonucu garanti etmez."
         )
 
-        # Trade listesi oluştur: Consensus AL'da gir, SAT'ta çık
         trades = []
         in_position = False
         entry_price = 0.0
@@ -681,23 +892,18 @@ if ticker:
 
         for i in range(1, len(df)):
             if not in_position and consensus_arr[i] == 1 and consensus_arr[i - 1] != 1:
-                # AL sinyali — pozisyon aç
                 entry_price = float(close_arr[i])
                 entry_date = index_arr[i]
                 entry_idx = i
                 in_position = True
             elif in_position and consensus_arr[i] == -1 and consensus_arr[i - 1] != -1:
-                # SAT sinyali — pozisyon kapat
                 exit_price = float(close_arr[i])
                 exit_date = index_arr[i]
-
-                # Komisyon + slippage hesabı
                 cost_pct = (commission_pct + slippage_pct) / 100
                 net_entry = entry_price * (1 + cost_pct)
                 net_exit = exit_price * (1 - cost_pct)
                 pnl_pct = ((net_exit - net_entry) / net_entry) * 100
                 duration = i - entry_idx
-
                 trades.append({
                     "Giriş Tarihi": entry_date,
                     "Çıkış Tarihi": exit_date,
@@ -708,7 +914,6 @@ if ticker:
                 })
                 in_position = False
 
-        # Açık pozisyon varsa son fiyatla kapat (bilgi amaçlı)
         if in_position:
             exit_price = float(close_arr[-1])
             cost_pct = (commission_pct + slippage_pct) / 100
@@ -727,8 +932,6 @@ if ticker:
 
         if trades:
             trades_df = pd.DataFrame(trades)
-
-            # ---- Performans Metrikleri ----
             returns = trades_df["Getiri (%)"].values
             wins = returns[returns > 0]
             losses = returns[returns <= 0]
@@ -738,7 +941,6 @@ if ticker:
             loss_count = len(losses)
             win_rate = (win_count / total_trades) * 100 if total_trades > 0 else 0
 
-            # Kümülatif getiri (bileşik)
             cumulative = 1.0
             for r in returns:
                 cumulative *= (1 + r / 100)
@@ -750,7 +952,6 @@ if ticker:
             worst_trade = float(returns.min())
             profit_factor = abs(wins.sum() / losses.sum()) if len(losses) > 0 and losses.sum() != 0 else float("inf")
 
-            # Equity Curve
             equity = [initial_capital]
             for r in returns:
                 equity.append(equity[-1] * (1 + r / 100))
@@ -764,20 +965,16 @@ if ticker:
                 drawdowns.append(dd)
             max_drawdown = max(drawdowns)
 
-            # Sharpe Ratio (basitleştirilmiş — trade bazlı)
             if len(returns) > 1 and np.std(returns) > 0:
                 sharpe = float(np.mean(returns) / np.std(returns)) * np.sqrt(len(returns))
             else:
                 sharpe = 0.0
 
-            # Buy & Hold karşılaştırması
             first_close = float(close_arr[0])
             last_close_val = float(close_arr[-1])
             bh_return = ((last_close_val - first_close) / first_close) * 100
 
-            # ---- Metrikler Gösterimi ----
             st.subheader("📈 Performans Özeti")
-
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("Toplam Getiri", f"%{total_return:.2f}")
             m2.metric("Buy & Hold", f"%{bh_return:.2f}")
@@ -792,7 +989,6 @@ if ticker:
             m9.metric("Profit Factor", f"{profit_factor:.2f}" if profit_factor != float("inf") else "∞")
             m10.metric("Ort. Kazanç/Kayıp", f"{avg_win:.2f}% / {avg_loss:.2f}%")
 
-            # ---- Strateji vs Buy & Hold karşılaştırması ----
             alpha = total_return - bh_return
             if alpha > 0:
                 st.success(f"✅ Konsensüs stratejisi Buy & Hold'u **%{alpha:.2f}** geride bıraktı.")
@@ -801,7 +997,6 @@ if ticker:
             else:
                 st.info("➡️ Konsensüs stratejisi Buy & Hold ile aynı performansı gösterdi.")
 
-            # ---- Trade Tablosu ----
             st.subheader("📋 Trade Geçmişi")
 
             def trade_color(val):
@@ -819,8 +1014,7 @@ if ticker:
             )
 
         # -------------------------------------------------------
-        # BİREYSEL ALGORİTMA PERFORMANS KARŞILAŞTIRMASI
-        # (Konsensüs backtest'inden bağımsız, her zaman gösterilir)
+        # BİREYSEL ALGORİTMA PERFORMANSLARI
         # -------------------------------------------------------
         st.write("---")
         st.header("🏆 Bireysel Algoritma Performansları")
@@ -839,12 +1033,14 @@ if ticker:
             "ADX": "Sig_ADX",
             "Stoch RSI": "Sig_StochRSI",
             "Ichimoku": "Sig_Ichimoku",
+            "KAMA": "Sig_KAMA",
+            "SuperTrend": "Sig_SuperTrend",
+            "LR Channel": "Sig_LRC",
         }
         if is_intraday:
             algo_signal_map["VWAP"] = "Sig_VWAP"
 
         def backtest_single_signal(signal_series):
-            """Tek bir sinyal serisinin backtest'ini yapar."""
             sig_arr = signal_series.values
             s_trades = []
             s_in_pos = False
@@ -863,7 +1059,6 @@ if ticker:
                     s_trades.append(pnl)
                     s_in_pos = False
 
-            # Açık pozisyon → son fiyatla kapat
             if s_in_pos:
                 s_exit = float(close_arr[-1])
                 net_e = s_entry * (1 + cost_pct)
@@ -872,11 +1067,9 @@ if ticker:
                 s_trades.append(pnl)
 
             if not s_trades:
-                return {
-                    "Trade": 0, "Getiri (%)": 0.0, "Win Rate (%)": 0.0,
-                    "Ort. Kazanç (%)": 0.0, "Ort. Kayıp (%)": 0.0,
-                    "Max DD (%)": 0.0, "Profit Factor": 0.0
-                }
+                return {"Trade": 0, "Getiri (%)": 0.0, "Win Rate (%)": 0.0,
+                        "Ort. Kazanç (%)": 0.0, "Ort. Kayıp (%)": 0.0,
+                        "Max DD (%)": 0.0, "Profit Factor": 0.0}
 
             returns_arr = np.array(s_trades)
             wins_arr = returns_arr[returns_arr > 0]
@@ -918,19 +1111,13 @@ if ticker:
 
         if algo_results:
             algo_df = pd.DataFrame(algo_results)
-            # Algoritma sütununu başa al
             cols = ["Algoritma"] + [c for c in algo_df.columns if c != "Algoritma"]
             algo_df = algo_df[cols]
-
-            # Trade'i olmayan algoritmaları filtrele
             active_algos = algo_df[algo_df["Trade"] > 0].copy()
 
             if not active_algos.empty:
-                # En iyi algoritmayı bul (getiriye göre)
-                # Profit Factor string olabilir (∞), sayısal karşılaştırma için getiri kullan
                 best_idx = active_algos["Getiri (%)"].idxmax()
                 best_algo = active_algos.loc[best_idx]
-
                 st.success(
                     f"🥇 En iyi performans: **{best_algo['Algoritma']}** — "
                     f"Getiri: %{best_algo['Getiri (%)']}, "
@@ -938,7 +1125,6 @@ if ticker:
                     f"{int(best_algo['Trade'])} trade"
                 )
 
-                # Tablo renklendirmesi
                 def algo_return_color(val):
                     if isinstance(val, (int, float)):
                         if val > 0:
@@ -964,7 +1150,7 @@ if ticker:
             )
 
         # -------------------------------------------------------
-        # PARAMETRE OPTİMİZASYONU (Sliding Window Walk-Forward)
+        # PARAMETRE OPTİMİZASYONU
         # -------------------------------------------------------
         if run_optimization:
             st.write("---")
@@ -977,7 +1163,6 @@ if ticker:
 
             opt_progress = st.progress(0, text="Optimizasyon başlatılıyor...")
 
-            # Parametre aralıkları
             param_grid = {
                 "sma_s": [10, 15, 20, 25, 30],
                 "sma_l": [50, 75, 100, 125, 150],
@@ -995,20 +1180,17 @@ if ticker:
 
             def run_backtest_with_params(data_slice, close_slice, p_sma_s, p_sma_l,
                                           p_rsi_lower, p_rsi_upper, p_z_thresh, p_cons_thresh):
-                """Verilen parametre setiyle konsensüs backtest çalıştırır."""
                 d = data_slice.copy()
                 c = close_slice.copy()
                 h = d["High"].squeeze() if "High" in d.columns else c
                 l = d["Low"].squeeze() if "Low" in d.columns else c
                 v = d["Volume"].squeeze() if "Volume" in d.columns else pd.Series(0, index=c.index)
 
-                # SMA
                 sma_sh = c.rolling(window=p_sma_s, min_periods=p_sma_s).mean()
                 sma_lo = c.rolling(window=p_sma_l, min_periods=p_sma_l).mean()
                 sig_sma = np.where(sma_sh > sma_lo, 1, -1)
                 sig_sma = np.where(sma_sh.isna() | sma_lo.isna(), 0, sig_sma)
 
-                # RSI
                 delta_c = c.diff()
                 gain = delta_c.where(delta_c > 0, 0.0).rolling(window=14).mean()
                 loss_s = (-delta_c.where(delta_c < 0, 0.0)).rolling(window=14).mean()
@@ -1016,27 +1198,23 @@ if ticker:
                 rsi = 100 - (100 / (1 + rs))
                 sig_rsi = np.where(rsi < p_rsi_lower, 1, np.where(rsi > p_rsi_upper, -1, 0))
 
-                # Bollinger
                 mid = c.rolling(window=20).mean()
                 std = c.rolling(window=20).std()
                 up = mid + (std * 2)
                 lo_bb = mid - (std * 2)
                 sig_bb = np.where(c < lo_bb, 1, np.where(c > up, -1, 0))
 
-                # MACD
                 e12 = c.ewm(span=12, adjust=False).mean()
                 e26 = c.ewm(span=26, adjust=False).mean()
                 macd = e12 - e26
                 macd_s = macd.ewm(span=9, adjust=False).mean()
                 sig_macd = np.where(macd > macd_s, 1, -1)
 
-                # Z-Score
                 z_m = c.rolling(30).mean()
                 z_s = c.rolling(30).std().replace(0, np.nan)
                 z_val = (c - z_m) / z_s
                 sig_z = np.where(z_val < -p_z_thresh, 1, np.where(z_val > p_z_thresh, -1, 0))
 
-                # OBV
                 obv_sign = np.sign(c.diff()).fillna(0)
                 obv = (v * obv_sign).cumsum()
                 obv_s = obv.rolling(window=10, min_periods=10).mean()
@@ -1044,18 +1222,15 @@ if ticker:
                 sig_obv = np.where(obv_s > obv_l, 1, -1)
                 sig_obv = np.where(obv_s.isna() | obv_l.isna(), 0, sig_obv)
 
-                # ADX
                 adx_v, pdi, mdi = calc_adx(h, l, c, period=14)
                 sig_adx = np.where(adx_v > 25, np.where(pdi > mdi, 1, -1), 0)
 
-                # Stoch RSI
                 rsi_min = rsi.rolling(window=14, min_periods=14).min()
                 rsi_max = rsi.rolling(window=14, min_periods=14).max()
                 rsi_rng = (rsi_max - rsi_min).replace(0, np.nan)
                 stoch_k = ((rsi - rsi_min) / rsi_rng) * 100
                 sig_stoch = np.where(stoch_k < 20, 1, np.where(stoch_k > 80, -1, 0))
 
-                # Ichimoku
                 tenkan = (h.rolling(window=9).max() + l.rolling(window=9).min()) / 2
                 kijun = (h.rolling(window=26).max() + l.rolling(window=26).min()) / 2
                 senkou_a = ((tenkan + kijun) / 2).shift(26)
@@ -1065,7 +1240,20 @@ if ticker:
                 sig_ichi = np.where((tenkan > kijun) & (c > cloud_top), 1,
                                     np.where((tenkan < kijun) & (c < cloud_bot), -1, 0))
 
-                # VWAP (intraday only)
+                # KAMA
+                kama_s = calc_kama(c, period=10)
+                sig_kama = np.where(c > kama_s, 1, np.where(c < kama_s, -1, 0))
+                sig_kama = np.where(kama_s.isna(), 0, sig_kama)
+
+                # SuperTrend
+                _, st_dir, _, _ = calc_supertrend(h, l, c, period=10, multiplier=3.0)
+                sig_st = st_dir.values
+
+                # LRC
+                lrc_mid, lrc_up, lrc_lo = calc_linear_regression_channel(c, period=50, std_mult=2.0)
+                sig_lrc = np.where(c < lrc_lo, 1, np.where(c > lrc_up, -1, 0))
+                sig_lrc = np.where(lrc_mid.isna(), 0, sig_lrc)
+
                 if is_intraday:
                     tp = (h + l + c) / 3
                     cv = v.cumsum()
@@ -1075,10 +1263,10 @@ if ticker:
                 else:
                     sig_vwap = np.zeros(len(c))
 
-                # Konsensüs
                 all_sigs = np.column_stack([
                     sig_sma, sig_rsi, sig_bb, sig_macd, sig_z,
-                    sig_obv, sig_adx, sig_vwap, sig_stoch, sig_ichi
+                    sig_obv, sig_adx, sig_vwap, sig_stoch, sig_ichi,
+                    sig_kama, sig_st, sig_lrc
                 ])
                 al_cnt = (all_sigs == 1).sum(axis=1)
                 sat_cnt = (all_sigs == -1).sum(axis=1)
@@ -1086,7 +1274,6 @@ if ticker:
                 consensus[al_cnt >= p_cons_thresh] = 1
                 consensus[sat_cnt >= p_cons_thresh] = -1
 
-                # Backtest
                 cost = (commission_pct + slippage_pct) / 100
                 c_arr = c.values
                 bt_trades = []
@@ -1133,9 +1320,8 @@ if ticker:
 
                 return total_ret, sharpe_r, len(bt_trades), max_dd
 
-            # ---- Sliding Window Oluştur ----
             total_len = len(df)
-            window_size = int(total_len / (1 + (n_windows - 1) * 0.3))  # Örtüşen pencereler
+            window_size = int(total_len / (1 + (n_windows - 1) * 0.3))
             step_size = int((total_len - window_size) / max(n_windows - 1, 1))
 
             windows = []
@@ -1158,11 +1344,8 @@ if ticker:
             if not windows:
                 st.warning("Yeterli veri yok — pencere sayısını azaltın veya veri süresini artırın.")
             else:
-                # Her pencerede grid search
                 total_work = total_combos * len(windows)
                 work_done = 0
-
-                # Her kombinasyonun tüm pencerelerdeki sonuçlarını topla
                 combo_scores = {}
 
                 for w_idx, win in enumerate(windows):
@@ -1181,14 +1364,12 @@ if ticker:
                             work_done += 1
                             continue
 
-                        # In-sample
                         in_ret, in_sharpe, in_trades, in_mdd = run_backtest_with_params(
                             df_train, c_train,
                             p["sma_s"], p["sma_l"], p["rsi_lower"], p["rsi_upper"],
                             p["z_thresh"], p["cons_thresh"]
                         )
 
-                        # Out-of-sample
                         out_ret, out_sharpe, out_trades, out_mdd = run_backtest_with_params(
                             df_test, c_test,
                             p["sma_s"], p["sma_l"], p["rsi_lower"], p["rsi_upper"],
@@ -1198,16 +1379,11 @@ if ticker:
                         combo_key = tuple(combo)
                         if combo_key not in combo_scores:
                             combo_scores[combo_key] = {
-                                "params": p,
-                                "windows": [],
-                                "in_sharpes": [],
-                                "out_sharpes": [],
-                                "in_returns": [],
-                                "out_returns": [],
-                                "in_trades": [],
-                                "out_trades": [],
-                                "in_mdds": [],
-                                "out_mdds": [],
+                                "params": p, "windows": [],
+                                "in_sharpes": [], "out_sharpes": [],
+                                "in_returns": [], "out_returns": [],
+                                "in_trades": [], "out_trades": [],
+                                "in_mdds": [], "out_mdds": [],
                             }
 
                         combo_scores[combo_key]["windows"].append(win["label"])
@@ -1229,12 +1405,10 @@ if ticker:
 
                 opt_progress.progress(1.0, text="Optimizasyon tamamlandı!")
 
-                # En iyi kombinasyonu seç: ortalama out-of-sample Sharpe + en az 2 pencerede trade
                 best_combo_key = None
                 best_avg_out_sharpe = -999
 
                 for combo_key, data in combo_scores.items():
-                    # En az yarısı pencerede 2+ trade olmalı
                     valid_windows = sum(1 for t in data["out_trades"] if t >= 1)
                     if valid_windows < len(windows) / 2:
                         continue
@@ -1256,7 +1430,6 @@ if ticker:
                     p3.metric("Z-Score Eşik", best_params["z_thresh"])
                     p3.metric("Konsensüs Eşik", best_params["cons_thresh"])
 
-                    # Pencere detayları tablosu
                     st.subheader("📊 Sliding Window Sonuçları")
                     window_results = []
                     for i in range(len(best_data["windows"])):
@@ -1288,39 +1461,23 @@ if ticker:
                         use_container_width=True, hide_index=True
                     )
 
-                    # Ortalama performans özeti
                     st.subheader("📈 Ortalama Performans")
                     avg1, avg2, avg3, avg4 = st.columns(4)
-                    avg1.metric("Ort. In-Sample Getiri",
-                               f"%{np.mean(best_data['in_returns']):.2f}")
-                    avg2.metric("Ort. Out-Sample Getiri",
-                               f"%{np.mean(best_data['out_returns']):.2f}")
-                    avg3.metric("Ort. Out-Sample Sharpe",
-                               f"{np.mean(best_data['out_sharpes']):.2f}")
-                    avg4.metric("Ort. Out-Sample Max DD",
-                               f"%{np.mean(best_data['out_mdds']):.2f}")
+                    avg1.metric("Ort. In-Sample Getiri", f"%{np.mean(best_data['in_returns']):.2f}")
+                    avg2.metric("Ort. Out-Sample Getiri", f"%{np.mean(best_data['out_returns']):.2f}")
+                    avg3.metric("Ort. Out-Sample Sharpe", f"{np.mean(best_data['out_sharpes']):.2f}")
+                    avg4.metric("Ort. Out-Sample Max DD", f"%{np.mean(best_data['out_mdds']):.2f}")
 
-                    # Tutarlılık değerlendirmesi
                     positive_windows = sum(1 for r in best_data["out_returns"] if r > 0)
                     total_windows = len(best_data["out_returns"])
 
                     if positive_windows == total_windows:
-                        st.success(
-                            f"✅ Tüm {total_windows} pencerede out-of-sample pozitif getiri — "
-                            f"parametreler güvenilir."
-                        )
+                        st.success(f"✅ Tüm {total_windows} pencerede out-of-sample pozitif getiri — parametreler güvenilir.")
                     elif positive_windows >= total_windows / 2:
-                        st.warning(
-                            f"⚠️ {total_windows} pencereden {positive_windows}'inde pozitif getiri — "
-                            f"kısmen güvenilir, dikkatli kullanın."
-                        )
+                        st.warning(f"⚠️ {total_windows} pencereden {positive_windows}'inde pozitif getiri — kısmen güvenilir, dikkatli kullanın.")
                     else:
-                        st.error(
-                            f"❌ {total_windows} pencereden sadece {positive_windows}'inde pozitif getiri — "
-                            f"overfitting riski yüksek."
-                        )
+                        st.error(f"❌ {total_windows} pencereden sadece {positive_windows}'inde pozitif getiri — overfitting riski yüksek.")
 
-                    # Uygula butonu
                     st.write("")
                     if st.button("✅ Optimizasyon Sonuçlarını Uygula", use_container_width=True, type="primary"):
                         st.session_state["k_sma_s"] = best_params["sma_s"]
@@ -1331,7 +1488,6 @@ if ticker:
                         st.session_state["k_cons_thresh"] = best_params["cons_thresh"]
                         st.rerun()
 
-                    # Top 10 kombinasyon (ortalama out-of-sample Sharpe'a göre)
                     top_combos = []
                     for combo_key, data in combo_scores.items():
                         valid_w = sum(1 for t in data["out_trades"] if t >= 1)

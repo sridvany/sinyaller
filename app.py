@@ -561,8 +561,8 @@ if ticker:
         # -------------------------------------------------------
         # ALT GRAFİKLER
         # -------------------------------------------------------
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-            "RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku", "SuperTrend", "KAMA & LRC"
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+            "RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku", "SuperTrend", "KAMA & LRC", "Nadaraya-Watson"
         ])
 
         with tab1:
@@ -650,6 +650,47 @@ if ticker:
                                           fill="tonexty", fillcolor="rgba(150,150,150,0.07)"))
             fig_kama.update_layout(template="plotly_dark", height=350, margin=dict(t=30, b=30))
             st.plotly_chart(fig_kama, use_container_width=True)
+
+        with tab9:
+            fig_nw = go.Figure()
+            fig_nw.add_trace(go.Scatter(
+                x=df.index, y=close, name="Fiyat",
+                line=dict(color="white", width=1)
+            ))
+            fig_nw.add_trace(go.Scatter(
+                x=df.index, y=df["NW_Line"], name="NW Orta",
+                line=dict(color="gold", width=2)
+            ))
+            fig_nw.add_trace(go.Scatter(
+                x=df.index, y=df["NW_Upper"], name="NW Üst (Aşırı Alım)",
+                line=dict(color="red", width=1, dash="dot")
+            ))
+            fig_nw.add_trace(go.Scatter(
+                x=df.index, y=df["NW_Lower"], name="NW Alt (Aşırı Satım)",
+                line=dict(color="lime", width=1, dash="dot"),
+                fill="tonexty", fillcolor="rgba(255,215,0,0.05)"
+            ))
+            # Aşırı alım/satım noktalarını işaretle
+            nw_overbought = close > df["NW_Upper"]
+            nw_oversold = close < df["NW_Lower"]
+            if nw_overbought.any():
+                fig_nw.add_trace(go.Scatter(
+                    x=df.index[nw_overbought], y=close[nw_overbought],
+                    name="Aşırı Alım", mode="markers",
+                    marker=dict(color="red", size=6, symbol="circle")
+                ))
+            if nw_oversold.any():
+                fig_nw.add_trace(go.Scatter(
+                    x=df.index[nw_oversold], y=close[nw_oversold],
+                    name="Aşırı Satım", mode="markers",
+                    marker=dict(color="lime", size=6, symbol="circle")
+                ))
+            fig_nw.update_layout(
+                template="plotly_dark", height=350,
+                xaxis_rangeslider_visible=False,
+                margin=dict(t=30, b=30)
+            )
+            st.plotly_chart(fig_nw, use_container_width=True)
 
         # -------------------------------------------------------
         # KARAR TABLOSU

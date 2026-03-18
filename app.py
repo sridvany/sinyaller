@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
 # ============================================================
-st.set_page_config(page_title="Algo-Trader Pro v3.4", layout="wide")
+st.set_page_config(page_title="Algo-Trader Pro v3.5", layout="wide")
 
 # 2. OTOMATİK YENİLEME (toggle ile kontrol)
 auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
@@ -94,6 +94,13 @@ with st.sidebar:
     nw_window = st.slider("NW Pencere (son N bar):", 50, 300, 100)
 
     st.write("---")
+    st.subheader("VWAP Ayarları")
+    vwap_band_pct = st.slider(
+        "VWAP Nötr Bant (%):", 0.0, 1.0, 0.1, step=0.05,
+        help="Fiyat VWAP ± bant içindeyse nötr (0) sinyal üretir. 0 = bant yok."
+    )
+
+    st.write("---")
     st.subheader("Konsensüs Ayarları")
     consensus_threshold = st.slider(
         "Minimum AL/SAT çoğunluğu (10 sinyalden):", 3, 9, 6, key="k_cons_thresh"
@@ -173,7 +180,6 @@ def calc_kama(close, period=10):
     """Kaufman Adaptive Moving Average (KAMA)"""
     close_arr = close.values.astype(float)
     kama = np.full(len(close_arr), np.nan)
-    # İlk geçerli değer
     kama[period - 1] = close_arr[period - 1]
 
     fast_sc = 2.0 / (2 + 1)
@@ -193,7 +199,7 @@ def calc_kama(close, period=10):
 
 
 def calc_supertrend(high, low, close, period=10, multiplier=3.0):
-    """SuperTrend indikatörü"""
+    """SuperTrend — iloc yerine numpy array üzerinde çalışır (ChainedAssignment yok)"""
     tr1 = high - low
     tr2 = (high - close.shift(1)).abs()
     tr3 = (low - close.shift(1)).abs()
@@ -201,39 +207,34 @@ def calc_supertrend(high, low, close, period=10, multiplier=3.0):
     atr = tr.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
 
     hl2 = (high + low) / 2
-    upper_band = hl2 + multiplier * atr
-    lower_band = hl2 - multiplier * atr
+    upper_band = (hl2 + multiplier * atr).values.astype(float)
+    lower_band = (hl2 - multiplier * atr).values.astype(float)
+    c_arr = close.values.astype(float)
 
-    supertrend = pd.Series(np.nan, index=close.index)
-    direction = pd.Series(1, index=close.index)  # 1=bullish, -1=bearish
+    ub_final = upper_band.copy()
+    lb_final = lower_band.copy()
+    direction = np.ones(len(c_arr), dtype=float)
+    supertrend = np.full(len(c_arr), np.nan)
 
-    upper_band_final = upper_band.copy()
-    lower_band_final = lower_band.copy()
+    for i in range(1, len(c_arr)):
+        ub_final[i] = upper_band[i] if (upper_band[i] < ub_final[i-1] or c_arr[i-1] > ub_final[i-1]) else ub_final[i-1]
+        lb_final[i] = lower_band[i] if (lower_band[i] > lb_final[i-1] or c_arr[i-1] < lb_final[i-1]) else lb_final[i-1]
 
-    for i in range(1, len(close)):
-        # Upper band
-        if upper_band.iloc[i] < upper_band_final.iloc[i - 1] or close.iloc[i - 1] > upper_band_final.iloc[i - 1]:
-            upper_band_final.iloc[i] = upper_band.iloc[i]
+        if c_arr[i] > ub_final[i-1]:
+            direction[i] = 1
+        elif c_arr[i] < lb_final[i-1]:
+            direction[i] = -1
         else:
-            upper_band_final.iloc[i] = upper_band_final.iloc[i - 1]
+            direction[i] = direction[i-1]
 
-        # Lower band
-        if lower_band.iloc[i] > lower_band_final.iloc[i - 1] or close.iloc[i - 1] < lower_band_final.iloc[i - 1]:
-            lower_band_final.iloc[i] = lower_band.iloc[i]
-        else:
-            lower_band_final.iloc[i] = lower_band_final.iloc[i - 1]
+        supertrend[i] = lb_final[i] if direction[i] == 1 else ub_final[i]
 
-        # Direction
-        if close.iloc[i] > upper_band_final.iloc[i - 1]:
-            direction.iloc[i] = 1
-        elif close.iloc[i] < lower_band_final.iloc[i - 1]:
-            direction.iloc[i] = -1
-        else:
-            direction.iloc[i] = direction.iloc[i - 1]
-
-        supertrend.iloc[i] = lower_band_final.iloc[i] if direction.iloc[i] == 1 else upper_band_final.iloc[i]
-
-    return supertrend, direction, lower_band_final, upper_band_final
+    return (
+        pd.Series(supertrend, index=close.index),
+        pd.Series(direction,  index=close.index),
+        pd.Series(lb_final,   index=close.index),
+        pd.Series(ub_final,   index=close.index),
+    )
 
 
 def calc_linear_regression_channel(close, period=50, std_mult=2.0):
@@ -246,7 +247,6 @@ def calc_linear_regression_channel(close, period=50, std_mult=2.0):
     for i in range(period - 1, n):
         y = close.values[i - period + 1:i + 1].astype(float)
         x = np.arange(period)
-        # Linear regression
         slope, intercept = np.polyfit(x, y, 1)
         y_pred = slope * x + intercept
         residuals = y - y_pred
@@ -283,13 +283,26 @@ def calc_nadaraya_watson(close, bandwidth=8, window=100):
 
     nw_series = pd.Series(nw_line, index=close.index)
 
-    # Envelope: ±2 * MAE
     residuals = close.values[start:] - nw_line[start:]
     mae = np.nanmean(np.abs(residuals))
     nw_upper = nw_series + 2 * mae
     nw_lower = nw_series - 2 * mae
 
     return nw_series, nw_upper, nw_lower
+
+
+def calc_vwap_daily(high, low, close, volume):
+    """
+    Günlük sıfırlanan VWAP.
+    Her takvim gününde cumsum(TP*V) / cumsum(V) olarak hesaplanır.
+    Çok günlük intraday verilerinde her gün bağımsız birikimli hesap yapılır.
+    """
+    typical_price = (high + low + close) / 3
+    tp_vol = typical_price * volume
+    date_key = pd.Series(close.index.date, index=close.index)
+    cum_tp_vol = tp_vol.groupby(date_key).cumsum()
+    cum_vol    = volume.groupby(date_key).cumsum()
+    return cum_tp_vol / cum_vol.replace(0, np.nan)
 
 
 # ============================================================
@@ -305,6 +318,26 @@ def fetch_live_data(symbol: str, p: str, i: str) -> pd.DataFrame:
     except Exception as e:
         st.error(f"Veri çekme hatası: {e}")
         return pd.DataFrame()
+
+
+# Tüm grafikler için ortak Plotly config:
+# scrollZoom  → fare tekerleği ile yakınlaştırma/uzaklaştırma
+# pan2d       → sürükleyerek sağa/sola kaydırma (varsayılan mod)
+PLOTLY_CONFIG = dict(
+    scrollZoom=True,
+    displayModeBar=True,
+    modeBarButtonsToAdd=["pan2d", "zoomIn2d", "zoomOut2d", "resetScale2d"],
+    modeBarButtonsToRemove=["lasso2d", "select2d"],
+)
+
+
+def sub_layout(height=250):
+    return dict(
+        template="plotly_dark",
+        height=height,
+        margin=dict(t=30, b=30),
+        dragmode="pan",
+    )
 
 
 # ============================================================
@@ -397,14 +430,15 @@ if ticker:
             0
         )
 
-        # 9. VWAP
+        # 9. VWAP — DÜZELTME: günlük sıfırlanan + bantlı nötr sinyal
         is_intraday = interval in ["1m", "2m", "5m", "15m", "30m", "60m", "1h"]
         if is_intraday and "Volume" in df.columns:
-            typical_price = (high + low + close) / 3
-            cum_vol = volume.cumsum()
-            cum_tp_vol = (typical_price * volume).cumsum()
-            df["VWAP"] = cum_tp_vol / cum_vol.replace(0, np.nan)
-            df["Sig_VWAP"] = np.where(close > df["VWAP"], 1, -1)
+            df["VWAP"] = calc_vwap_daily(high, low, close, volume)
+            vwap_band = df["VWAP"] * (vwap_band_pct / 100)
+            df["Sig_VWAP"] = np.where(
+                close > df["VWAP"] + vwap_band,  1,
+                np.where(close < df["VWAP"] - vwap_band, -1, 0)
+            )
             df.loc[df["VWAP"].isna(), "Sig_VWAP"] = 0
         else:
             df["VWAP"] = np.nan
@@ -495,7 +529,7 @@ if ticker:
         df["Consensus_Change"] = df["Consensus"].diff()
 
         # -------------------------------------------------------
-        # GRAFİK
+        # ANA GRAFİK
         # -------------------------------------------------------
         fig = go.Figure()
         fig.add_trace(
@@ -555,8 +589,13 @@ if ticker:
                 marker=dict(symbol="triangle-down", size=15, color="red"),
             ))
 
-        fig.update_layout(template="plotly_dark", height=550, xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            template="plotly_dark",
+            height=550,
+            xaxis_rangeslider_visible=False,
+            dragmode="pan",          # varsayılan mod: sürükle-kaydır
+        )
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # -------------------------------------------------------
         # ALT GRAFİKLER
@@ -570,8 +609,8 @@ if ticker:
             fig_rsi.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI", line=dict(color="magenta")))
             fig_rsi.add_hline(y=rsi_lower, line_dash="dash", line_color="lime", annotation_text=f"Aşırı Satım ({rsi_lower})")
             fig_rsi.add_hline(y=rsi_upper, line_dash="dash", line_color="red", annotation_text=f"Aşırı Alım ({rsi_upper})")
-            fig_rsi.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_rsi, use_container_width=True)
+            fig_rsi.update_layout(**sub_layout())
+            st.plotly_chart(fig_rsi, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab2:
             fig_macd = go.Figure()
@@ -580,8 +619,8 @@ if ticker:
             hist = df["MACD"] - df["MACD_S"]
             colors = ["lime" if v >= 0 else "red" for v in hist]
             fig_macd.add_trace(go.Bar(x=df.index, y=hist, name="Histogram", marker_color=colors, opacity=0.5))
-            fig_macd.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_macd, use_container_width=True)
+            fig_macd.update_layout(**sub_layout())
+            st.plotly_chart(fig_macd, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab3:
             fig_adx = go.Figure()
@@ -589,16 +628,16 @@ if ticker:
             fig_adx.add_trace(go.Scatter(x=df.index, y=df["PLUS_DI"], name="+DI", line=dict(color="lime", dash="dot")))
             fig_adx.add_trace(go.Scatter(x=df.index, y=df["MINUS_DI"], name="-DI", line=dict(color="red", dash="dot")))
             fig_adx.add_hline(y=adx_threshold, line_dash="dash", line_color="white", annotation_text=f"Trend Eşiği ({adx_threshold})")
-            fig_adx.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_adx, use_container_width=True)
+            fig_adx.update_layout(**sub_layout())
+            st.plotly_chart(fig_adx, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab4:
             fig_obv = go.Figure()
             fig_obv.add_trace(go.Scatter(x=df.index, y=df["OBV"], name="OBV", line=dict(color="dodgerblue")))
             fig_obv.add_trace(go.Scatter(x=df.index, y=obv_sma_short, name="OBV SMA 10", line=dict(color="orange", dash="dot")))
             fig_obv.add_trace(go.Scatter(x=df.index, y=obv_sma_long, name="OBV SMA 30", line=dict(color="cyan", dash="dot")))
-            fig_obv.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_obv, use_container_width=True)
+            fig_obv.update_layout(**sub_layout())
+            st.plotly_chart(fig_obv, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab5:
             fig_stoch = go.Figure()
@@ -606,8 +645,8 @@ if ticker:
             fig_stoch.add_trace(go.Scatter(x=df.index, y=df["StochRSI_D"], name="%D", line=dict(color="orange", dash="dot")))
             fig_stoch.add_hline(y=stoch_lower, line_dash="dash", line_color="lime", annotation_text=f"Aşırı Satım ({stoch_lower})")
             fig_stoch.add_hline(y=stoch_upper, line_dash="dash", line_color="red", annotation_text=f"Aşırı Alım ({stoch_upper})")
-            fig_stoch.update_layout(template="plotly_dark", height=250, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_stoch, use_container_width=True)
+            fig_stoch.update_layout(**sub_layout())
+            st.plotly_chart(fig_stoch, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab6:
             fig_ichi = go.Figure()
@@ -619,8 +658,8 @@ if ticker:
             fig_ichi.add_trace(go.Scatter(x=df.index, y=df["Senkou_B"], name="Senkou B",
                                           line=dict(color="red", width=0.5, dash="dot"),
                                           fill="tonexty", fillcolor="rgba(100,100,100,0.15)"))
-            fig_ichi.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_ichi, use_container_width=True)
+            fig_ichi.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig_ichi, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab7:
             fig_st = go.Figure()
@@ -636,8 +675,8 @@ if ticker:
                 name="SuperTrend (Ayı)", mode="lines",
                 line=dict(color="red", width=2)
             ))
-            fig_st.update_layout(template="plotly_dark", height=350, xaxis_rangeslider_visible=False, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_st, use_container_width=True)
+            fig_st.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig_st, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab8:
             fig_kama = go.Figure()
@@ -648,8 +687,8 @@ if ticker:
             fig_kama.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"], name="LRC Alt",
                                           line=dict(color="rgba(200,200,200,0.6)", dash="dot"),
                                           fill="tonexty", fillcolor="rgba(150,150,150,0.07)"))
-            fig_kama.update_layout(template="plotly_dark", height=350, margin=dict(t=30, b=30))
-            st.plotly_chart(fig_kama, use_container_width=True)
+            fig_kama.update_layout(**sub_layout(height=350))
+            st.plotly_chart(fig_kama, use_container_width=True, config=PLOTLY_CONFIG)
 
         with tab9:
             fig_nw = go.Figure()
@@ -670,7 +709,6 @@ if ticker:
                 line=dict(color="lime", width=1, dash="dot"),
                 fill="tonexty", fillcolor="rgba(255,215,0,0.05)"
             ))
-            # Aşırı alım/satım noktalarını işaretle
             nw_overbought = close > df["NW_Upper"]
             nw_oversold = close < df["NW_Lower"]
             if nw_overbought.any():
@@ -685,12 +723,8 @@ if ticker:
                     name="Aşırı Satım", mode="markers",
                     marker=dict(color="lime", size=6, symbol="circle")
                 ))
-            fig_nw.update_layout(
-                template="plotly_dark", height=350,
-                xaxis_rangeslider_visible=False,
-                margin=dict(t=30, b=30)
-            )
-            st.plotly_chart(fig_nw, use_container_width=True)
+            fig_nw.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig_nw, use_container_width=True, config=PLOTLY_CONFIG)
 
         # -------------------------------------------------------
         # KARAR TABLOSU
@@ -790,9 +824,15 @@ if ticker:
         # 8 - VWAP
         if is_intraday:
             last_vwap = safe_scalar(last["VWAP"])
+            last_vwap_sig = safe_scalar(last["Sig_VWAP"])
             if not np.isnan(last_vwap):
-                vwap_decision = "AL" if last_close > last_vwap else "SAT"
-                res.append([vwap_decision, "VWAP", f"VWAP: {last_vwap:.2f}"])
+                if last_vwap_sig == 1:
+                    vwap_decision = "AL"
+                elif last_vwap_sig == -1:
+                    vwap_decision = "SAT"
+                else:
+                    vwap_decision = "TUT"
+                res.append([vwap_decision, "VWAP", f"VWAP: {last_vwap:.2f} | bant: ±%{vwap_band_pct:.2f}"])
             else:
                 res.append(["N/A", "VWAP", "Yetersiz veri."])
         else:
@@ -1281,26 +1321,23 @@ if ticker:
                 sig_ichi = np.where((tenkan > kijun) & (c > cloud_top), 1,
                                     np.where((tenkan < kijun) & (c < cloud_bot), -1, 0))
 
-                # KAMA
                 kama_s = calc_kama(c, period=10)
                 sig_kama = np.where(c > kama_s, 1, np.where(c < kama_s, -1, 0))
                 sig_kama = np.where(kama_s.isna(), 0, sig_kama)
 
-                # SuperTrend
                 _, st_dir, _, _ = calc_supertrend(h, l, c, period=10, multiplier=3.0)
                 sig_st = st_dir.values
 
-                # LRC
                 lrc_mid, lrc_up, lrc_lo = calc_linear_regression_channel(c, period=50, std_mult=2.0)
                 sig_lrc = np.where(c < lrc_lo, 1, np.where(c > lrc_up, -1, 0))
                 sig_lrc = np.where(lrc_mid.isna(), 0, sig_lrc)
 
                 if is_intraday:
-                    tp = (h + l + c) / 3
-                    cv = v.cumsum()
-                    vwap = (tp * v).cumsum() / cv.replace(0, np.nan)
-                    sig_vwap = np.where(c > vwap, 1, -1)
-                    sig_vwap = np.where(vwap.isna(), 0, sig_vwap)
+                    vwap_opt = calc_vwap_daily(h, l, c, v)
+                    band_opt = vwap_opt * (vwap_band_pct / 100)
+                    sig_vwap = np.where(c > vwap_opt + band_opt, 1,
+                                        np.where(c < vwap_opt - band_opt, -1, 0))
+                    sig_vwap = np.where(vwap_opt.isna(), 0, sig_vwap)
                 else:
                     sig_vwap = np.zeros(len(c))
 

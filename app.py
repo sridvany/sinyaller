@@ -592,7 +592,7 @@ if ticker:
         # Sol üst köşe: anlık fiyat etiketi
         _last_price = float(close.iloc[-1])
         _prev_price = float(close.iloc[-2]) if len(close) > 1 else _last_price
-        _price_color = "#00ff88" if _last_price >= _prev_price else "#ff4b4b"
+        _price_color = "#007a3d" if _last_price >= _prev_price else "#cc2200"
         fig.add_annotation(
             text=f"<b>{ticker}  {_last_price:,.4f}</b>",
             xref="paper", yref="paper",
@@ -600,7 +600,9 @@ if ticker:
             showarrow=False,
             font=dict(size=13, color=_price_color, family="monospace"),
             align="left",
-            bgcolor="rgba(0,0,0,0.45)",
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="rgba(200,200,200,0.5)",
+            borderwidth=1,
             borderpad=4,
         )
 

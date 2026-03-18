@@ -589,11 +589,26 @@ if ticker:
                 marker=dict(symbol="triangle-down", size=15, color="red"),
             ))
 
+        # Sol üst köşe: anlık fiyat etiketi
+        _last_price = float(close.iloc[-1])
+        _prev_price = float(close.iloc[-2]) if len(close) > 1 else _last_price
+        _price_color = "#00ff88" if _last_price >= _prev_price else "#ff4b4b"
+        fig.add_annotation(
+            text=f"<b>{ticker}  {_last_price:,.4f}</b>",
+            xref="paper", yref="paper",
+            x=0.01, y=0.99,
+            showarrow=False,
+            font=dict(size=13, color=_price_color, family="monospace"),
+            align="left",
+            bgcolor="rgba(0,0,0,0.45)",
+            borderpad=4,
+        )
+
         fig.update_layout(
             template="plotly_dark",
             height=550,
             xaxis_rangeslider_visible=False,
-            dragmode="pan",          # varsayılan mod: sürükle-kaydır
+            dragmode="pan",
         )
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 

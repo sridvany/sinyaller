@@ -54,6 +54,7 @@ with st.sidebar:
     st.subheader("RSI & Z-Score Eşikleri")
     rsi_lower = st.slider("RSI Alt Eşik (Aşırı Satım):", 10, 40, 30, key="k_rsi_lower")
     rsi_upper = st.slider("RSI Üst Eşik (Aşırı Alım):", 60, 90, 70, key="k_rsi_upper")
+    rsi_ma_period = st.slider("RSI MA Periyodu:", 5, 50, 14, key="k_rsi_ma")
     z_threshold = st.slider("Z-Score Eşik (±):", 1.0, 3.0, 2.0, step=0.1, key="k_z_thresh")
 
     st.write("---")
@@ -177,7 +178,6 @@ def calc_adx(high, low, close, period=14):
 
 
 def calc_kama(close, period=10):
-    """Kaufman Adaptive Moving Average (KAMA)"""
     close_arr = close.values.astype(float)
     kama = np.full(len(close_arr), np.nan)
     kama[period - 1] = close_arr[period - 1]
@@ -199,7 +199,6 @@ def calc_kama(close, period=10):
 
 
 def calc_supertrend(high, low, close, period=10, multiplier=3.0):
-    """SuperTrend — iloc yerine numpy array üzerinde çalışır (ChainedAssignment yok)"""
     tr1 = high - low
     tr2 = (high - close.shift(1)).abs()
     tr3 = (low - close.shift(1)).abs()
@@ -238,7 +237,6 @@ def calc_supertrend(high, low, close, period=10, multiplier=3.0):
 
 
 def calc_linear_regression_channel(close, period=50, std_mult=2.0):
-    """Linear Regression Channel"""
     n = len(close)
     mid = np.full(n, np.nan)
     upper = np.full(n, np.nan)
@@ -263,10 +261,6 @@ def calc_linear_regression_channel(close, period=50, std_mult=2.0):
 
 
 def calc_nadaraya_watson(close, bandwidth=8, window=100):
-    """
-    Nadaraya-Watson Kernel Regression Envelope (non-repainting).
-    Son `window` bar üzerinde hesaplanır, sadece görsel amaçlı.
-    """
     n = len(close)
     nw_line = np.full(n, np.nan)
 
@@ -292,11 +286,6 @@ def calc_nadaraya_watson(close, bandwidth=8, window=100):
 
 
 def calc_vwap_daily(high, low, close, volume):
-    """
-    Günlük sıfırlanan VWAP.
-    Her takvim gününde cumsum(TP*V) / cumsum(V) olarak hesaplanır.
-    Çok günlük intraday verilerinde her gün bağımsız birikimli hesap yapılır.
-    """
     typical_price = (high + low + close) / 3
     tp_vol = typical_price * volume
     date_key = pd.Series(close.index.date, index=close.index)
@@ -320,9 +309,6 @@ def fetch_live_data(symbol: str, p: str, i: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# Tüm grafikler için ortak Plotly config:
-# scrollZoom  → fare tekerleği ile yakınlaştırma/uzaklaştırma
-# pan2d       → sürükleyerek sağa/sola kaydırma (varsayılan mod)
 PLOTLY_CONFIG = dict(
     scrollZoom=True,
     displayModeBar=True,
@@ -383,6 +369,7 @@ if ticker:
         loss = (-delta.where(delta < 0, 0.0)).rolling(window=14).mean()
         rs = gain / loss.replace(0, np.nan)
         df["RSI"] = 100 - (100 / (1 + rs))
+        df["RSI_MA"] = df["RSI"].rolling(window=rsi_ma_period).mean()
         df["Sig_RSI"] = np.where(df["RSI"] < rsi_lower, 1, np.where(df["RSI"] > rsi_upper, -1, 0))
 
         # 3. Bollinger Bands
@@ -430,7 +417,7 @@ if ticker:
             0
         )
 
-        # 9. VWAP — DÜZELTME: günlük sıfırlanan + bantlı nötr sinyal
+        # 9. VWAP
         is_intraday = interval in ["1m", "2m", "5m", "15m", "30m", "60m", "1h"]
         if is_intraday and "Volume" in df.columns:
             df["VWAP"] = calc_vwap_daily(high, low, close, volume)
@@ -473,10 +460,6 @@ if ticker:
         ichi_bearish = (tenkan < kijun) & (close < cloud_bottom)
         df["Sig_Ichimoku"] = np.where(ichi_bullish, 1, np.where(ichi_bearish, -1, 0))
 
-        # -------------------------------------------------------
-        # YENİ İNDİKATÖRLER
-        # -------------------------------------------------------
-
         # 12. KAMA
         df["KAMA"] = calc_kama(close, period=kama_period)
         df["Sig_KAMA"] = np.where(close > df["KAMA"], 1, np.where(close < df["KAMA"], -1, 0))
@@ -499,7 +482,7 @@ if ticker:
         )
         df.loc[df["LRC_Mid"].isna(), "Sig_LRC"] = 0
 
-        # 15. Nadaraya-Watson (SADECE GÖRSEL — konsensüse dahil değil)
+        # 15. Nadaraya-Watson (SADECE GÖRSEL)
         df["NW_Line"], df["NW_Upper"], df["NW_Lower"] = calc_nadaraya_watson(
             close, bandwidth=nw_bandwidth, window=nw_window
         )
@@ -541,10 +524,8 @@ if ticker:
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"], name=f"SMA {sma_s}", line=dict(color="orange")))
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"], name=f"SMA {sma_l}", line=dict(color="cyan")))
 
-        # KAMA
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"], name="KAMA", line=dict(color="violet", width=1.5)))
 
-        # SuperTrend
         bull_st = df["ST_Direction"] == 1
         bear_st = df["ST_Direction"] == -1
         fig.add_trace(go.Scatter(
@@ -558,13 +539,11 @@ if ticker:
             marker=dict(color="red", size=4, symbol="circle")
         ))
 
-        # Linear Regression Channel
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"], name="LRC Orta", line=dict(color="white", width=1, dash="dash")))
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"], name="LRC Üst", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")))
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"], name="LRC Alt", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
                                  fill="tonexty", fillcolor="rgba(150,150,150,0.05)"))
 
-        # Nadaraya-Watson Envelope (görsel)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"], name="NW Orta", line=dict(color="gold", width=1.5)))
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"], name="NW Üst", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")))
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"], name="NW Alt", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
@@ -589,7 +568,6 @@ if ticker:
                 marker=dict(symbol="triangle-down", size=15, color="red"),
             ))
 
-        # Sol üst köşe: anlık fiyat etiketi
         _last_price = float(close.iloc[-1])
         _prev_price = float(close.iloc[-2]) if len(close) > 1 else _last_price
         _price_color = "#007a3d" if _last_price >= _prev_price else "#cc2200"
@@ -623,9 +601,26 @@ if ticker:
 
         with tab1:
             fig_rsi = go.Figure()
-            fig_rsi.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI", line=dict(color="magenta")))
-            fig_rsi.add_hline(y=rsi_lower, line_dash="dash", line_color="lime", annotation_text=f"Aşırı Satım ({rsi_lower})")
-            fig_rsi.add_hline(y=rsi_upper, line_dash="dash", line_color="red", annotation_text=f"Aşırı Alım ({rsi_upper})")
+
+            fig_rsi.add_trace(go.Scatter(
+                x=df.index, y=df["RSI"],
+                name="RSI",
+                line=dict(color="rgba(0,200,100,0.9)", width=1.5),
+                fill="tozeroy",
+                fillcolor="rgba(0,200,100,0.15)"
+            ))
+
+            fig_rsi.add_trace(go.Scatter(
+                x=df.index, y=df["RSI_MA"],
+                name=f"RSI MA({rsi_ma_period})",
+                line=dict(color="yellow", width=1.5, dash="dot")
+            ))
+
+            fig_rsi.add_hline(y=rsi_lower, line_dash="dash", line_color="lime",
+                              annotation_text=f"Aşırı Satım ({rsi_lower})")
+            fig_rsi.add_hline(y=rsi_upper, line_dash="dash", line_color="red",
+                              annotation_text=f"Aşırı Alım ({rsi_upper})")
+            fig_rsi.add_hline(y=50, line_dash="dot", line_color="gray")
             fig_rsi.update_layout(**sub_layout())
             st.plotly_chart(fig_rsi, use_container_width=True, config=PLOTLY_CONFIG)
 

@@ -23,7 +23,7 @@ st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı o
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri & Algoritma Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "PAXG-USD")
+    ticker = st.text_input("Ticker Sembolü:", "gc=f")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",

@@ -994,7 +994,7 @@ if ticker:
         c3.metric("Konsensüs", consensus_label)
         c4.metric("Zaman Dilimi", f"{interval}")
         last_dynamic_threshold = max(3, int(df["Valid_Count"].iloc[-1] * 0.5))
-        c5.metric("Aktif Sinyal Sayısı", f"{active_signal_count} | Dinamik Eşik: {last_dynamic_threshold}")
+        c5.metric("Sinyaller / Eşik", f"{active_signal_count} / {last_dynamic_threshold}")
 
         st.subheader("🔍 Algoritmik Detaylar")
         res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])

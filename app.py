@@ -442,6 +442,8 @@ if ticker:
         rsi_max = rsi_series.rolling(window=stoch_rsi_period, min_periods=stoch_rsi_period).max()
         rsi_range = (rsi_max - rsi_min).replace(0, np.nan)
         df["StochRSI_K"] = ((rsi_series - rsi_min) / rsi_range) * 100
+        df["StochRSI_K"] = df["StochRSI_K"].fillna(50)  # belirsiz durumda nötr
+        df["StochRSI_K"] = df["StochRSI_K"].clip(0, 100)  # 0-100 arasında tut
         df["StochRSI_D"] = df["StochRSI_K"].rolling(window=3).mean()
         df["Sig_StochRSI"] = np.where(
             df["StochRSI_K"] < stoch_lower, 1,

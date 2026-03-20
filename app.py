@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
 # ============================================================
-st.set_page_config(page_title="Algo-Trader Pro v3.5", layout="wide")
+st.set_page_config(page_title="Algo-Trader Pro v4.0", layout="wide")
 
 # 2. OTOMATİK YENİLEME (toggle ile kontrol)
 auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
@@ -104,7 +104,7 @@ with st.sidebar:
     st.write("---")
     st.subheader("Konsensüs Ayarları")
     consensus_threshold = st.slider(
-        "Minimum AL/SAT çoğunluğu (10 sinyalden):", 3, 9, 6, key="k_cons_thresh"
+        "Minimum AL/SAT çoğunluğu (aktif sinyallerden):", 3, 9, 6, key="k_cons_thresh"
     )
 
     st.write("---")
@@ -488,22 +488,36 @@ if ticker:
         )
 
         # -------------------------------------------------------
-        # KONSENSÜS HESABI
+        # ATR FİLTRESİ — GÜNCELLENDİ (v4.0)
+        # Trend takip göstergeleri düşük volatilitede sıfırlanır:
+        # SMA, MACD, ADX, SuperTrend, Ichimoku, KAMA
+        # Seviye/momentum bazlılar (RSI, BB, Z-Score, OBV,
+        # Stoch RSI, LRC, VWAP) filtrelenmez.
         # -------------------------------------------------------
-        signal_cols = [
-            "Sig_SMA", "Sig_RSI", "Sig_BB", "Sig_MACD", "Sig_Z",
-            "Sig_OBV", "Sig_ADX", "Sig_VWAP", "Sig_StochRSI", "Sig_Ichimoku",
-            "Sig_KAMA", "Sig_SuperTrend", "Sig_LRC"
-        ]
-
-        trend_signals = ["Sig_SMA", "Sig_MACD"]
+        trend_signals = ["Sig_SMA", "Sig_MACD", "Sig_ADX", "Sig_SuperTrend", "Sig_Ichimoku", "Sig_KAMA"]
         for col in trend_signals:
             df[col] = np.where(df["ATR_High"] | (df[col] == 0), df[col], 0)
+
+        # -------------------------------------------------------
+        # KONSENSÜS HESABI — GÜNCELLENDİ (v4.0)
+        # VWAP günlük+ veride signal_cols'a dahil edilmez;
+        # bu sayede eşik oranı intraday ile tutarlı kalır.
+        # -------------------------------------------------------
+        base_signal_cols = [
+            "Sig_SMA", "Sig_RSI", "Sig_BB", "Sig_MACD", "Sig_Z",
+            "Sig_OBV", "Sig_ADX", "Sig_StochRSI", "Sig_Ichimoku",
+            "Sig_KAMA", "Sig_SuperTrend", "Sig_LRC"
+        ]
+        if is_intraday:
+            signal_cols = base_signal_cols + ["Sig_VWAP"]
+        else:
+            signal_cols = base_signal_cols  # VWAP günlük veride dahil değil
 
         sig_df = df[signal_cols]
         df["AL_Count"] = (sig_df == 1).sum(axis=1)
         df["SAT_Count"] = (sig_df == -1).sum(axis=1)
         df["Valid_Count"] = (sig_df != 0).sum(axis=1)
+        df["Total_Signals"] = len(signal_cols)  # kaç sinyal aktif olduğunu takip et
 
         df["Consensus"] = 0
         df.loc[df["AL_Count"] >= consensus_threshold, "Consensus"] = 1
@@ -762,10 +776,14 @@ if ticker:
 
         # 1 - SMA
         if not np.isnan(last_sma_s) and not np.isnan(last_sma_l):
-            sma_decision = "AL" if last_sma_s > last_sma_l else "SAT"
+            sma_raw = "AL" if last_sma_s > last_sma_l else "SAT"
             if not last_atr_high:
                 sma_decision = "TUT (düşük vol.)"
-            res.append([sma_decision, "SMA Crossover", "Trend yönü tespiti."])
+                sma_note = "ATR filtresi aktif — trend sinyali baskılandı."
+            else:
+                sma_decision = sma_raw
+                sma_note = "Trend yönü tespiti."
+            res.append([sma_decision, "SMA Crossover", sma_note])
         else:
             res.append(["N/A", "SMA Crossover", "Yetersiz veri."])
 
@@ -795,10 +813,14 @@ if ticker:
 
         # 4 - MACD
         if not np.isnan(last_macd) and not np.isnan(last_macd_s):
-            macd_decision = "AL" if last_macd > last_macd_s else "SAT"
+            macd_raw = "AL" if last_macd > last_macd_s else "SAT"
             if not last_atr_high:
                 macd_decision = "TUT (düşük vol.)"
-            res.append([macd_decision, "MACD", "Momentum durumu."])
+                macd_note = "ATR filtresi aktif — trend sinyali baskılandı."
+            else:
+                macd_decision = macd_raw
+                macd_note = "Momentum durumu."
+            res.append([macd_decision, "MACD", macd_note])
         else:
             res.append(["N/A", "MACD", "Yetersiz veri."])
 
@@ -824,8 +846,13 @@ if ticker:
         # 7 - ADX
         if not np.isnan(last_adx):
             if last_adx > adx_threshold:
-                adx_decision = "AL" if last_plus_di > last_minus_di else "SAT"
-                adx_note = f"ADX: {last_adx:.1f} (Güçlü trend)"
+                adx_raw = "AL" if last_plus_di > last_minus_di else "SAT"
+                if not last_atr_high:
+                    adx_decision = "TUT (düşük vol.)"
+                    adx_note = f"ADX: {last_adx:.1f} — ATR filtresi aktif."
+                else:
+                    adx_decision = adx_raw
+                    adx_note = f"ADX: {last_adx:.1f} (Güçlü trend)"
             else:
                 adx_decision = "TUT"
                 adx_note = f"ADX: {last_adx:.1f} (Zayıf trend)"
@@ -865,7 +892,9 @@ if ticker:
 
         # 10 - Ichimoku
         last_ichi_sig = safe_scalar(last["Sig_Ichimoku"])
-        if last_ichi_sig == 1:
+        if not last_atr_high and last_ichi_sig != 0:
+            res.append(["TUT (düşük vol.)", "Ichimoku", "ATR filtresi aktif — trend sinyali baskılandı."])
+        elif last_ichi_sig == 1:
             res.append(["AL", "Ichimoku", "Tenkan > Kijun, fiyat bulut üstünde."])
         elif last_ichi_sig == -1:
             res.append(["SAT", "Ichimoku", "Tenkan < Kijun, fiyat bulut altında."])
@@ -875,8 +904,14 @@ if ticker:
         # 11 - KAMA
         last_kama = safe_scalar(last["KAMA"])
         if not np.isnan(last_kama):
-            kama_decision = "AL" if last_close > last_kama else "SAT"
-            res.append([kama_decision, "KAMA", f"KAMA: {last_kama:.2f}"])
+            kama_raw = "AL" if last_close > last_kama else "SAT"
+            if not last_atr_high:
+                kama_decision = "TUT (düşük vol.)"
+                kama_note = f"KAMA: {last_kama:.2f} — ATR filtresi aktif."
+            else:
+                kama_decision = kama_raw
+                kama_note = f"KAMA: {last_kama:.2f}"
+            res.append([kama_decision, "KAMA", kama_note])
         else:
             res.append(["N/A", "KAMA", "Yetersiz veri."])
 
@@ -884,8 +919,14 @@ if ticker:
         last_st_dir = safe_scalar(last["ST_Direction"])
         last_st = safe_scalar(last["SuperTrend"])
         if not np.isnan(last_st):
-            st_decision = "AL" if last_st_dir == 1 else "SAT"
-            res.append([st_decision, "SuperTrend", f"Seviye: {last_st:.2f}"])
+            st_raw = "AL" if last_st_dir == 1 else "SAT"
+            if not last_atr_high:
+                st_decision = "TUT (düşük vol.)"
+                st_note = f"Seviye: {last_st:.2f} — ATR filtresi aktif."
+            else:
+                st_decision = st_raw
+                st_note = f"Seviye: {last_st:.2f}"
+            res.append([st_decision, "SuperTrend", st_note])
         else:
             res.append(["N/A", "SuperTrend", "Yetersiz veri."])
 
@@ -930,6 +971,7 @@ if ticker:
         valid_signals = [x for x in res if x[0] in ("AL", "SAT")]
         al_count = len([x for x in valid_signals if x[0] == "AL"])
         sat_count = len([x for x in valid_signals if x[0] == "SAT"])
+        active_signal_count = len(signal_cols)
 
         if al_count >= consensus_threshold:
             consensus_label = "🟢 AL"
@@ -938,11 +980,12 @@ if ticker:
         else:
             consensus_label = "🟡 KARARSIZ"
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Anlık Fiyat", f"{last_close:.2f}")
         c2.metric("Güven Skoru", f"{al_count} AL / {sat_count} SAT")
         c3.metric("Konsensüs", consensus_label)
         c4.metric("Zaman Dilimi", f"{interval}")
+        c5.metric("Aktif Sinyal Sayısı", f"{active_signal_count}")
 
         st.subheader("🔍 Algoritmik Detaylar")
         res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])
@@ -1279,10 +1322,21 @@ if ticker:
                 l = d["Low"].squeeze() if "Low" in d.columns else c
                 v = d["Volume"].squeeze() if "Volume" in d.columns else pd.Series(0, index=c.index)
 
+                # ATR / ATR_High hesapla
+                tr1 = h - l
+                tr2 = (h - c.shift(1)).abs()
+                tr3 = (l - c.shift(1)).abs()
+                tr_opt = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+                atr_opt = tr_opt.ewm(alpha=1.0 / 14, min_periods=14, adjust=False).mean()
+                atr_ma_opt = atr_opt.rolling(window=30, min_periods=30).mean()
+                atr_high_opt = atr_opt > atr_ma_opt
+
                 sma_sh = c.rolling(window=p_sma_s, min_periods=p_sma_s).mean()
                 sma_lo = c.rolling(window=p_sma_l, min_periods=p_sma_l).mean()
                 sig_sma = np.where(sma_sh > sma_lo, 1, -1)
                 sig_sma = np.where(sma_sh.isna() | sma_lo.isna(), 0, sig_sma)
+                # ATR filtresi
+                sig_sma = np.where(atr_high_opt | (sig_sma == 0), sig_sma, 0)
 
                 delta_c = c.diff()
                 gain = delta_c.where(delta_c > 0, 0.0).rolling(window=14).mean()
@@ -1302,6 +1356,8 @@ if ticker:
                 macd = e12 - e26
                 macd_s = macd.ewm(span=9, adjust=False).mean()
                 sig_macd = np.where(macd > macd_s, 1, -1)
+                # ATR filtresi
+                sig_macd = np.where(atr_high_opt | (sig_macd == 0), sig_macd, 0)
 
                 z_m = c.rolling(30).mean()
                 z_s = c.rolling(30).std().replace(0, np.nan)
@@ -1317,6 +1373,8 @@ if ticker:
 
                 adx_v, pdi, mdi = calc_adx(h, l, c, period=14)
                 sig_adx = np.where(adx_v > 25, np.where(pdi > mdi, 1, -1), 0)
+                # ATR filtresi
+                sig_adx = np.where(atr_high_opt | (sig_adx == 0), sig_adx, 0)
 
                 rsi_min = rsi.rolling(window=14, min_periods=14).min()
                 rsi_max = rsi.rolling(window=14, min_periods=14).max()
@@ -1332,13 +1390,19 @@ if ticker:
                 cloud_bot = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
                 sig_ichi = np.where((tenkan > kijun) & (c > cloud_top), 1,
                                     np.where((tenkan < kijun) & (c < cloud_bot), -1, 0))
+                # ATR filtresi
+                sig_ichi = np.where(atr_high_opt | (sig_ichi == 0), sig_ichi, 0)
 
                 kama_s = calc_kama(c, period=10)
                 sig_kama = np.where(c > kama_s, 1, np.where(c < kama_s, -1, 0))
                 sig_kama = np.where(kama_s.isna(), 0, sig_kama)
+                # ATR filtresi
+                sig_kama = np.where(atr_high_opt | (sig_kama == 0), sig_kama, 0)
 
                 _, st_dir, _, _ = calc_supertrend(h, l, c, period=10, multiplier=3.0)
                 sig_st = st_dir.values
+                # ATR filtresi
+                sig_st = np.where(atr_high_opt | (sig_st == 0), sig_st, 0)
 
                 lrc_mid, lrc_up, lrc_lo = calc_linear_regression_channel(c, period=50, std_mult=2.0)
                 sig_lrc = np.where(c < lrc_lo, 1, np.where(c > lrc_up, -1, 0))
@@ -1350,14 +1414,19 @@ if ticker:
                     sig_vwap = np.where(c > vwap_opt + band_opt, 1,
                                         np.where(c < vwap_opt - band_opt, -1, 0))
                     sig_vwap = np.where(vwap_opt.isna(), 0, sig_vwap)
+                    all_sigs = np.column_stack([
+                        sig_sma, sig_rsi, sig_bb, sig_macd, sig_z,
+                        sig_obv, sig_adx, sig_vwap, sig_stoch, sig_ichi,
+                        sig_kama, sig_st, sig_lrc
+                    ])
                 else:
-                    sig_vwap = np.zeros(len(c))
+                    # VWAP günlük veride dahil değil
+                    all_sigs = np.column_stack([
+                        sig_sma, sig_rsi, sig_bb, sig_macd, sig_z,
+                        sig_obv, sig_adx, sig_stoch, sig_ichi,
+                        sig_kama, sig_st, sig_lrc
+                    ])
 
-                all_sigs = np.column_stack([
-                    sig_sma, sig_rsi, sig_bb, sig_macd, sig_z,
-                    sig_obv, sig_adx, sig_vwap, sig_stoch, sig_ichi,
-                    sig_kama, sig_st, sig_lrc
-                ])
                 al_cnt = (all_sigs == 1).sum(axis=1)
                 sat_cnt = (all_sigs == -1).sum(axis=1)
                 consensus = np.zeros(len(c))

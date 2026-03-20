@@ -26,9 +26,9 @@ with st.sidebar:
     ticker = st.text_input("Ticker Sembolü:", "gc=f")
 
     period = st.selectbox(
-        "Toplam Veri Süresi (Period):",
-        options=["1d", "5d", "1mo", "6mo", "1y", "5y", "max"],
-        index=4,
+    "Toplam Veri Süresi (Period):",
+    options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
+    index=5,
     )
 
     if period in ["1d", "5d"]:

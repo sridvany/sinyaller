@@ -216,12 +216,12 @@ def calc_supertrend(high, low, close, period=10, multiplier=3.0):
     supertrend = np.full(len(c_arr), np.nan)
 
     for i in range(1, len(c_arr)):
-    if np.isnan(ub_final[i-1]) or np.isnan(lb_final[i-1]):
-        ub_final[i] = upper_band[i]
-        lb_final[i] = lower_band[i]
-    else:
-        ub_final[i] = upper_band[i] if (upper_band[i] < ub_final[i-1] or c_arr[i-1] > ub_final[i-1]) else ub_final[i-1]
-        lb_final[i] = lower_band[i] if (lower_band[i] > lb_final[i-1] or c_arr[i-1] < lb_final[i-1]) else lb_final[i-1]
+        if np.isnan(ub_final[i-1]) or np.isnan(lb_final[i-1]):
+            ub_final[i] = upper_band[i]
+            lb_final[i] = lower_band[i]
+        else:
+            ub_final[i] = upper_band[i] if (upper_band[i] < ub_final[i-1] or c_arr[i-1] > ub_final[i-1]) else ub_final[i-1]
+            lb_final[i] = lower_band[i] if (lower_band[i] > lb_final[i-1] or c_arr[i-1] < lb_final[i-1]) else lb_final[i-1]
 
         if c_arr[i] > ub_final[i-1]:
             direction[i] = 1

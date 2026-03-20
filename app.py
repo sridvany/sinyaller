@@ -526,9 +526,10 @@ if ticker:
         df["Valid_Count"] = (sig_df != 0).sum(axis=1)
         df["Total_Signals"] = len(signal_cols)  # kaç sinyal aktif olduğunu takip et
 
+        dynamic_threshold = df["Valid_Count"].apply(lambda x: max(3, int(x * 0.5)))
         df["Consensus"] = 0
-        df.loc[df["AL_Count"] >= consensus_threshold, "Consensus"] = 1
-        df.loc[df["SAT_Count"] >= consensus_threshold, "Consensus"] = -1
+        df.loc[df["AL_Count"] >= dynamic_threshold, "Consensus"] = 1
+        df.loc[df["SAT_Count"] >= dynamic_threshold, "Consensus"] = -1
 
         df["Consensus_Change"] = df["Consensus"].diff()
 
@@ -992,7 +993,8 @@ if ticker:
         c2.metric("Güven Skoru", f"{al_count} AL / {sat_count} SAT")
         c3.metric("Konsensüs", consensus_label)
         c4.metric("Zaman Dilimi", f"{interval}")
-        c5.metric("Aktif Sinyal Sayısı", f"{active_signal_count}")
+        last_dynamic_threshold = max(3, int(df["Valid_Count"].iloc[-1] * 0.5))
+        c5.metric("Aktif Sinyal Sayısı", f"{active_signal_count} | Dinamik Eşik: {last_dynamic_threshold}")
 
         st.subheader("🔍 Algoritmik Detaylar")
         res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])

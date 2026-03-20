@@ -885,7 +885,7 @@ if ticker:
             res.append(["N/A", "VWAP", "Günlük+ periyotta devre dışı."])
 
         # 9 - Stoch RSI
-        last_stoch_k = safe_scalar(last["StochRSI_K"])
+        last_stoch_k = float(df["StochRSI_K"].iloc[-1])
         if not np.isnan(last_stoch_k):
             if last_stoch_k < stoch_lower:
                 stoch_decision = "AL"

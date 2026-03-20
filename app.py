@@ -406,7 +406,7 @@ if ticker:
         tr3 = (low - close.shift(1)).abs()
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         df["ATR"] = tr.ewm(alpha=1.0 / atr_period, min_periods=atr_period, adjust=False).mean()
-        atr_ma = df["ATR"].rolling(window=30, min_periods=30).mean()
+        atr_ma = df["ATR"].rolling(window=14, min_periods=14).mean()
         df["ATR_High"] = df["ATR"] > atr_ma
 
         # 8. ADX
@@ -1328,7 +1328,7 @@ if ticker:
                 tr3 = (l - c.shift(1)).abs()
                 tr_opt = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
                 atr_opt = tr_opt.ewm(alpha=1.0 / 14, min_periods=14, adjust=False).mean()
-                atr_ma_opt = atr_opt.rolling(window=30, min_periods=30).mean()
+                atr_ma_opt = atr_opt.rolling(window=14, min_periods=14).mean()
                 atr_high_opt = atr_opt > atr_ma_opt
 
                 sma_sh = c.rolling(window=p_sma_s, min_periods=p_sma_s).mean()

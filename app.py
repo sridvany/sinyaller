@@ -334,6 +334,7 @@ if ticker:
 
     if not df.empty:
         df = flatten_columns(df)
+        df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
 
         required_cols = ["Open", "High", "Low", "Close", "Volume"]
         missing = [c for c in required_cols if c not in df.columns]

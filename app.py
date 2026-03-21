@@ -82,8 +82,20 @@ with st.sidebar:
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
     st.write("---")
+    st.subheader("🔁 Walk-Forward Optimizasyon")
+    n_windows  = st.slider("Pencere Sayısı:", 2, 8, 4,
+        help="Veri kaç eşit parçaya bölünsün?")
+    train_pct  = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
+        help="Her pencerenin %kaçı eğitim, kalanı test olsun?")
+    opt_metric = st.selectbox("Optimizasyon Kriteri:",
+        ["Sharpe", "Getiri", "Getiri / Max DD"],
+        help="Test penceresinde hangi metriğe göre en iyi parametre seçilsin?")
+    min_trades = st.number_input("Min. Trade Sayısı:", min_value=1, value=3, step=1,
+        help="Test penceresinde bu kadar trade üretmeyen kombinasyon geçersiz sayılır.")
+    st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: {opt_metric}")
+
+    st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
-    st.caption("Her algoritma kendi parametre aralığında en yüksek getiriyi arar.")
     st.info("İpucu: 1 dakikalık analizler için Periyot: 5d, Mum Aralığı: 1m seçiniz.")
 
 
@@ -373,17 +385,98 @@ def run_backtest(signal_series, close_arr, cost_pct):
             "pf": round(pf, 4) if pf != float("inf") else float("inf")}
 
 
-def optimize_algo(param_grid, signal_fn, close_arr, cost_pct):
-    keys   = list(param_grid.keys())
-    best_ret = -np.inf; best_p = {k: v[0] for k, v in param_grid.items()}; best_s = None
-    for combo in iter_product(*param_grid.values()):
-        p   = dict(zip(keys, combo))
-        sig = signal_fn(p)
-        if sig is None: continue
-        stats = run_backtest(sig, close_arr, cost_pct)
-        if stats["n"] == 0: continue
-        if stats["total_ret"] > best_ret:
-            best_ret = stats["total_ret"]; best_p = p; best_s = stats
+def _score(stats, metric):
+    """Seçilen metriğe göre skoru döndür."""
+    if metric == "Sharpe":
+        return stats["sharpe"]
+    elif metric == "Getiri":
+        return stats["total_ret"]
+    else:  # Getiri / Max DD
+        dd = stats["max_dd"]
+        return stats["total_ret"] / dd if dd > 0 else stats["total_ret"]
+
+
+def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
+                  n_windows=4, train_pct=70, metric="Sharpe", min_trades=3):
+    """
+    Walk-forward optimizasyon:
+    - Veriyi n_windows eşit parçaya böl.
+    - Her pencerede ilk train_pct eğitim, kalan test.
+    - Her kombinasyonu eğitimde dene; test skorunu topla.
+    - Tüm pencerelerde ortalama test skoru en yüksek kombinasyonu seç.
+    """
+    keys    = list(param_grid.keys())
+    combos  = list(iter_product(*param_grid.values()))
+    n       = len(close_arr)
+    default = {k: v[0] for k, v in param_grid.items()}
+
+    # Pencere sınırlarını hesapla
+    win_size = n // n_windows
+    if win_size < 30:          # çok az veri varsa tek pencereye düş
+        n_windows = 1
+        win_size  = n
+
+    windows = []
+    for w in range(n_windows):
+        s = w * win_size
+        e = s + win_size if w < n_windows - 1 else n
+        split = s + int((e - s) * train_pct / 100)
+        if split - s < 10 or e - split < 5:
+            continue
+        windows.append((s, split, e))   # (train_start, train_end=test_start, test_end)
+
+    if not windows:
+        return default, None
+
+    combo_scores = {combo: [] for combo in combos}
+
+    for (ts, te, es) in windows:
+        train_arr = close_arr[ts:te]
+        test_arr  = close_arr[te:es]
+
+        for combo in combos:
+            p = dict(zip(keys, combo))
+
+            # Eğitim verisiyle sinyal üret — signal_fn close_arr'ı içeride kullanıyor
+            # Bu yüzden tam seriyi ver, sonra pencereyi dilimle
+            sig_full = signal_fn(p)
+            if sig_full is None:
+                continue
+
+            sig_vals = sig_full.values if hasattr(sig_full, "values") else sig_full
+
+            # Test dilimine ait sinyal ve fiyat
+            test_sig  = sig_vals[te:es]
+            test_stats = run_backtest(test_sig, test_arr, cost_pct)
+
+            if test_stats["n"] < min_trades:
+                continue
+
+            combo_scores[combo].append(_score(test_stats, metric))
+
+    # Her kombinasyonun ortalama test skoru
+    best_combo  = None
+    best_avg    = -np.inf
+    for combo, scores in combo_scores.items():
+        if not scores:
+            continue
+        avg = float(np.mean(scores))
+        if avg > best_avg:
+            best_avg   = avg
+            best_combo = combo
+
+    if best_combo is None:
+        return default, None
+
+    best_p = dict(zip(keys, best_combo))
+
+    # Seçilen parametrelerle tüm veri üzerinde nihai istatistik
+    sig_full = signal_fn(best_p)
+    if sig_full is None:
+        return best_p, None
+    best_s = run_backtest(sig_full, close_arr, cost_pct)
+    best_s["wf_avg_score"] = round(best_avg, 4)
+    best_s["wf_windows"]   = len(windows)
     return best_p, best_s
 
 
@@ -441,7 +534,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_{ticker}_{period}_{interval}"
+        OPT_KEY = f"opt_{ticker}_{period}_{interval}_{n_windows}_{train_pct}_{opt_metric}_{min_trades}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}; opt_stats = {}
@@ -496,7 +589,10 @@ if ticker:
                             s, _, _, _ = sig_lrc(close, lrc_period, p["lrc_std_mult"]); return s
                         return fn
 
-                best_p, best_s = optimize_algo(grid, make_fn(), close_arr, cost_pct)
+                best_p, best_s = optimize_algo(
+                    grid, make_fn(), close_arr, cost_pct,
+                    n_windows=n_windows, train_pct=train_pct,
+                    metric=opt_metric, min_trades=min_trades)
                 opt_params[algo_name] = best_p
                 opt_stats[algo_name]  = best_s if best_s else {"total_ret": 0.0, "sharpe": 0.0, "n": 0, "win_rate": 0.0}
 
@@ -1008,18 +1104,22 @@ if ticker:
         # OPTİMİZASYON ÖZET TABLOSU
         # ============================================================
         st.write("---")
-        st.subheader("🧬 Optimizasyon Sonuçları")
-        st.caption("Her algoritma kendi parametre grid'inde en yüksek getiriyi veren kombinasyonu kullanıyor.")
+        st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
+        st.caption(
+            f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · "
+            f"kriter: {opt_metric} · min trade: {min_trades}"
+        )
 
         opt_rows = []
         for algo_name, grid in PARAM_GRIDS.items():
             p = opt_params.get(algo_name, {}); s = opt_stats.get(algo_name, {})
             row = {"Algoritma": algo_name}
             for k, v in p.items(): row[k] = v
-            row["Getiri (%)"]   = round(s.get("total_ret", 0), 2)
-            row["Sharpe"]       = round(s.get("sharpe",    0), 2)
-            row["Trade"]        = s.get("n", 0)
-            row["Win Rate (%)"] = round(s.get("win_rate",  0), 1)
+            row["Getiri (%)"]        = round(s.get("total_ret", 0), 2)
+            row["Sharpe"]            = round(s.get("sharpe",    0), 2)
+            row["Trade"]             = s.get("n", 0)
+            row["Win Rate (%)"]      = round(s.get("win_rate",  0), 1)
+            row[f"Ort. Test {opt_metric}"] = round(s.get("wf_avg_score", 0), 3)
             opt_rows.append(row)
 
         opt_df = pd.DataFrame(opt_rows)
@@ -1030,7 +1130,10 @@ if ticker:
                 if val < 0: return "color: #ff4b4b"
             return ""
 
-        st.dataframe(opt_df.style.map(opt_color, subset=["Getiri (%)", "Sharpe"]),
+        score_col = f"Ort. Test {opt_metric}"
+        color_cols = ["Getiri (%)", "Sharpe", score_col]
+        color_cols = [c for c in color_cols if c in opt_df.columns]
+        st.dataframe(opt_df.style.map(opt_color, subset=color_cols),
                      use_container_width=True, hide_index=True)
 
     else:

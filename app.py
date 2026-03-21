@@ -76,7 +76,7 @@ with st.sidebar:
     st.subheader("📊 Backtest Ayarları")
     commission_pct  = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
     slippage_pct    = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
-    initial_capital = st.number_input("Başlangıç Sermayesi ($):", min_value=100, value=10000, step=100)
+
 
     st.write("---")
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)

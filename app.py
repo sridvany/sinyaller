@@ -87,12 +87,7 @@ with st.sidebar:
         help="Veri kaç eşit parçaya bölünsün?")
     train_pct  = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
         help="Her pencerenin %kaçı eğitim, kalanı test olsun?")
-    opt_metric = st.selectbox("Optimizasyon Kriteri:",
-        ["Sharpe", "Getiri", "Getiri / Max DD"],
-        help="Test penceresinde hangi metriğe göre en iyi parametre seçilsin?")
-    min_trades = st.number_input("Min. Trade Sayısı:", min_value=1, value=3, step=1,
-        help="Test penceresinde bu kadar trade üretmeyen kombinasyon geçersiz sayılır.")
-    st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: {opt_metric}")
+    st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test")
 
     st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
@@ -534,7 +529,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_{ticker}_{period}_{interval}_{n_windows}_{train_pct}_{opt_metric}_{min_trades}"
+        OPT_KEY = f"opt_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}; opt_stats = {}
@@ -592,7 +587,7 @@ if ticker:
                 best_p, best_s = optimize_algo(
                     grid, make_fn(), close_arr, cost_pct,
                     n_windows=n_windows, train_pct=train_pct,
-                    metric=opt_metric, min_trades=min_trades)
+                    metric="Sharpe", min_trades=1)
                 opt_params[algo_name] = best_p
                 opt_stats[algo_name]  = best_s if best_s else {"total_ret": 0.0, "sharpe": 0.0, "n": 0, "win_rate": 0.0}
 
@@ -1106,8 +1101,7 @@ if ticker:
         st.write("---")
         st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
         st.caption(
-            f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · "
-            f"kriter: {opt_metric} · min trade: {min_trades}"
+            f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe"
         )
 
         def opt_color(val):
@@ -1116,7 +1110,7 @@ if ticker:
                 if val < 0: return "color: #ff4b4b"
             return ""
 
-        score_col = f"Ort. Test {opt_metric}"
+        score_col = "Ort. Test Sharpe"
 
         # Her algoritma için bağımsız satır — sadece kendi parametreleri
         opt_rows = []
@@ -1136,8 +1130,11 @@ if ticker:
 
         opt_df = pd.DataFrame(opt_rows)
         color_cols = [c for c in ["Getiri (%)", "Sharpe", score_col] if c in opt_df.columns]
-        st.dataframe(opt_df.style.map(opt_color, subset=color_cols),
-                     use_container_width=True, hide_index=True)
+        fmt = {"Getiri (%)": "{:.2f}", "Sharpe": "{:.2f}", "Win Rate (%)": "{:.1f}", score_col: "{:.3f}"}
+        fmt = {k: v for k, v in fmt.items() if k in opt_df.columns}
+        st.dataframe(
+            opt_df.style.format(fmt).map(opt_color, subset=color_cols),
+            use_container_width=True, hide_index=True)
 
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")

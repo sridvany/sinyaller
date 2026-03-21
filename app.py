@@ -561,7 +561,7 @@ if ticker:
             df["Sig_VWAP"] = 0; df["VWAP"] = np.nan
 
         # ============================================================
-        # ANA GRAFİK
+        # ANA GRAFİK + VRP/HACİM (iki sütun)
         # ============================================================
         bull_st = df["ST_Direction"] == 1; bear_st = df["ST_Direction"] == -1
 
@@ -602,9 +602,76 @@ if ticker:
             font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
             align="left", bgcolor="rgba(255,255,255,0.92)",
             bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
-        fig.update_layout(template="plotly_dark", height=550,
-                          xaxis_rangeslider_visible=False, dragmode="pan")
-        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+        fig.update_layout(
+            template="plotly_dark", height=550,
+            xaxis_rangeslider_visible=False, dragmode="pan",
+            legend=dict(
+                orientation="v",
+                x=-0.12, y=1,
+                xanchor="right", yanchor="top",
+                bgcolor="rgba(0,0,0,0)",
+                font=dict(size=11),
+            ),
+        )
+
+        # ── VRP / Hacim profili ──────────────────────────────
+        vrp_bins   = 40
+        price_min  = float(low.min());  price_max = float(high.max())
+        bin_edges  = np.linspace(price_min, price_max, vrp_bins + 1)
+        bin_centers= (bin_edges[:-1] + bin_edges[1:]) / 2
+        vol_at_price = np.zeros(vrp_bins)
+        for i in range(len(df)):
+            lo_i = float(low.iloc[i]); hi_i = float(high.iloc[i]); vol_i = float(volume.iloc[i])
+            if hi_i == lo_i:
+                idx = np.searchsorted(bin_edges, lo_i, side="right") - 1
+                idx = np.clip(idx, 0, vrp_bins - 1)
+                vol_at_price[idx] += vol_i
+            else:
+                for b in range(vrp_bins):
+                    overlap = min(hi_i, bin_edges[b+1]) - max(lo_i, bin_edges[b])
+                    if overlap > 0:
+                        vol_at_price[b] += vol_i * overlap / (hi_i - lo_i)
+
+        # POC (Point of Control)
+        poc_idx   = int(np.argmax(vol_at_price))
+        poc_price = bin_centers[poc_idx]
+
+        # Renk: POC en parlak, uzaklaştıkça solar
+        max_vol = vol_at_price.max()
+        bar_colors = []
+        for v in vol_at_price:
+            intensity = int(80 + 175 * (v / max_vol)) if max_vol > 0 else 200
+            bar_colors.append(f"rgba(100,{intensity},255,0.85)")
+        bar_colors[poc_idx] = "rgba(255,200,0,1.0)"  # POC sarı
+
+        fig_vrp = go.Figure()
+        fig_vrp.add_trace(go.Bar(
+            x=vol_at_price, y=bin_centers,
+            orientation="h",
+            marker_color=bar_colors,
+            name="Hacim Profili",
+            hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
+        ))
+        fig_vrp.add_hline(y=poc_price, line_dash="dash", line_color="gold",
+            annotation_text=f"POC {poc_price:.2f}",
+            annotation_font=dict(color="gold", size=10))
+        fig_vrp.add_hline(y=lp, line_dash="dot", line_color="#00ff88",
+            annotation_text=f"Son {lp:.2f}",
+            annotation_font=dict(color="#00ff88", size=10))
+        fig_vrp.update_layout(
+            template="plotly_dark", height=550,
+            margin=dict(t=30, b=30, l=5, r=5),
+            showlegend=False,
+            xaxis=dict(title="Hacim", showgrid=False),
+            yaxis=dict(title="", showticklabels=False),
+            dragmode="pan",
+        )
+
+        col_chart, col_vrp = st.columns([5, 1])
+        with col_chart:
+            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+        with col_vrp:
+            st.plotly_chart(fig_vrp, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================
         # ALT GRAFİKLER

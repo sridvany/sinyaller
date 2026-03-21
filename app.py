@@ -1110,20 +1110,6 @@ if ticker:
             f"kriter: {opt_metric} · min trade: {min_trades}"
         )
 
-        opt_rows = []
-        for algo_name, grid in PARAM_GRIDS.items():
-            p = opt_params.get(algo_name, {}); s = opt_stats.get(algo_name, {})
-            row = {"Algoritma": algo_name}
-            for k, v in p.items(): row[k] = v
-            row["Getiri (%)"]        = round(s.get("total_ret", 0), 2)
-            row["Sharpe"]            = round(s.get("sharpe",    0), 2)
-            row["Trade"]             = s.get("n", 0)
-            row["Win Rate (%)"]      = round(s.get("win_rate",  0), 1)
-            row[f"Ort. Test {opt_metric}"] = round(s.get("wf_avg_score", 0), 3)
-            opt_rows.append(row)
-
-        opt_df = pd.DataFrame(opt_rows)
-
         def opt_color(val):
             if isinstance(val, (int, float)):
                 if val > 0: return "color: #00ff00"
@@ -1131,8 +1117,25 @@ if ticker:
             return ""
 
         score_col = f"Ort. Test {opt_metric}"
-        color_cols = ["Getiri (%)", "Sharpe", score_col]
-        color_cols = [c for c in color_cols if c in opt_df.columns]
+
+        # Her algoritma için bağımsız satır — sadece kendi parametreleri
+        opt_rows = []
+        for algo_name, grid in PARAM_GRIDS.items():
+            p = opt_params.get(algo_name, {})
+            s = opt_stats.get(algo_name, {})
+            row = {"Algoritma": algo_name}
+            # Optimize edilen parametreler (sadece bu algoritmanın)
+            param_str = "  |  ".join(f"{k} = {v}" for k, v in p.items())
+            row["Parametreler"]      = param_str
+            row["Getiri (%)"]        = round(s.get("total_ret", 0), 2)
+            row["Sharpe"]            = round(s.get("sharpe",    0), 2)
+            row["Trade"]             = s.get("n", 0)
+            row["Win Rate (%)"]      = round(s.get("win_rate",  0), 1)
+            row[score_col]           = round(s.get("wf_avg_score", 0), 3)
+            opt_rows.append(row)
+
+        opt_df = pd.DataFrame(opt_rows)
+        color_cols = [c for c in ["Getiri (%)", "Sharpe", score_col] if c in opt_df.columns]
         st.dataframe(opt_df.style.map(opt_color, subset=color_cols),
                      use_container_width=True, hide_index=True)
 

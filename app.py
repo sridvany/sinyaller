@@ -594,7 +594,7 @@ if ticker:
         poc_price = bin_centers[poc_idx]
         max_vol   = vol_at_price.max()
         bar_colors = [
-            "rgba(255,200,0,1.0)" if b == poc_idx
+            "rgba(139,0,0,1.0)" if b == poc_idx
             else f"rgba(100,{int(80 + 175*(v/max_vol)) if max_vol > 0 else 200},255,0.85)"
             for b, v in enumerate(vol_at_price)
         ]
@@ -655,9 +655,9 @@ if ticker:
         ), row=1, col=2)
 
         # POC ve son fiyat yatay çizgileri (VRP paneline)
-        fig.add_hline(y=poc_price, line_dash="dash", line_color="orange",
+        fig.add_hline(y=poc_price, line_dash="dash", line_color="black",
             annotation_text=f"POC {poc_price:.2f}",
-            annotation_font=dict(color="orange", size=9),
+            annotation_font=dict(color="black", size=9),
             annotation_position="top right", row=1, col=2)
         fig.add_hline(y=lp, line_dash="dot", line_color="black",
             annotation_text=f"  {lp:.2f}",

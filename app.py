@@ -79,6 +79,9 @@ with st.sidebar:
     initial_capital = st.number_input("Başlangıç Sermayesi ($):", min_value=100, value=10000, step=100)
 
     st.write("---")
+    chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
+
+    st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
     st.caption("Her algoritma kendi parametre aralığında en yüksek getiriyi arar.")
     st.info("İpucu: 1 dakikalık analizler için Periyot: 5d, Mum Aralığı: 1m seçiniz.")
@@ -605,8 +608,12 @@ if ticker:
         )
 
         # Grafik izleri → col1
-        fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
-            low=df["Low"], close=df["Close"], name="Fiyat"), row=1, col=1)
+        if chart_type == "Mum":
+            fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
+                low=df["Low"], close=df["Close"], name="Fiyat"), row=1, col=1)
+        else:
+            fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
+                line=dict(color="white", width=1.5)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
             name=f"SMA {p_sma['sma_s']}", line=dict(color="orange")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],

@@ -98,14 +98,24 @@ with st.sidebar:
 # 3. OPTİMİZASYON PARAMETRE GRİDLERİ
 # ============================================================
 PARAM_GRIDS = {
-    "SMA Crossover": {"sma_s": [10, 20, 30], "sma_l": [50, 100, 150]},
-    "RSI":           {"rsi_lower": [25, 30],  "rsi_upper": [70, 75]},
-    "Bollinger Bands": {"bb_std": [1.5, 2.0]},
-    "MACD":          {"macd_fast": [8, 12],   "macd_slow": [20, 26]},
-    "Mean Reversion":{"z_thresh": [1.5, 2.0]},
-    "ADX":           {"adx_threshold": [20, 25]},
-    "SuperTrend":    {"st_multiplier": [2.0, 3.0]},
-    "LR Channel":    {"lrc_std_mult": [1.5, 2.0]},
+    "SMA Crossover":  {"sma_s":         [5, 10, 20, 30],
+                       "sma_l":         [50, 100, 150, 200]},
+    "RSI":            {"rsi_period":    [10, 14, 21],
+                       "rsi_lower":     [25, 30, 35],
+                       "rsi_upper":     [65, 70, 75]},
+    "Bollinger Bands":{"bb_period":     [15, 20, 30],
+                       "bb_std":        [1.5, 2.0, 2.5]},
+    "MACD":           {"macd_fast":     [8, 12, 16],
+                       "macd_slow":     [20, 26, 30],
+                       "macd_signal":   [7, 9, 12]},
+    "Mean Reversion": {"z_period":      [20, 30, 50],
+                       "z_thresh":      [1.5, 2.0, 2.5]},
+    "ADX":            {"adx_period":    [10, 14, 20],
+                       "adx_threshold": [20, 25, 30]},
+    "SuperTrend":     {"st_period":     [7, 10, 14],
+                       "st_multiplier": [2.0, 2.5, 3.0, 3.5]},
+    "LR Channel":     {"lrc_period":    [30, 50, 75],
+                       "lrc_std_mult":  [1.5, 2.0, 2.5]},
 }
 
 
@@ -550,38 +560,38 @@ if ticker:
                     def make_fn():
                         def fn(p):
                             if p["rsi_lower"] >= p["rsi_upper"]: return None
-                            s, _ = sig_rsi_fn(close, rsi_period, p["rsi_lower"], p["rsi_upper"]); return s
+                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"]); return s
                         return fn
                 elif algo_name == "Bollinger Bands":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _ = sig_bb(close, bb_period, p["bb_std"]); return s
+                            s, _, _, _ = sig_bb(close, p["bb_period"], p["bb_std"]); return s
                         return fn
                 elif algo_name == "MACD":
                     def make_fn():
                         def fn(p):
                             if p["macd_fast"] >= p["macd_slow"]: return None
-                            s, _, _ = sig_macd(close, atr_high, p["macd_fast"], p["macd_slow"], macd_signal); return s
+                            s, _, _ = sig_macd(close, atr_high, p["macd_fast"], p["macd_slow"], p["macd_signal"]); return s
                         return fn
                 elif algo_name == "Mean Reversion":
                     def make_fn():
                         def fn(p):
-                            s, _ = sig_z(close, z_period, p["z_thresh"]); return s
+                            s, _ = sig_z(close, p["z_period"], p["z_thresh"]); return s
                         return fn
                 elif algo_name == "ADX":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _ = sig_adx_fn(high, low, close, atr_high, adx_period, p["adx_threshold"]); return s
+                            s, _, _, _ = sig_adx_fn(high, low, close, atr_high, p["adx_period"], p["adx_threshold"]); return s
                         return fn
                 elif algo_name == "SuperTrend":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _, _ = sig_supertrend_fn(high, low, close, atr_high, st_period, p["st_multiplier"]); return s
+                            s, _, _, _, _ = sig_supertrend_fn(high, low, close, atr_high, p["st_period"], p["st_multiplier"]); return s
                         return fn
                 elif algo_name == "LR Channel":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _ = sig_lrc(close, lrc_period, p["lrc_std_mult"]); return s
+                            s, _, _, _ = sig_lrc(close, p["lrc_period"], p["lrc_std_mult"]); return s
                         return fn
 
                 best_p, best_s = optimize_algo(
@@ -599,35 +609,35 @@ if ticker:
 
         # Parametreleri çek
         p_sma  = opt_params.get("SMA Crossover",  {"sma_s": 20,  "sma_l": 100})
-        p_rsi  = opt_params.get("RSI",             {"rsi_lower": 30, "rsi_upper": 70})
-        p_bb   = opt_params.get("Bollinger Bands", {"bb_std": 2.0})
-        p_macd = opt_params.get("MACD",            {"macd_fast": 12, "macd_slow": 26})
-        p_z    = opt_params.get("Mean Reversion",  {"z_thresh": 2.0})
-        p_adx  = opt_params.get("ADX",             {"adx_threshold": 25})
-        p_st   = opt_params.get("SuperTrend",      {"st_multiplier": 3.0})
-        p_lrc  = opt_params.get("LR Channel",      {"lrc_std_mult": 2.0})
+        p_rsi  = opt_params.get("RSI",             {"rsi_period": 14, "rsi_lower": 30, "rsi_upper": 70})
+        p_bb   = opt_params.get("Bollinger Bands", {"bb_period": 20, "bb_std": 2.0})
+        p_macd = opt_params.get("MACD",            {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9})
+        p_z    = opt_params.get("Mean Reversion",  {"z_period": 30, "z_thresh": 2.0})
+        p_adx  = opt_params.get("ADX",             {"adx_period": 14, "adx_threshold": 25})
+        p_st   = opt_params.get("SuperTrend",      {"st_period": 10, "st_multiplier": 3.0})
+        p_lrc  = opt_params.get("LR Channel",      {"lrc_period": 50, "lrc_std_mult": 2.0})
 
         # Sinyalleri üret
         df["Sig_SMA"], df["SMA_SHORT"], df["SMA_LONG"] = sig_sma(
             close, atr_high, p_sma["sma_s"], p_sma["sma_l"])
 
         df["Sig_RSI"], df["RSI"] = sig_rsi_fn(
-            close, rsi_period, p_rsi["rsi_lower"], p_rsi["rsi_upper"])
+            close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"])
         df["RSI_MA"] = df["RSI"].rolling(rsi_ma_period).mean()
 
         df["Sig_BB"], df["Mid"], df["Up"], df["Low_BB"] = sig_bb(
-            close, bb_period, p_bb["bb_std"])
+            close, p_bb["bb_period"], p_bb["bb_std"])
 
         df["Sig_MACD"], df["MACD"], df["MACD_S"] = sig_macd(
-            close, atr_high, p_macd["macd_fast"], p_macd["macd_slow"], macd_signal)
+            close, atr_high, p_macd["macd_fast"], p_macd["macd_slow"], p_macd["macd_signal"])
 
-        df["Sig_Z"], df["Z"] = sig_z(close, z_period, p_z["z_thresh"])
+        df["Sig_Z"], df["Z"] = sig_z(close, p_z["z_period"], p_z["z_thresh"])
 
         df["Sig_OBV"], df["OBV"], obv_sma_short, obv_sma_long = sig_obv(
             close, volume, obv_short, obv_long)
 
         df["Sig_ADX"], df["ADX"], df["PLUS_DI"], df["MINUS_DI"] = sig_adx_fn(
-            high, low, close, atr_high, adx_period, p_adx["adx_threshold"])
+            high, low, close, atr_high, p_adx["adx_period"], p_adx["adx_threshold"])
 
         df["Sig_StochRSI"], df["StochRSI_K"], df["StochRSI_D"] = sig_stochrsi(
             close, df["RSI"], stoch_rsi_period, stoch_d_period, stoch_lower, stoch_upper)
@@ -639,10 +649,10 @@ if ticker:
             close, atr_high, kama_period, kama_fast, kama_slow)
 
         df["Sig_SuperTrend"], df["SuperTrend"], df["ST_Direction"], df["ST_Lower"], df["ST_Upper"] = sig_supertrend_fn(
-            high, low, close, atr_high, st_period, p_st["st_multiplier"])
+            high, low, close, atr_high, p_st["st_period"], p_st["st_multiplier"])
 
         df["Sig_LRC"], df["LRC_Mid"], df["LRC_Upper"], df["LRC_Lower"] = sig_lrc(
-            close, lrc_period, p_lrc["lrc_std_mult"])
+            close, p_lrc["lrc_period"], p_lrc["lrc_std_mult"])
 
         df["NW_Line"], df["NW_Upper"], df["NW_Lower"] = calc_nadaraya_watson(
             close, bandwidth=nw_bandwidth, window=nw_window)
@@ -911,7 +921,7 @@ if ticker:
         lr = safe_scalar(last["RSI"])
         if not np.isnan(lr):
             dec = "AL" if lr < p_rsi["rsi_lower"] else ("SAT" if lr > p_rsi["rsi_upper"] else "TUT")
-            res.append([dec, f"RSI ({rsi_period}) [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}]", f"Seviye: {lr:.1f}"])
+            res.append([dec, f"RSI ({p_rsi['rsi_period']}) [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}]", f"Seviye: {lr:.1f}"])
         else:
             res.append(["N/A", "RSI", "Yetersiz veri."])
 
@@ -986,7 +996,7 @@ if ticker:
         lst = safe_scalar(last["SuperTrend"]); lstd = safe_scalar(last["ST_Direction"])
         if not np.isnan(lst):
             res.append([trend_dec("AL" if lstd == 1 else "SAT", last_ath),
-                        f"SuperTrend ({st_period}, x{p_st['st_multiplier']})", f"Seviye: {lst:.2f}"])
+                        f"SuperTrend ({p_st['st_period']}, x{p_st['st_multiplier']})", f"Seviye: {lst:.2f}"])
         else:
             res.append(["N/A", "SuperTrend", "Yetersiz veri."])
 
@@ -1044,18 +1054,18 @@ if ticker:
         st.caption("⚠️ Geçmiş performans gelecekteki sonuçların garantisi değildir.")
 
         algo_signal_map = {
-            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":             "Sig_SMA",
-            f"RSI [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}]":     "Sig_RSI",
-            f"Bollinger Bands (σ={p_bb['bb_std']})":                 "Sig_BB",
-            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']})":  "Sig_MACD",
-            f"Mean Reversion (z={p_z['z_thresh']})":                 "Sig_Z",
-            "OBV":                                                     "Sig_OBV",
-            f"ADX (eşik={p_adx['adx_threshold']})":                 "Sig_ADX",
-            "Stoch RSI":                                               "Sig_StochRSI",
-            "Ichimoku":                                                "Sig_Ichimoku",
-            "KAMA":                                                    "Sig_KAMA",
-            f"SuperTrend (x{p_st['st_multiplier']})":                "Sig_SuperTrend",
-            f"LR Channel (σ={p_lrc['lrc_std_mult']})":              "Sig_LRC",
+            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                              "Sig_SMA",
+            f"RSI (p={p_rsi['rsi_period']} [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}])": "Sig_RSI",
+            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":          "Sig_BB",
+            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})": "Sig_MACD",
+            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":            "Sig_Z",
+            "OBV":                                                                     "Sig_OBV",
+            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":        "Sig_ADX",
+            "Stoch RSI":                                                               "Sig_StochRSI",
+            "Ichimoku":                                                                "Sig_Ichimoku",
+            "KAMA":                                                                    "Sig_KAMA",
+            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":         "Sig_SuperTrend",
+            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":     "Sig_LRC",
         }
         if is_intraday:
             algo_signal_map["VWAP"] = "Sig_VWAP"

@@ -561,34 +561,6 @@ if ticker:
             df["Sig_VWAP"] = 0; df["VWAP"] = np.nan
 
         # ============================================================
-        # OPTİMİZASYON ÖZET TABLOSU
-        # ============================================================
-        st.subheader("🧬 Optimizasyon Sonuçları")
-        st.caption("Her algoritma kendi parametre grid'inde en yüksek getiriyi veren kombinasyonu kullanıyor.")
-
-        opt_rows = []
-        for algo_name, grid in PARAM_GRIDS.items():
-            p = opt_params.get(algo_name, {}); s = opt_stats.get(algo_name, {})
-            row = {"Algoritma": algo_name}
-            for k, v in p.items(): row[k] = v
-            row["Getiri (%)"]   = round(s.get("total_ret", 0), 2)
-            row["Sharpe"]       = round(s.get("sharpe",    0), 2)
-            row["Trade"]        = s.get("n", 0)
-            row["Win Rate (%)"] = round(s.get("win_rate",  0), 1)
-            opt_rows.append(row)
-
-        opt_df = pd.DataFrame(opt_rows)
-
-        def opt_color(val):
-            if isinstance(val, (int, float)):
-                if val > 0: return "color: #00ff00"
-                if val < 0: return "color: #ff4b4b"
-            return ""
-
-        st.dataframe(opt_df.style.map(opt_color, subset=["Getiri (%)", "Sharpe"]),
-                     use_container_width=True, hide_index=True)
-
-        # ============================================================
         # ANA GRAFİK
         # ============================================================
         bull_st = df["ST_Direction"] == 1; bear_st = df["ST_Direction"] == -1
@@ -949,6 +921,35 @@ if ticker:
                          use_container_width=True, hide_index=True)
         else:
             st.info("Algoritma performansı hesaplanamadı.")
+
+        # ============================================================
+        # OPTİMİZASYON ÖZET TABLOSU
+        # ============================================================
+        st.write("---")
+        st.subheader("🧬 Optimizasyon Sonuçları")
+        st.caption("Her algoritma kendi parametre grid'inde en yüksek getiriyi veren kombinasyonu kullanıyor.")
+
+        opt_rows = []
+        for algo_name, grid in PARAM_GRIDS.items():
+            p = opt_params.get(algo_name, {}); s = opt_stats.get(algo_name, {})
+            row = {"Algoritma": algo_name}
+            for k, v in p.items(): row[k] = v
+            row["Getiri (%)"]   = round(s.get("total_ret", 0), 2)
+            row["Sharpe"]       = round(s.get("sharpe",    0), 2)
+            row["Trade"]        = s.get("n", 0)
+            row["Win Rate (%)"] = round(s.get("win_rate",  0), 1)
+            opt_rows.append(row)
+
+        opt_df = pd.DataFrame(opt_rows)
+
+        def opt_color(val):
+            if isinstance(val, (int, float)):
+                if val > 0: return "color: #00ff00"
+                if val < 0: return "color: #ff4b4b"
+            return ""
+
+        st.dataframe(opt_df.style.map(opt_color, subset=["Getiri (%)", "Sharpe"]),
+                     use_container_width=True, hide_index=True)
 
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")

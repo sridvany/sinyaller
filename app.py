@@ -560,71 +560,26 @@ if ticker:
         else:
             df["Sig_VWAP"] = 0; df["VWAP"] = np.nan
 
+
+
         # ============================================================
-        # ANA GRAFİK + VRP/HACİM (iki sütun)
+        # ANA GRAFİK + VRP (tek subplot, paylaşımlı yaxis)
         # ============================================================
+        from plotly.subplots import make_subplots
+
         bull_st = df["ST_Direction"] == 1; bear_st = df["ST_Direction"] == -1
-
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
-            low=df["Low"], close=df["Close"], name="Fiyat"))
-        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
-            name=f"SMA {p_sma['sma_s']}", line=dict(color="orange")))
-        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
-            name=f"SMA {p_sma['sma_l']}", line=dict(color="cyan")))
-        fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
-            name="KAMA", line=dict(color="violet", width=1.5)))
-        fig.add_trace(go.Scatter(x=df.index[bull_st], y=df["SuperTrend"][bull_st],
-            name="SuperTrend (Boğa)", mode="markers", marker=dict(color="lime", size=4)))
-        fig.add_trace(go.Scatter(x=df.index[bear_st], y=df["SuperTrend"][bear_st],
-            name="SuperTrend (Ayı)", mode="markers", marker=dict(color="red", size=4)))
-        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"],
-            name="LRC Orta", line=dict(color="white", width=1, dash="dash")))
-        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"],
-            name="LRC Üst", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")))
-        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"],
-            name="LRC Alt", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
-            fill="tonexty", fillcolor="rgba(150,150,150,0.05)"))
-        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"],
-            name="NW Orta", line=dict(color="gold", width=1.5)))
-        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"],
-            name="NW Üst", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")))
-        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"],
-            name="NW Alt", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
-            fill="tonexty", fillcolor="rgba(255,215,0,0.04)"))
-        if is_intraday:
-            fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
-                name="VWAP", line=dict(color="yellow", dash="dash", width=1.5)))
-
         lp = float(close.iloc[-1]); pp = float(close.iloc[-2]) if len(close) > 1 else lp
-        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
-            xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
-            font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
-            align="left", bgcolor="rgba(255,255,255,0.92)",
-            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
-        fig.update_layout(
-            template="plotly_dark", height=550,
-            xaxis_rangeslider_visible=False, dragmode="pan",
-            legend=dict(
-                orientation="v",
-                x=-0.12, y=1,
-                xanchor="right", yanchor="top",
-                bgcolor="rgba(0,0,0,0)",
-                font=dict(size=11),
-            ),
-        )
 
-        # ── VRP / Hacim profili ──────────────────────────────
-        vrp_bins   = 40
-        price_min  = float(low.min());  price_max = float(high.max())
-        bin_edges  = np.linspace(price_min, price_max, vrp_bins + 1)
-        bin_centers= (bin_edges[:-1] + bin_edges[1:]) / 2
+        # ── VRP hesapla ──────────────────────────────────────
+        vrp_bins    = 40
+        price_min   = float(low.min());  price_max = float(high.max())
+        bin_edges   = np.linspace(price_min, price_max, vrp_bins + 1)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         vol_at_price = np.zeros(vrp_bins)
         for i in range(len(df)):
             lo_i = float(low.iloc[i]); hi_i = float(high.iloc[i]); vol_i = float(volume.iloc[i])
             if hi_i == lo_i:
-                idx = np.searchsorted(bin_edges, lo_i, side="right") - 1
-                idx = np.clip(idx, 0, vrp_bins - 1)
+                idx = np.clip(np.searchsorted(bin_edges, lo_i, side="right") - 1, 0, vrp_bins - 1)
                 vol_at_price[idx] += vol_i
             else:
                 for b in range(vrp_bins):
@@ -632,46 +587,99 @@ if ticker:
                     if overlap > 0:
                         vol_at_price[b] += vol_i * overlap / (hi_i - lo_i)
 
-        # POC (Point of Control)
         poc_idx   = int(np.argmax(vol_at_price))
         poc_price = bin_centers[poc_idx]
+        max_vol   = vol_at_price.max()
+        bar_colors = [
+            "rgba(255,200,0,1.0)" if b == poc_idx
+            else f"rgba(100,{int(80 + 175*(v/max_vol)) if max_vol > 0 else 200},255,0.85)"
+            for b, v in enumerate(vol_at_price)
+        ]
 
-        # Renk: POC en parlak, uzaklaştıkça solar
-        max_vol = vol_at_price.max()
-        bar_colors = []
-        for v in vol_at_price:
-            intensity = int(80 + 175 * (v / max_vol)) if max_vol > 0 else 200
-            bar_colors.append(f"rgba(100,{intensity},255,0.85)")
-        bar_colors[poc_idx] = "rgba(255,200,0,1.0)"  # POC sarı
+        # ── Subplot: sol=grafik (col1), sağ=VRP (col2) ───────
+        fig = make_subplots(
+            rows=1, cols=2,
+            column_widths=[0.85, 0.15],
+            shared_yaxes=True,          # Y ekseni kilitli
+            horizontal_spacing=0.0,
+        )
 
-        fig_vrp = go.Figure()
-        fig_vrp.add_trace(go.Bar(
+        # Grafik izleri → col1
+        fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
+            low=df["Low"], close=df["Close"], name="Fiyat"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
+            name=f"SMA {p_sma['sma_s']}", line=dict(color="orange")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
+            name=f"SMA {p_sma['sma_l']}", line=dict(color="cyan")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
+            name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index[bull_st], y=df["SuperTrend"][bull_st],
+            name="SuperTrend (Boğa)", mode="markers",
+            marker=dict(color="lime", size=4)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index[bear_st], y=df["SuperTrend"][bear_st],
+            name="SuperTrend (Ayı)", mode="markers",
+            marker=dict(color="red", size=4)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"],
+            name="LRC Orta", line=dict(color="white", width=1, dash="dash")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"],
+            name="LRC Üst", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"],
+            name="LRC Alt", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
+            fill="tonexty", fillcolor="rgba(150,150,150,0.05)"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"],
+            name="NW Orta", line=dict(color="gold", width=1.5)), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"],
+            name="NW Üst", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"],
+            name="NW Alt", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
+            fill="tonexty", fillcolor="rgba(255,215,0,0.04)"), row=1, col=1)
+        if is_intraday:
+            fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
+                name="VWAP", line=dict(color="yellow", dash="dash", width=1.5)), row=1, col=1)
+
+        # VRP izleri → col2
+        fig.add_trace(go.Bar(
             x=vol_at_price, y=bin_centers,
             orientation="h",
             marker_color=bar_colors,
             name="Hacim Profili",
-            hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
-        ))
-        fig_vrp.add_hline(y=poc_price, line_dash="dash", line_color="gold",
-            annotation_text=f"POC {poc_price:.2f}",
-            annotation_font=dict(color="gold", size=10))
-        fig_vrp.add_hline(y=lp, line_dash="dot", line_color="#00ff88",
-            annotation_text=f"Son {lp:.2f}",
-            annotation_font=dict(color="#00ff88", size=10))
-        fig_vrp.update_layout(
-            template="plotly_dark", height=550,
-            margin=dict(t=30, b=30, l=5, r=5),
             showlegend=False,
-            xaxis=dict(title="Hacim", showgrid=False),
-            yaxis=dict(title="", showticklabels=False),
+            hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
+        ), row=1, col=2)
+
+        # POC ve son fiyat yatay çizgileri (VRP paneline)
+        fig.add_hline(y=poc_price, line_dash="dash", line_color="gold",
+            annotation_text=f"POC {poc_price:.2f}",
+            annotation_font=dict(color="gold", size=9),
+            annotation_position="top right", row=1, col=2)
+        fig.add_hline(y=lp, line_dash="dot", line_color="#00ff88",
+            annotation_text=f"  {lp:.2f}",
+            annotation_font=dict(color="#00ff88", size=9),
+            annotation_position="bottom right", row=1, col=2)
+
+        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
+            xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
+            font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
+            align="left", bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
+
+        fig.update_layout(
+            template="plotly_dark", height=580,
             dragmode="pan",
+            xaxis=dict(rangeslider_visible=False),
+            xaxis2=dict(showgrid=False, showticklabels=False),
+            yaxis2=dict(showticklabels=False),
+            legend=dict(
+                orientation="v",
+                x=-0.06, y=1,
+                xanchor="right", yanchor="top",
+                bgcolor="rgba(0,0,0,0)",
+                font=dict(size=11),
+            ),
+            margin=dict(l=120, r=10, t=30, b=30),
         )
 
-        col_chart, col_vrp = st.columns([5, 1])
-        with col_chart:
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
-        with col_vrp:
-            st.plotly_chart(fig_vrp, use_container_width=True, config=PLOTLY_CONFIG)
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================
         # ALT GRAFİKLER

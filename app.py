@@ -829,10 +829,11 @@ if ticker:
                     f"▼ {day_low:,.2f}"
                 ),
                 xref="paper", yref="paper",
-                x=-0.13, y=0.35,
+                x=-0.06, y=0.28,
+                xanchor="right",
                 showarrow=False,
                 font=dict(size=11, family="monospace"),
-                align="left",
+                align="right",
                 bgcolor="rgba(255,255,255,0.92)",
                 bordercolor="rgba(200,200,200,0.6)",
                 borderwidth=1, borderpad=6,

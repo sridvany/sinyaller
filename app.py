@@ -816,15 +816,28 @@ if ticker:
         if today_mask.any():
             day_high = float(high[today_mask].max())
             day_low  = float(low[today_mask].min())
-            day_info = f"<br>▲ {day_high:,.2f}  ▼ {day_low:,.2f}"
         else:
-            day_info = ""
+            day_high = day_low = None
 
-        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>{day_info}",
+        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
             xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
             font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
             align="left", bgcolor="rgba(255,255,255,0.92)",
             bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
+
+        if day_high is not None:
+            fig.add_annotation(
+                text=f"▲ {day_high:,.2f}",
+                xref="paper", yref="paper", x=0.18, y=0.99, showarrow=False,
+                font=dict(size=12, color="#007a3d", family="monospace"),
+                align="center", bgcolor="rgba(255,255,255,0.92)",
+                bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
+            fig.add_annotation(
+                text=f"▼ {day_low:,.2f}",
+                xref="paper", yref="paper", x=0.27, y=0.99, showarrow=False,
+                font=dict(size=12, color="#cc2200", family="monospace"),
+                align="center", bgcolor="rgba(255,255,255,0.92)",
+                bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
 
         fig.update_layout(
             template="plotly_dark", height=580,

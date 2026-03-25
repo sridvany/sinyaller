@@ -19,6 +19,33 @@ st.title("📈 Yatırım Algoritmaları Terminali")
 st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı olarak çekilmektedir.")
 
 # ============================================================
+# SESSION STATE VARSAYILANLARI
+# ============================================================
+_defaults = {
+    "sma_short":     20,
+    "sma_long":      200,
+    "rsi_period":    14,
+    "rsi_lower":     30,
+    "rsi_upper":     70,
+    "bb_period":     20,
+    "bb_std":        2.0,
+    "macd_fast":     12,
+    "macd_slow":     26,
+    "macd_signal":   9,
+    "z_period":      30,
+    "z_thresh":      2.0,
+    "adx_period":    14,
+    "adx_threshold": 25,
+    "st_period":     10,
+    "st_multiplier": 3.0,
+    "lrc_period":    50,
+    "lrc_std_mult":  2.0,
+}
+for k, v in _defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# ============================================================
 # 2. YAN PANEL
 # ============================================================
 with st.sidebar:
@@ -47,38 +74,46 @@ with st.sidebar:
 
     st.write("---")
     st.subheader("Sabit Parametreler")
-    sma_short       = st.slider("SMA Kısa Periyot:", 5, 50, 20)
-    sma_long        = st.slider("SMA Uzun Periyot:", 50, 300, 200)
-    rsi_period      = st.slider("RSI Periyodu:", 7, 21, 14)
-    rsi_ma_period   = st.slider("RSI MA Periyodu:", 5, 50, 14)
-    bb_period       = st.slider("BB Periyodu:", 10, 50, 20)
-    macd_signal     = st.slider("MACD Sinyal:", 5, 15, 9)
-    z_period        = st.slider("Z-Score Pencere:", 10, 60, 30)
-    obv_short       = st.slider("OBV Kısa SMA:", 5, 20, 10)
-    obv_long        = st.slider("OBV Uzun SMA:", 15, 50, 30)
-    adx_period      = st.slider("ADX Periyodu:", 7, 30, 14)
-    atr_period      = st.slider("ATR Periyodu:", 7, 30, 14)
-    stoch_rsi_period= st.slider("Stoch RSI Periyodu:", 7, 21, 14)
-    stoch_d_period  = st.slider("Stoch RSI %D Smoothing:", 2, 5, 3)
-    stoch_lower     = st.slider("Stoch RSI Alt Eşik:", 5, 30, 20)
-    stoch_upper     = st.slider("Stoch RSI Üst Eşik:", 70, 95, 80)
-    ichi_tenkan     = st.slider("Tenkan-sen:", 5, 20, 9)
-    ichi_kijun      = st.slider("Kijun-sen:", 20, 40, 26)
-    ichi_senkou_b   = st.slider("Senkou Span B:", 40, 65, 52)
-    st_period       = st.slider("SuperTrend ATR Periyodu:", 5, 20, 10)
-    kama_period     = st.slider("KAMA Etkinlik Periyodu:", 5, 20, 10)
-    kama_fast       = st.slider("KAMA Hızlı EMA:", 2, 5, 2)
-    kama_slow       = st.slider("KAMA Yavaş EMA:", 20, 40, 30)
-    lrc_period      = st.slider("LRC Periyodu:", 20, 100, 50)
-    nw_bandwidth    = st.slider("NW Bant Genişliği (h):", 3, 20, 8)
-    nw_window       = st.slider("NW Pencere (son N bar):", 50, 300, 100)
-    vwap_band_pct   = st.slider("VWAP Nötr Bant (%):", 0.0, 1.0, 0.1, step=0.05)
+    sma_short       = st.slider("SMA Kısa Periyot:",        5,   50,  key="sma_short")
+    sma_long        = st.slider("SMA Uzun Periyot:",        50,  300, key="sma_long")
+    rsi_period      = st.slider("RSI Periyodu:",            7,   21,  key="rsi_period")
+    rsi_lower       = st.slider("RSI Alt Eşik:",            20,  40,  key="rsi_lower")
+    rsi_upper       = st.slider("RSI Üst Eşik:",            60,  80,  key="rsi_upper")
+    rsi_ma_period   = st.slider("RSI MA Periyodu:",         5,   50,  14)
+    bb_period       = st.slider("BB Periyodu:",             10,  50,  key="bb_period")
+    bb_std          = st.slider("BB Standart Sapma:",       1.0, 3.0, key="bb_std",        step=0.5)
+    macd_fast       = st.slider("MACD Hızlı EMA:",          5,   20,  key="macd_fast")
+    macd_slow       = st.slider("MACD Yavaş EMA:",          15,  40,  key="macd_slow")
+    macd_signal     = st.slider("MACD Sinyal:",             5,   15,  key="macd_signal")
+    z_period        = st.slider("Z-Score Pencere:",         10,  60,  key="z_period")
+    z_thresh        = st.slider("Z-Score Eşik:",            1.0, 3.0, key="z_thresh",      step=0.5)
+    obv_short       = st.slider("OBV Kısa SMA:",            5,   20,  10)
+    obv_long        = st.slider("OBV Uzun SMA:",            15,  50,  30)
+    adx_period      = st.slider("ADX Periyodu:",            7,   30,  key="adx_period")
+    adx_threshold   = st.slider("ADX Trend Eşiği:",        15,  35,  key="adx_threshold")
+    atr_period      = st.slider("ATR Periyodu:",            7,   30,  14)
+    stoch_rsi_period= st.slider("Stoch RSI Periyodu:",      7,   21,  14)
+    stoch_d_period  = st.slider("Stoch RSI %D Smoothing:",  2,   5,   3)
+    stoch_lower     = st.slider("Stoch RSI Alt Eşik:",      5,   30,  20)
+    stoch_upper     = st.slider("Stoch RSI Üst Eşik:",      70,  95,  80)
+    ichi_tenkan     = st.slider("Tenkan-sen:",              5,   20,  9)
+    ichi_kijun      = st.slider("Kijun-sen:",               20,  40,  26)
+    ichi_senkou_b   = st.slider("Senkou Span B:",           40,  65,  52)
+    st_period       = st.slider("SuperTrend ATR Periyodu:", 5,   20,  key="st_period")
+    st_multiplier   = st.slider("SuperTrend Çarpan:",       1.0, 5.0, key="st_multiplier", step=0.5)
+    kama_period     = st.slider("KAMA Etkinlik Periyodu:",  5,   20,  10)
+    kama_fast       = st.slider("KAMA Hızlı EMA:",          2,   5,   2)
+    kama_slow       = st.slider("KAMA Yavaş EMA:",          20,  40,  30)
+    lrc_period      = st.slider("LRC Periyodu:",            20,  100, key="lrc_period")
+    lrc_std_mult    = st.slider("LRC Standart Sapma:",      1.0, 3.0, key="lrc_std_mult",  step=0.5)
+    nw_bandwidth    = st.slider("NW Bant Genişliği (h):",   3,   20,  8)
+    nw_window       = st.slider("NW Pencere (son N bar):",  50,  300, 100)
+    vwap_band_pct   = st.slider("VWAP Nötr Bant (%):",     0.0, 1.0, 0.1, step=0.05)
 
     st.write("---")
     st.subheader("📊 Backtest Ayarları")
     commission_pct  = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
     slippage_pct    = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
-
 
     st.write("---")
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
@@ -393,33 +428,24 @@ def run_backtest(signal_series, close_arr, cost_pct):
 
 
 def _score(stats, metric):
-    """Seçilen metriğe göre skoru döndür."""
     if metric == "Sharpe":
         return stats["sharpe"]
     elif metric == "Getiri":
         return stats["total_ret"]
-    else:  # Getiri / Max DD
+    else:
         dd = stats["max_dd"]
         return stats["total_ret"] / dd if dd > 0 else stats["total_ret"]
 
 
 def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
                   n_windows=4, train_pct=70, metric="Sharpe", min_trades=3):
-    """
-    Walk-forward optimizasyon:
-    - Veriyi n_windows eşit parçaya böl.
-    - Her pencerede ilk train_pct eğitim, kalan test.
-    - Her kombinasyonu eğitimde dene; test skorunu topla.
-    - Tüm pencerelerde ortalama test skoru en yüksek kombinasyonu seç.
-    """
     keys    = list(param_grid.keys())
     combos  = list(iter_product(*param_grid.values()))
     n       = len(close_arr)
     default = {k: v[0] for k, v in param_grid.items()}
 
-    # Pencere sınırlarını hesapla
     win_size = n // n_windows
-    if win_size < 30:          # çok az veri varsa tek pencereye düş
+    if win_size < 30:
         n_windows = 1
         win_size  = n
 
@@ -430,7 +456,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         split = s + int((e - s) * train_pct / 100)
         if split - s < 10 or e - split < 5:
             continue
-        windows.append((s, split, e))   # (train_start, train_end=test_start, test_end)
+        windows.append((s, split, e))
 
     if not windows:
         return default, None
@@ -438,32 +464,20 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     combo_scores = {combo: [] for combo in combos}
 
     for (ts, te, es) in windows:
-        train_arr = close_arr[ts:te]
         test_arr  = close_arr[te:es]
-
         for combo in combos:
             p = dict(zip(keys, combo))
-
-            # Eğitim verisiyle sinyal üret — signal_fn close_arr'ı içeride kullanıyor
-            # Bu yüzden tam seriyi ver, sonra pencereyi dilimle
             sig_full = signal_fn(p)
             if sig_full is None:
                 continue
-
-            sig_vals = sig_full.values if hasattr(sig_full, "values") else sig_full
-
-            # Test dilimine ait sinyal ve fiyat
+            sig_vals  = sig_full.values if hasattr(sig_full, "values") else sig_full
             test_sig  = sig_vals[te:es]
             test_stats = run_backtest(test_sig, test_arr, cost_pct)
-
             if test_stats["n"] < min_trades:
                 continue
-
             combo_scores[combo].append(_score(test_stats, metric))
 
-    # Her kombinasyonun ortalama test skoru
-    best_combo  = None
-    best_avg    = -np.inf
+    best_combo = None; best_avg = -np.inf
     for combo, scores in combo_scores.items():
         if not scores:
             continue
@@ -475,9 +489,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     if best_combo is None:
         return default, None
 
-    best_p = dict(zip(keys, best_combo))
-
-    # Seçilen parametrelerle tüm veri üzerinde nihai istatistik
+    best_p   = dict(zip(keys, best_combo))
     sig_full = signal_fn(best_p)
     if sig_full is None:
         return best_p, None
@@ -605,19 +617,42 @@ if ticker:
 
             prog.progress(1.0, text="✅ Optimizasyon tamamlandı!")
             st.session_state[OPT_KEY] = {"params": opt_params, "stats": opt_stats}
+
+            # Optimize değerleri slider session_state'e yaz
+            p = opt_params
+            st.session_state["sma_short"]     = int(p["SMA Crossover"]["sma_s"])
+            st.session_state["sma_long"]       = int(p["SMA Crossover"]["sma_l"])
+            st.session_state["rsi_period"]     = int(p["RSI"]["rsi_period"])
+            st.session_state["rsi_lower"]      = int(p["RSI"]["rsi_lower"])
+            st.session_state["rsi_upper"]      = int(p["RSI"]["rsi_upper"])
+            st.session_state["bb_period"]      = int(p["Bollinger Bands"]["bb_period"])
+            st.session_state["bb_std"]         = float(p["Bollinger Bands"]["bb_std"])
+            st.session_state["macd_fast"]      = int(p["MACD"]["macd_fast"])
+            st.session_state["macd_slow"]      = int(p["MACD"]["macd_slow"])
+            st.session_state["macd_signal"]    = int(p["MACD"]["macd_signal"])
+            st.session_state["z_period"]       = int(p["Mean Reversion"]["z_period"])
+            st.session_state["z_thresh"]       = float(p["Mean Reversion"]["z_thresh"])
+            st.session_state["adx_period"]     = int(p["ADX"]["adx_period"])
+            st.session_state["adx_threshold"]  = int(p["ADX"]["adx_threshold"])
+            st.session_state["st_period"]      = int(p["SuperTrend"]["st_period"])
+            st.session_state["st_multiplier"]  = float(p["SuperTrend"]["st_multiplier"])
+            st.session_state["lrc_period"]     = int(p["LR Channel"]["lrc_period"])
+            st.session_state["lrc_std_mult"]   = float(p["LR Channel"]["lrc_std_mult"])
+            st.rerun()
+
         else:
             opt_params = st.session_state[OPT_KEY]["params"]
             opt_stats  = st.session_state[OPT_KEY]["stats"]
 
-        # Parametreleri çek
-        p_sma = opt_params.get("SMA Crossover", {"sma_s": sma_short, "sma_l": sma_long})
-        p_rsi  = opt_params.get("RSI",             {"rsi_period": 14, "rsi_lower": 30, "rsi_upper": 70})
-        p_bb   = opt_params.get("Bollinger Bands", {"bb_period": 20, "bb_std": 2.0})
-        p_macd = opt_params.get("MACD",            {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9})
-        p_z    = opt_params.get("Mean Reversion",  {"z_period": 30, "z_thresh": 2.0})
-        p_adx  = opt_params.get("ADX",             {"adx_period": 14, "adx_threshold": 25})
-        p_st   = opt_params.get("SuperTrend",      {"st_period": 10, "st_multiplier": 3.0})
-        p_lrc  = opt_params.get("LR Channel",      {"lrc_period": 50, "lrc_std_mult": 2.0})
+        # Parametreler doğrudan slider'dan (session_state)
+        p_sma  = {"sma_s": sma_short,  "sma_l": sma_long}
+        p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper}
+        p_bb   = {"bb_period": bb_period,   "bb_std": bb_std}
+        p_macd = {"macd_fast": macd_fast,   "macd_slow": macd_slow, "macd_signal": macd_signal}
+        p_z    = {"z_period": z_period,     "z_thresh": z_thresh}
+        p_adx  = {"adx_period": adx_period, "adx_threshold": adx_threshold}
+        p_st   = {"st_period": st_period,   "st_multiplier": st_multiplier}
+        p_lrc  = {"lrc_period": lrc_period, "lrc_std_mult": lrc_std_mult}
 
         # Sinyalleri üret
         df["Sig_SMA"], df["SMA_SHORT"], df["SMA_LONG"] = sig_sma(
@@ -666,17 +701,14 @@ if ticker:
         else:
             df["Sig_VWAP"] = 0; df["VWAP"] = np.nan
 
-
-
         # ============================================================
-        # ANA GRAFİK + VRP (tek subplot, paylaşımlı yaxis)
+        # ANA GRAFİK + VRP
         # ============================================================
         from plotly.subplots import make_subplots
 
         bull_st = df["ST_Direction"] == 1; bear_st = df["ST_Direction"] == -1
         lp = float(close.iloc[-1]); pp = float(close.iloc[-2]) if len(close) > 1 else lp
 
-        # ── VRP hesapla ──────────────────────────────────────
         vrp_bins    = 40
         price_min   = float(low.min());  price_max = float(high.max())
         bin_edges   = np.linspace(price_min, price_max, vrp_bins + 1)
@@ -702,7 +734,6 @@ if ticker:
             for b, v in enumerate(vol_at_price)
         ]
 
-        # ── Subplot: sol=grafik (col1), sağ=VRP (col2) ───────
         fig = make_subplots(
             rows=1, cols=2,
             column_widths=[0.75, 0.25],
@@ -710,7 +741,6 @@ if ticker:
             horizontal_spacing=0.0,
         )
 
-        # Grafik izleri → col1
         if chart_type == "Mum":
             fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
                 low=df["Low"], close=df["Close"], name="Fiyat"), row=1, col=1)
@@ -747,7 +777,6 @@ if ticker:
             fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
                 name="VWAP", line=dict(color="yellow", dash="dash", width=1.5)), row=1, col=1)
 
-        # VRP izleri → col2
         fig.add_trace(go.Bar(
             x=vol_at_price, y=bin_centers,
             orientation="h",
@@ -757,7 +786,6 @@ if ticker:
             hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
         ), row=1, col=2)
 
-        # POC ve son fiyat yatay çizgileri (VRP paneline)
         fig.add_hline(y=poc_price, line_dash="dash", line_color="black",
             annotation_text=f"POC {poc_price:.2f}",
             annotation_font=dict(color="black", size=9),
@@ -1052,22 +1080,22 @@ if ticker:
         # BİREYSEL BACKTEST TABLOSU
         # ============================================================
         st.write("---")
-        st.header("📊 Bireysel Algoritma Backtesti (Optimize Parametrelerle)")
+        st.header("📊 Bireysel Algoritma Backtesti (Güncel Parametrelerle)")
         st.caption("⚠️ Geçmiş performans gelecekteki sonuçların garantisi değildir.")
 
         algo_signal_map = {
-            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                              "Sig_SMA",
+            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                                   "Sig_SMA",
             f"RSI (p={p_rsi['rsi_period']} [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}])": "Sig_RSI",
-            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":          "Sig_BB",
-            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})": "Sig_MACD",
-            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":            "Sig_Z",
-            "OBV":                                                                     "Sig_OBV",
-            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":        "Sig_ADX",
-            "Stoch RSI":                                                               "Sig_StochRSI",
-            "Ichimoku":                                                                "Sig_Ichimoku",
-            "KAMA":                                                                    "Sig_KAMA",
-            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":         "Sig_SuperTrend",
-            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":     "Sig_LRC",
+            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":               "Sig_BB",
+            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})":"Sig_MACD",
+            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":                 "Sig_Z",
+            "OBV":                                                                          "Sig_OBV",
+            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":             "Sig_ADX",
+            "Stoch RSI":                                                                    "Sig_StochRSI",
+            "Ichimoku":                                                                     "Sig_Ichimoku",
+            "KAMA":                                                                         "Sig_KAMA",
+            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":              "Sig_SuperTrend",
+            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":          "Sig_LRC",
         }
         if is_intraday:
             algo_signal_map["VWAP"] = "Sig_VWAP"
@@ -1124,13 +1152,11 @@ if ticker:
 
         score_col = "Ort. Test Sharpe"
 
-        # Her algoritma için bağımsız satır — sadece kendi parametreleri
         opt_rows = []
         for algo_name, grid in PARAM_GRIDS.items():
             p = opt_params.get(algo_name, {})
             s = opt_stats.get(algo_name, {})
             row = {"Algoritma": algo_name}
-            # Optimize edilen parametreler (sadece bu algoritmanın)
             param_str = "  |  ".join(f"{k} = {v}" for k, v in p.items())
             row["Parametreler"]      = param_str
             row["Getiri (%)"]        = round(s.get("total_ret", 0), 2)

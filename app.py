@@ -829,7 +829,7 @@ if ticker:
                     f"▼ {day_low:,.2f}"
                 ),
                 xref="paper", yref="paper",
-                x=-0.085, y=0.35,
+                x=-0.13, y=0.35,
                 showarrow=False,
                 font=dict(size=11, family="monospace"),
                 align="left",
@@ -851,7 +851,7 @@ if ticker:
                 bgcolor="rgba(0,0,0,0)",
                 font=dict(size=11),
             ),
-            margin=dict(l=120, r=10, t=30, b=30),
+            margin=dict(l=160, r=10, t=30, b=30),
         )
 
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)

@@ -809,6 +809,35 @@ if ticker:
             align="left", bgcolor="rgba(255,255,255,0.92)",
             bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
 
+        # Türkiye saati (UTC+3) bugünün gün içi high/low
+        import pytz
+        tz_tr = pytz.timezone("Europe/Istanbul")
+        now_tr = pd.Timestamp.now(tz=tz_tr)
+        today_tr = now_tr.date()
+        if df.index.tz is None:
+            idx_tr = df.index.tz_localize("UTC").tz_convert(tz_tr)
+        else:
+            idx_tr = df.index.tz_convert(tz_tr)
+        today_mask = idx_tr.date == today_tr
+        if today_mask.any():
+            day_high = float(high[today_mask].max())
+            day_low  = float(low[today_mask].min())
+            fig.add_annotation(
+                text=(
+                    f"<b>Gün İçi (TR)</b><br>"
+                    f"▲ {day_high:,.2f}<br>"
+                    f"▼ {day_low:,.2f}"
+                ),
+                xref="paper", yref="paper",
+                x=-0.085, y=0.35,
+                showarrow=False,
+                font=dict(size=11, family="monospace"),
+                align="left",
+                bgcolor="rgba(255,255,255,0.92)",
+                bordercolor="rgba(200,200,200,0.6)",
+                borderwidth=1, borderpad=6,
+            )
+
         fig.update_layout(
             template="plotly_dark", height=580,
             dragmode="pan",

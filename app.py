@@ -47,6 +47,8 @@ with st.sidebar:
 
     st.write("---")
     st.subheader("Sabit Parametreler")
+    sma_short       = st.slider("SMA Kısa Periyot:", 5, 50, 20)
+    sma_long        = st.slider("SMA Uzun Periyot:", 50, 300, 200)
     rsi_period      = st.slider("RSI Periyodu:", 7, 21, 14)
     rsi_ma_period   = st.slider("RSI MA Periyodu:", 5, 50, 14)
     bb_period       = st.slider("BB Periyodu:", 10, 50, 20)
@@ -608,7 +610,7 @@ if ticker:
             opt_stats  = st.session_state[OPT_KEY]["stats"]
 
         # Parametreleri çek
-        p_sma  = opt_params.get("SMA Crossover",  {"sma_s": 20,  "sma_l": 100})
+        p_sma = opt_params.get("SMA Crossover", {"sma_s": sma_short, "sma_l": sma_long})
         p_rsi  = opt_params.get("RSI",             {"rsi_period": 14, "rsi_lower": 30, "rsi_upper": 70})
         p_bb   = opt_params.get("Bollinger Bands", {"bb_period": 20, "bb_std": 2.0})
         p_macd = opt_params.get("MACD",            {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9})

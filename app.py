@@ -803,21 +803,23 @@ if ticker:
             annotation_font=dict(color="black", size=9),
             annotation_position="bottom right", row=1, col=2)
 
-        # Türkiye saati (UTC+3) bugünün gün içi high/low
-        import pytz
-        tz_tr = pytz.timezone("Europe/Istanbul")
-        now_tr = pd.Timestamp.now(tz=tz_tr)
-        today_tr = now_tr.date()
-        if df.index.tz is None:
-            idx_tr = df.index.tz_localize("UTC").tz_convert(tz_tr)
-        else:
-            idx_tr = df.index.tz_convert(tz_tr)
-        today_mask = idx_tr.date == today_tr
-        if today_mask.any():
-            day_high = float(high[today_mask].max())
-            day_low  = float(low[today_mask].min())
-        else:
-            day_high = day_low = None
+        # Türkiye saati (UTC+3) - bugün veya son seans high/low
+        try:
+            import pytz
+            tz_tr = pytz.timezone("Europe/Istanbul")
+            now_tr = pd.Timestamp.now(tz=tz_tr)
+            today_tr = now_tr.date()
+            if df.index.tz is None:
+                idx_tr = df.index.tz_localize("UTC").tz_convert(tz_tr)
+            else:
+                idx_tr = df.index.tz_convert(tz_tr)
+            last_date = idx_tr.date[-1]
+            session_mask = idx_tr.date == last_date
+            day_high = float(high[session_mask].max())
+            day_low  = float(low[session_mask].min())
+        except Exception:
+            day_high = float(high.iloc[-1])
+            day_low  = float(low.iloc[-1])
 
         fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
             xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
@@ -825,19 +827,18 @@ if ticker:
             align="left", bgcolor="rgba(255,255,255,0.92)",
             bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
 
-        if day_high is not None:
-            fig.add_annotation(
-                text=f"▲ {day_high:,.2f}",
-                xref="paper", yref="paper", x=0.18, y=0.99, showarrow=False,
-                font=dict(size=12, color="#007a3d", family="monospace"),
-                align="center", bgcolor="rgba(255,255,255,0.92)",
-                bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
-            fig.add_annotation(
-                text=f"▼ {day_low:,.2f}",
-                xref="paper", yref="paper", x=0.27, y=0.99, showarrow=False,
-                font=dict(size=12, color="#cc2200", family="monospace"),
-                align="center", bgcolor="rgba(255,255,255,0.92)",
-                bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
+        fig.add_annotation(
+            text=f"▲ {day_high:,.2f}",
+            xref="paper", yref="paper", x=0.18, y=0.99, showarrow=False,
+            font=dict(size=12, color="#007a3d", family="monospace"),
+            align="center", bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
+        fig.add_annotation(
+            text=f"▼ {day_low:,.2f}",
+            xref="paper", yref="paper", x=0.27, y=0.99, showarrow=False,
+            font=dict(size=12, color="#cc2200", family="monospace"),
+            align="center", bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
 
         fig.update_layout(
             template="plotly_dark", height=580,

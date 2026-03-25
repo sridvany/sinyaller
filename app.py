@@ -803,12 +803,6 @@ if ticker:
             annotation_font=dict(color="black", size=9),
             annotation_position="bottom right", row=1, col=2)
 
-        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
-            xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
-            font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
-            align="left", bgcolor="rgba(255,255,255,0.92)",
-            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
-
         # Türkiye saati (UTC+3) bugünün gün içi high/low
         import pytz
         tz_tr = pytz.timezone("Europe/Istanbul")
@@ -822,22 +816,15 @@ if ticker:
         if today_mask.any():
             day_high = float(high[today_mask].max())
             day_low  = float(low[today_mask].min())
-            fig.add_annotation(
-                text=(
-                    f"<b>Gün İçi (TR)</b><br>"
-                    f"▲ {day_high:,.2f}<br>"
-                    f"▼ {day_low:,.2f}"
-                ),
-                xref="paper", yref="paper",
-                x=-0.06, y=0.28,
-                xanchor="right",
-                showarrow=False,
-                font=dict(size=11, family="monospace"),
-                align="right",
-                bgcolor="rgba(255,255,255,0.92)",
-                bordercolor="rgba(200,200,200,0.6)",
-                borderwidth=1, borderpad=6,
-            )
+            day_info = f"<br>▲ {day_high:,.2f}  ▼ {day_low:,.2f}"
+        else:
+            day_info = ""
+
+        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>{day_info}",
+            xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
+            font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
+            align="left", bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
 
         fig.update_layout(
             template="plotly_dark", height=580,

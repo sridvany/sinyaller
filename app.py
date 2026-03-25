@@ -754,28 +754,35 @@ if ticker:
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
             name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index[bull_st], y=df["SuperTrend"][bull_st],
-            name="SuperTrend (Boğa)", mode="markers",
+            name="SuperTrend (Boğa)", mode="markers", visible="legendonly",
             marker=dict(color="lime", size=4)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index[bear_st], y=df["SuperTrend"][bear_st],
-            name="SuperTrend (Ayı)", mode="markers",
+            name="SuperTrend (Ayı)", mode="markers", visible="legendonly",
             marker=dict(color="red", size=4)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"],
-            name="LRC Orta", line=dict(color="white", width=1, dash="dash")), row=1, col=1)
+            name="LRC Orta", visible="legendonly",
+            line=dict(color="white", width=1, dash="dash")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"],
-            name="LRC Üst", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")), row=1, col=1)
+            name="LRC Üst", visible="legendonly",
+            line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"],
-            name="LRC Alt", line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
+            name="LRC Alt", visible="legendonly",
+            line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
             fill="tonexty", fillcolor="rgba(150,150,150,0.05)"), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"],
-            name="NW Orta", line=dict(color="gold", width=1.5)), row=1, col=1)
+            name="NW Orta", visible="legendonly",
+            line=dict(color="gold", width=1.5)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"],
-            name="NW Üst", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")), row=1, col=1)
+            name="NW Üst", visible="legendonly",
+            line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"],
-            name="NW Alt", line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
+            name="NW Alt", visible="legendonly",
+            line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
             fill="tonexty", fillcolor="rgba(255,215,0,0.04)"), row=1, col=1)
         if is_intraday:
             fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
-                name="VWAP", line=dict(color="yellow", dash="dash", width=1.5)), row=1, col=1)
+                name="VWAP", visible="legendonly",
+                line=dict(color="yellow", dash="dash", width=1.5)), row=1, col=1)
 
         fig.add_trace(go.Bar(
             x=vol_at_price, y=bin_centers,

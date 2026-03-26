@@ -16,7 +16,7 @@ if auto_refresh_on:
     st_autorefresh(interval=55 * 1000, key="terminal_refresh")
 
 st.title("📈 SRIDVANY")
-st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı olarak çekilmektedir.")
+st.caption("Data was obtained using the yfinance API.")
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI

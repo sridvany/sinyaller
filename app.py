@@ -71,6 +71,8 @@ with st.sidebar:
     interval = st.selectbox(
         "Mum Aralığı (Interval):", options=interval_options, index=default_int_idx
     )
+    st.write("---")
+    chart_type = st.radio("📊 Grafik Tipi:", ["Çizgi" , "Mum"], horizontal=True)
 
     st.write("---")
     st.subheader("Sabit Parametreler")
@@ -116,8 +118,6 @@ with st.sidebar:
     commission_pct  = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
     slippage_pct    = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
 
-    st.write("---")
-    chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
     st.write("---")
     st.subheader("🔁 Walk-Forward Optimizasyon")

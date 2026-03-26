@@ -794,13 +794,15 @@ if ticker:
             hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
         ), row=1, col=2)
 
-        fig.add_hline(y=poc_price, line_dash="dash", line_color="black",
+        fig.add_hline(y=poc_price, line_dash="dash", line_color="orange",
             annotation_text=f"POC {poc_price:.2f}",
-            annotation_font=dict(color="black", size=9),
+            annotation_font=dict(color="orange", size=10, family="monospace"),
+            annotation_bgcolor="rgba(255,165,0,0.15)",
             annotation_position="top right", row=1, col=2)
-        fig.add_hline(y=lp, line_dash="dot", line_color="black",
+        fig.add_hline(y=lp, line_dash="dot", line_color="red",
             annotation_text=f"  {lp:.2f}",
-            annotation_font=dict(color="black", size=9),
+            annotation_font=dict(color="red", size=12, family="monospace"),
+            annotation_bgcolor="rgba(255,0,0,0.12)",
             annotation_position="bottom right", row=1, col=2)
 
         fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",

@@ -799,7 +799,7 @@ if ticker:
             annotation_font=dict(color="orange", size=10, family="monospace"),
             annotation_bgcolor="rgba(255,165,0,0.15)",
             annotation_position="top right", row=1, col=2)
-        fig.add_hline(y=lp, line_dash="dot", line_color="red",
+        fig.add_hline(y=lp, line_dash="dot", line_color="lime" if lp >= pp else "red",
             annotation_text=f"  {lp:.2f}",
             annotation_font=dict(color="red", size=12, family="monospace"),
             annotation_bgcolor="rgba(255,0,0,0.12)",

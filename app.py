@@ -730,7 +730,7 @@ if ticker:
         poc_price = bin_centers[poc_idx]
         max_vol   = vol_at_price.max()
         bar_colors = [
-            "rgba(139,0,0,1.0)" if b == poc_idx
+            "rgba(255,165,0,1.0)" if b == poc_idx
             else f"rgba(100,{int(80 + 175*(v/max_vol)) if max_vol > 0 else 200},255,0.85)"
             for b, v in enumerate(vol_at_price)
         ]

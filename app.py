@@ -16,7 +16,7 @@ if auto_refresh_on:
     st_autorefresh(interval=55 * 1000, key="terminal_refresh")
 
 st.title("📈 SRIDVANY")
-st.caption("by tahmin.ai")
+st.caption("tahmin.ai")
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI

@@ -801,8 +801,8 @@ if ticker:
             annotation_position="top right", row=1, col=2)
         fig.add_hline(y=lp, line_dash="dot", line_color="lime" if lp >= pp else "red",
             annotation_text=f"  {lp:.2f}",
-            annotation_font=dict(color="red", size=12, family="monospace"),
-            annotation_bgcolor="rgba(255,0,0,0.12)",
+            annotation_font=dict(color="lime" if lp >= pp else "red", size=12, family="monospace"),
+            annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
             annotation_position="bottom right", row=1, col=2)
 
         fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",

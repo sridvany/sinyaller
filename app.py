@@ -15,7 +15,7 @@ auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
 if auto_refresh_on:
     st_autorefresh(interval=55 * 1000, key="terminal_refresh")
 
-st.title("📈 Yatırım Algoritmaları Terminali")
+st.title("📈 SRIDVANY")
 st.caption("Piyasa verileri Yahoo Finance üzerinden 1 dakika gecikmeli/canlı olarak çekilmektedir.")
 
 # ============================================================

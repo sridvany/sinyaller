@@ -824,7 +824,7 @@ if ticker:
             ),
             margin=dict(l=160, r=10, t=30, b=30),
         )
-        fig.layout.annotations = [] # Tüm notasyonları (kutucukları) temizler
+     
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================

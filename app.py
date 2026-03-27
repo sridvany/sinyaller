@@ -50,7 +50,7 @@ for k, v in _defaults.items():
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "XAUT-USD")
+    ticker = st.text_input("Ticker Sembolü:", "gc=f")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",

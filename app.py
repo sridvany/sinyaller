@@ -1013,6 +1013,20 @@ if ticker:
                     name="Bearish Div", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 RSI Nasıl Okunur?"):
+                st.markdown("""
+**RSI (Relative Strength Index)** — 0–100 arasında salınan momentum göstergesidir.
+
+| Bölge | Anlam |
+|---|---|
+| RSI < Aşırı Satım eşiği | 🟢 Aşırı satılmış → potansiyel AL sinyali |
+| RSI > Aşırı Alım eşiği | 🔴 Aşırı alınmış → potansiyel SAT sinyali |
+| RSI ~ 50 | ⚪ Nötr bölge |
+
+- **RSI MA (sarı noktalı):** RSI'nın hareketli ortalaması. RSI bu çizgiyi yukarı keserse momentum güçleniyor demektir.
+- **Bullish Divergence 🔺:** Fiyat düşük dip yaparken RSI yüksek dip yapıyor → güçlü dönüş sinyali.
+- **Bearish Divergence 🔻:** Fiyat yüksek tepe yaparken RSI alçak tepe yapıyor → zayıflama uyarısı.
+                """)
 
         with tab2:
             f = go.Figure()
@@ -1035,6 +1049,21 @@ if ticker:
                     name="Bearish Div", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 MACD Nasıl Okunur?"):
+                st.markdown("""
+**MACD (Moving Average Convergence Divergence)** — trend yönü ve momentumu ölçer.
+
+| Unsur | Anlam |
+|---|---|
+| MACD > Sinyal çizgisi | 🟢 Yukarı momentum → AL eğilimi |
+| MACD < Sinyal çizgisi | 🔴 Aşağı momentum → SAT eğilimi |
+| Histogram yeşil & büyüyor | 🟢 Momentum güçleniyor |
+| Histogram kırmızı & büyüyor | 🔴 Momentum zayıflıyor |
+
+- **Sıfır çizgisi geçişi:** MACD sıfırı yukarı kesiyor = güçlü boğa sinyali; aşağı kesiyor = ayı sinyali.
+- **Bullish Divergence 🔺:** Fiyat düşük dip, MACD yüksek dip → trend dönüş öncüsü.
+- **Bearish Divergence 🔻:** Fiyat yüksek tepe, MACD alçak tepe → zirve uyarısı.
+                """)
 
         with tab3:
             f = go.Figure()
@@ -1044,6 +1073,23 @@ if ticker:
             f.add_hline(y=p_adx["adx_threshold"], line_dash="dash", line_color="white",
                 annotation_text=f"Trend Eşiği ({p_adx['adx_threshold']})")
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 ADX Nasıl Okunur?"):
+                st.markdown("""
+**ADX (Average Directional Index)** — trendin gücünü ölçer (yön değil, sadece güç).
+
+| ADX Değeri | Trend Gücü |
+|---|---|
+| < 20 | Zayıf / yatay piyasa |
+| 20–25 | Trend oluşuyor |
+| > 25 | Güçlü trend |
+| > 40 | Çok güçlü trend |
+
+- **+DI (yeşil):** Yukarı yönlü hareketin gücü.
+- **-DI (kırmızı):** Aşağı yönlü hareketin gücü.
+- **+DI > -DI ve ADX > eşik:** 🟢 Güçlü yükseliş trendi.
+- **-DI > +DI ve ADX > eşik:** 🔴 Güçlü düşüş trendi.
+- ADX düşükken verilen sinyaller güvenilmezdir.
+                """)
 
         with tab4:
             f = go.Figure()
@@ -1051,6 +1097,21 @@ if ticker:
             f.add_trace(go.Scatter(x=df.index, y=obv_sma_short, name=f"OBV SMA {obv_short}", line=dict(color="orange", dash="dot")))
             f.add_trace(go.Scatter(x=df.index, y=obv_sma_long,  name=f"OBV SMA {obv_long}",  line=dict(color="cyan",   dash="dot")))
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 OBV Nasıl Okunur?"):
+                st.markdown("""
+**OBV (On-Balance Volume)** — hacim akışını kümülatif olarak izler; fiyat hareketini önceden haber verebilir.
+
+| Durum | Anlam |
+|---|---|
+| OBV yükseliyor, fiyat yükseliyor | 🟢 Trend onaylanıyor |
+| OBV yükseliyor, fiyat düşüyor | 🟢 Gizli birikim → potansiyel yukarı kırılım |
+| OBV düşüyor, fiyat yükseliyor | 🔴 Dağıtım var → zayıflama uyarısı |
+| OBV düşüyor, fiyat düşüyor | 🔴 Trend onaylanıyor |
+
+- **Kısa SMA (turuncu) > Uzun SMA (cyan):** OBV momentumu pozitif → AL eğilimi.
+- **Kısa SMA < Uzun SMA:** OBV momentumu negatif → SAT eğilimi.
+- OBV'nin mutlak değeri değil, eğimi önemlidir.
+                """)
 
         with tab5:
             f = go.Figure()
@@ -1061,6 +1122,21 @@ if ticker:
             f.add_hline(y=stoch_upper, line_dash="dash", line_color="red",
                 annotation_text=f"Aşırı Alım ({stoch_upper})")
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 Stochastic RSI Nasıl Okunur?"):
+                st.markdown("""
+**Stochastic RSI** — RSI'ya uygulanan Stochastic göstergesidir. RSI'dan daha hassas ve hızlıdır.
+
+| Bölge | Anlam |
+|---|---|
+| %K < Aşırı Satım eşiği | 🟢 Aşırı satılmış → AL bölgesi |
+| %K > Aşırı Alım eşiği | 🔴 Aşırı alınmış → SAT bölgesi |
+
+- **%K (mor):** Hızlı çizgi — anlık sinyal verir.
+- **%D (turuncu noktalı):** %K'nın ortalaması — yavaş, daha güvenilir.
+- **%K, %D'yi aşırı satım bölgesinde yukarı kesiyor:** 🟢 Güçlü AL sinyali.
+- **%K, %D'yi aşırı alım bölgesinde aşağı kesiyor:** 🔴 Güçlü SAT sinyali.
+- RSI aşırı bölgelerde değilken Stoch RSI sinyalleri daha az güvenilirdir.
+                """)
 
         with tab6:
             f = go.Figure()
@@ -1075,6 +1151,25 @@ if ticker:
                 fill="tonexty", fillcolor="rgba(100,100,100,0.15)"))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 Ichimoku Nasıl Okunur?"):
+                st.markdown("""
+**Ichimoku Kinko Hyo** — trend yönü, destek/direnç ve momentum'u tek grafikte gösterir.
+
+| Unsur | Renk | Anlam |
+|---|---|---|
+| Tenkan-sen | Cyan | Kısa vadeli denge çizgisi (9 bar) |
+| Kijun-sen | Kırmızı | Orta vadeli denge çizgisi (26 bar) |
+| Senkou Span A | Yeşil | Bulutun üst sınırı |
+| Senkou Span B | Kırmızı | Bulutun alt sınırı |
+
+**Okuma Kuralları:**
+- **Fiyat bulutun üstünde:** 🟢 Yükseliş trendi.
+- **Fiyat bulutun altında:** 🔴 Düşüş trendi.
+- **Fiyat bulut içinde:** ⚪ Konsolidasyon.
+- **Tenkan > Kijun:** 🟢 Kısa vadeli momentum pozitif.
+- **Yeşil bulut (Span A > Span B):** Boğa piyasası.
+- **Kırmızı bulut (Span B > Span A):** Ayı piyasası.
+                """)
 
         with tab7:
             f = go.Figure()
@@ -1086,6 +1181,20 @@ if ticker:
                 name="SuperTrend (Ayı)", mode="lines", line=dict(color="red", width=2)))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 SuperTrend Nasıl Okunur?"):
+                st.markdown("""
+**SuperTrend** — ATR tabanlı dinamik destek/direnç çizgisidir.
+
+| Durum | Anlam |
+|---|---|
+| Çizgi yeşil (fiyatın altında) | 🟢 Yükseliş trendi — uzun pozisyon |
+| Çizgi kırmızı (fiyatın üstünde) | 🔴 Düşüş trendi — kısa pozisyon |
+| Renk değişimi | ⚡ Trend dönüşü sinyali |
+
+- **ATR Çarpanı (multiplier):** Yüksek değer → daha az sinyal, daha az gürültü. Düşük değer → daha fazla sinyal, daha fazla whipsaw riski.
+- **En güçlü sinyal:** SuperTrend renk değişimi + ADX > eşik değeri kombinasyonu.
+- Yatay piyasalarda yanlış sinyal üretebilir; ADX filtresiyle kullanın.
+                """)
 
         with tab8:
             f = go.Figure()
@@ -1099,6 +1208,30 @@ if ticker:
                 line=dict(color="rgba(200,200,200,0.6)", dash="dot"),
                 fill="tonexty", fillcolor="rgba(150,150,150,0.07)"))
             f.update_layout(**sub_layout(height=350)); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 KAMA & LR Channel Nasıl Okunur?"):
+                st.markdown("""
+**KAMA (Kaufman Adaptive Moving Average)** — piyasa koşullarına göre hız adapte eden akıllı bir ortalamadır.
+
+| Durum | Anlam |
+|---|---|
+| Fiyat > KAMA | 🟢 Yükseliş eğilimi |
+| Fiyat < KAMA | 🔴 Düşüş eğilimi |
+| KAMA düz seyrediyor | ⚪ Piyasa yatay, bekle |
+
+- Trend güçlüyken KAMA hızlanır, yatay piyasada yavaşlar → whipsaw'ı filtreler.
+
+---
+
+**LR Channel (Linear Regression Channel)** — son N bardaki fiyatın doğrusal regresyon kanalıdır.
+
+| Durum | Anlam |
+|---|---|
+| Fiyat alt banda değiyor | 🟢 Potansiyel destek / AL bölgesi |
+| Fiyat üst banda değiyor | 🔴 Potansiyel direnç / SAT bölgesi |
+| Fiyat orta çizginin üstünde | 🟢 Kısa vadeli güç |
+
+- Kanal eğimi trendin yönünü gösterir.
+                """)
 
         with tab9:
             f = go.Figure()
@@ -1118,6 +1251,20 @@ if ticker:
                     name="Aşırı Satım", mode="markers", marker=dict(color="lime", size=6)))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 Nadaraya-Watson Nasıl Okunur?"):
+                st.markdown("""
+**Nadaraya-Watson Envelope** — çekirdek regresyon ile hesaplanan non-parametrik bir zarf göstergesidir.
+
+| Durum | Anlam |
+|---|---|
+| Fiyat üst zarfın üstünde 🔴 | Aşırı alım — geri çekilme beklenebilir |
+| Fiyat alt zarfın altında 🟢 | Aşırı satım — toparlanma beklenebilir |
+| Fiyat zarf içinde | Normal seyir |
+
+- **Bant genişliği (h):** Düşük değer → zarf fiyata yakın, daha hassas. Yüksek değer → düzgün ama gecikmeli.
+- **Orta çizgi (altın sarısı):** Fiyatın istatistiksel "adil değeri"ni temsil eder.
+- Kısa vadeli sapmaların orta çizgiye döneceği varsayımına dayanır — mean reversion stratejisiyle uyumlu.
+                """)
 
         # YENİ: WaveTrend tab
         with tab10:
@@ -1149,6 +1296,22 @@ if ticker:
                     marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout(height=300))
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 WaveTrend Nasıl Okunur?"):
+                st.markdown("""
+**WaveTrend (WT_CROSS_LB)** — momentum ve aşırı bölge tespiti için kullanılan osilatördür.
+
+| Unsur | Anlam |
+|---|---|
+| WT1 (cyan) | Hızlı sinyal çizgisi |
+| WT2 (turuncu noktalı) | Yavaş sinyal çizgisi |
+| Histogram | WT1 - WT2 farkı |
+
+**Sinyal Kuralları:**
+- **WT1, WT2'yi aşırı satım bölgesinde yukarı kesiyor 🔺:** Güçlü AL sinyali.
+- **WT1, WT2'yi aşırı alım bölgesinde aşağı kesiyor 🔻:** Güçlü SAT sinyali.
+- Sinyaller yalnızca aşırı bölgelerde (ob/os eşiklerinin ötesinde) tetiklenir — bu sayede gürültü azalır.
+- Histogram rengi değişimi (kırmızı→yeşil) erken momentum dönüşünün işareti olabilir.
+                """)
 
         # YENİ: Divergence özet tab
         with tab11:
@@ -1183,6 +1346,26 @@ if ticker:
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False,
                 title_text="Divergence Noktaları (Fiyat Grafiği Üzerinde)")
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            with st.expander("📖 Divergence Nasıl Okunur?"):
+                st.markdown("""
+**Divergence (Uyumsuzluk)** — fiyat hareketi ile indikatör arasındaki zıtlık; trend dönüşünün erken habercisidir.
+
+| Tür | Fiyat | İndikatör | Anlam |
+|---|---|---|---|
+| Bullish Div 🔺 | Düşük dip | Yüksek dip | 🟢 Satış baskısı azalıyor → yukarı dönüş olabilir |
+| Bearish Div 🔻 | Yüksek tepe | Düşük tepe | 🔴 Alış gücü zayıflıyor → aşağı dönüş olabilir |
+
+**Semboller:**
+- 🔺 Yeşil üçgen → RSI Bullish Divergence
+- 🔻 Kırmızı üçgen → RSI Bearish Divergence
+- 💠 Aquamarine elmas → MACD Bullish Divergence
+- 💠 Somon elmas → MACD Bearish Divergence
+
+**Önemli Notlar:**
+- Divergence tek başına yeterli değildir; SuperTrend veya Ichimoku gibi trend filtreleriyle doğrulayın.
+- En güvenilir divergence sinyalleri aşırı alım/satım bölgelerinde oluşanlardır.
+- Güçlü trendlerde divergence uzun süre devam edebilir — pozisyon almak için momentum değişimini bekleyin.
+                """)
 
         # ============================================================
         # KARAR TABLOSU

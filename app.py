@@ -1146,7 +1146,7 @@ if ticker:
         with tab11:
             f = go.Figure()
             f.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
-                line=dict(color="white", width=1.5)))
+                line=dict(color="red", width=1.5)))
             # RSI divergence
             bull_div_r = df["Div_RSI"] == 1
             bear_div_r = df["Div_RSI"] == -1

@@ -15,6 +15,14 @@ auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
 if auto_refresh_on:
     st_autorefresh(interval=55 * 1000, key="terminal_refresh")
 
+st.markdown("""
+<style>
+    .block-container { padding-top: 1rem !important; }
+    div[data-testid="stCaption"] { margin-top: -0.5rem; margin-bottom: -0.5rem; }
+    h1 { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📈 SRIDVANY")
 st.caption("tahmin.ai")
 

@@ -23,7 +23,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 SRIDVANY")
+st.title("📈 ölçemediğini yönetemezsin...")
 st.caption("tahmin.ai")
 
 # ============================================================

@@ -6,45 +6,10 @@ import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 from itertools import product as iter_product
 
-try:
-    from tvdatafeed import TvDatafeed, Interval as TvInterval
-    TV_AVAILABLE = True
-except ImportError:
-    TV_AVAILABLE = False
-
-# ============================================================
-# TradingView Interval & Period Mapping
-# ============================================================
-TV_INTERVAL_MAP = {
-    "1m":  "in_1_minute",
-    "2m":  "in_2_minute",
-    "5m":  "in_5_minute",
-    "15m": "in_15_minute",
-    "30m": "in_30_minute",
-    "60m": "in_1_hour",
-    "1h":  "in_1_hour",
-    "1d":  "in_daily",
-    "1wk": "in_weekly",
-    "1mo": "in_monthly",
-}
-
-TV_PERIOD_BARS = {
-    "1d":  390,
-    "5d":  1950,
-    "1mo": 720,
-    "6mo": 4380,
-    "1y":  365,
-    "2y":  730,
-    "5y":  1825,
-    "max": 5000,
-}
-
-XAUUSD_SYMBOLS = {"XAUUSD", "XAU/USD", "XAU_USD", "XAUUSD=X"}
-
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
 # ============================================================
-st.set_page_config(page_title="Algo-Trader Pro v6.1", layout="wide")
+st.set_page_config(page_title="Algo-Trader Pro v6.0", layout="wide")
 
 auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
 if auto_refresh_on:
@@ -95,16 +60,7 @@ for k, v in _defaults.items():
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "XAUUSD")
-
-    # XAUUSD ise kaynak bilgisi göster
-    if ticker.upper() in XAUUSD_SYMBOLS:
-        if TV_AVAILABLE:
-            st.success("🟢 Kaynak: TradingView (OANDA)")
-        else:
-            st.warning("⚠️ tvdatafeed kurulu değil → yfinance GC=F kullanılacak\n\n`pip install tvdatafeed`")
-    else:
-        st.info("🔵 Kaynak: yfinance")
+    ticker = st.text_input("Ticker Sembolü:", "gc=f")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
@@ -126,72 +82,72 @@ with st.sidebar:
         "Mum Aralığı (Interval):", options=interval_options, index=default_int_idx
     )
     st.write("---")
-    chart_type = st.radio("📊 Grafik Tipi:", ["Çizgi", "Mum"], horizontal=True)
+    chart_type = st.radio("📊 Grafik Tipi:", ["Çizgi" , "Mum"], horizontal=True)
 
     st.write("---")
     st.subheader("Sabit Parametreler")
     ss = st.session_state
-    sma_short        = st.slider("SMA Kısa Periyot:",        5,   50,  value=ss["sma_short"])
-    sma_long         = st.slider("SMA Uzun Periyot:",        50,  300, value=ss["sma_long"])
-    rsi_period       = st.slider("RSI Periyodu:",            7,   21,  value=ss["rsi_period"])
-    rsi_lower        = st.slider("RSI Alt Eşik:",            20,  40,  value=ss["rsi_lower"])
-    rsi_upper        = st.slider("RSI Üst Eşik:",            60,  80,  value=ss["rsi_upper"])
-    rsi_ma_period    = st.slider("RSI MA Periyodu:",         5,   50,  14)
-    bb_period        = st.slider("BB Periyodu:",             10,  50,  value=ss["bb_period"])
-    bb_std           = st.slider("BB Standart Sapma:",       1.0, 3.0, value=ss["bb_std"],        step=0.5)
-    macd_fast        = st.slider("MACD Hızlı EMA:",          5,   20,  value=ss["macd_fast"])
-    macd_slow        = st.slider("MACD Yavaş EMA:",          15,  40,  value=ss["macd_slow"])
-    macd_signal      = st.slider("MACD Sinyal:",             5,   15,  value=ss["macd_signal"])
-    z_period         = st.slider("Z-Score Pencere:",         10,  60,  value=ss["z_period"])
-    z_thresh         = st.slider("Z-Score Eşik:",            1.0, 3.0, value=ss["z_thresh"],      step=0.5)
-    obv_short        = st.slider("OBV Kısa SMA:",            5,   20,  10)
-    obv_long         = st.slider("OBV Uzun SMA:",            15,  50,  30)
-    adx_period       = st.slider("ADX Periyodu:",            7,   30,  value=ss["adx_period"])
-    adx_threshold    = st.slider("ADX Trend Eşiği:",        15,  35,  value=ss["adx_threshold"])
-    atr_period       = st.slider("ATR Periyodu:",            7,   30,  14)
-    stoch_rsi_period = st.slider("Stoch RSI Periyodu:",      7,   21,  14)
-    stoch_d_period   = st.slider("Stoch RSI %D Smoothing:",  2,   5,   3)
-    stoch_lower      = st.slider("Stoch RSI Alt Eşik:",      5,   30,  20)
-    stoch_upper      = st.slider("Stoch RSI Üst Eşik:",      70,  95,  80)
-    ichi_tenkan      = st.slider("Tenkan-sen:",              5,   20,  9)
-    ichi_kijun       = st.slider("Kijun-sen:",               20,  40,  26)
-    ichi_senkou_b    = st.slider("Senkou Span B:",           40,  65,  52)
-    st_period        = st.slider("SuperTrend ATR Periyodu:", 5,   20,  value=ss["st_period"])
-    st_multiplier    = st.slider("SuperTrend Çarpan:",       1.0, 5.0, value=ss["st_multiplier"], step=0.5)
-    kama_period      = st.slider("KAMA Etkinlik Periyodu:",  5,   20,  10)
-    kama_fast        = st.slider("KAMA Hızlı EMA:",          2,   5,   2)
-    kama_slow        = st.slider("KAMA Yavaş EMA:",          20,  40,  30)
-    lrc_period       = st.slider("LRC Periyodu:",            20,  100, value=ss["lrc_period"])
-    lrc_std_mult     = st.slider("LRC Standart Sapma:",      1.0, 3.0, value=ss["lrc_std_mult"],  step=0.5)
-    nw_bandwidth     = st.slider("NW Bant Genişliği (h):",   3,   20,  8)
-    nw_window        = st.slider("NW Pencere (son N bar):",  50,  300, 100)
-    vwap_band_pct    = st.slider("VWAP Nötr Bant (%):",     0.0, 1.0, 0.1, step=0.05)
+    sma_short       = st.slider("SMA Kısa Periyot:",        5,   50,  value=ss["sma_short"])
+    sma_long        = st.slider("SMA Uzun Periyot:",        50,  300, value=ss["sma_long"])
+    rsi_period      = st.slider("RSI Periyodu:",            7,   21,  value=ss["rsi_period"])
+    rsi_lower       = st.slider("RSI Alt Eşik:",            20,  40,  value=ss["rsi_lower"])
+    rsi_upper       = st.slider("RSI Üst Eşik:",            60,  80,  value=ss["rsi_upper"])
+    rsi_ma_period   = st.slider("RSI MA Periyodu:",         5,   50,  14)
+    bb_period       = st.slider("BB Periyodu:",             10,  50,  value=ss["bb_period"])
+    bb_std          = st.slider("BB Standart Sapma:",       1.0, 3.0, value=ss["bb_std"],        step=0.5)
+    macd_fast       = st.slider("MACD Hızlı EMA:",          5,   20,  value=ss["macd_fast"])
+    macd_slow       = st.slider("MACD Yavaş EMA:",          15,  40,  value=ss["macd_slow"])
+    macd_signal     = st.slider("MACD Sinyal:",             5,   15,  value=ss["macd_signal"])
+    z_period        = st.slider("Z-Score Pencere:",         10,  60,  value=ss["z_period"])
+    z_thresh        = st.slider("Z-Score Eşik:",            1.0, 3.0, value=ss["z_thresh"],      step=0.5)
+    obv_short       = st.slider("OBV Kısa SMA:",            5,   20,  10)
+    obv_long        = st.slider("OBV Uzun SMA:",            15,  50,  30)
+    adx_period      = st.slider("ADX Periyodu:",            7,   30,  value=ss["adx_period"])
+    adx_threshold   = st.slider("ADX Trend Eşiği:",        15,  35,  value=ss["adx_threshold"])
+    atr_period      = st.slider("ATR Periyodu:",            7,   30,  14)
+    stoch_rsi_period= st.slider("Stoch RSI Periyodu:",      7,   21,  14)
+    stoch_d_period  = st.slider("Stoch RSI %D Smoothing:",  2,   5,   3)
+    stoch_lower     = st.slider("Stoch RSI Alt Eşik:",      5,   30,  20)
+    stoch_upper     = st.slider("Stoch RSI Üst Eşik:",      70,  95,  80)
+    ichi_tenkan     = st.slider("Tenkan-sen:",              5,   20,  9)
+    ichi_kijun      = st.slider("Kijun-sen:",               20,  40,  26)
+    ichi_senkou_b   = st.slider("Senkou Span B:",           40,  65,  52)
+    st_period       = st.slider("SuperTrend ATR Periyodu:", 5,   20,  value=ss["st_period"])
+    st_multiplier   = st.slider("SuperTrend Çarpan:",       1.0, 5.0, value=ss["st_multiplier"], step=0.5)
+    kama_period     = st.slider("KAMA Etkinlik Periyodu:",  5,   20,  10)
+    kama_fast       = st.slider("KAMA Hızlı EMA:",          2,   5,   2)
+    kama_slow       = st.slider("KAMA Yavaş EMA:",          20,  40,  30)
+    lrc_period      = st.slider("LRC Periyodu:",            20,  100, value=ss["lrc_period"])
+    lrc_std_mult    = st.slider("LRC Standart Sapma:",      1.0, 3.0, value=ss["lrc_std_mult"],  step=0.5)
+    nw_bandwidth    = st.slider("NW Bant Genişliği (h):",   3,   20,  8)
+    nw_window       = st.slider("NW Pencere (son N bar):",  50,  300, 100)
+    vwap_band_pct   = st.slider("VWAP Nötr Bant (%):",     0.0, 1.0, 0.1, step=0.05)
 
     st.write("---")
     st.subheader("📐 Fibonacci Ayarları")
-    fib_lookback = st.slider("Fibonacci Lookback (bar):", 20, 300, 100)
+    fib_lookback    = st.slider("Fibonacci Lookback (bar):", 20, 300, 100)
 
     st.write("---")
     st.subheader("〰️ WaveTrend Ayarları")
-    wt_n1 = st.slider("WaveTrend Kanal (n1):",    5,  20,  value=ss["wt_n1"])
-    wt_n2 = st.slider("WaveTrend Ortalama (n2):", 10, 40,  value=ss["wt_n2"])
-    wt_ob = st.slider("WaveTrend Aşırı Alım:",    40, 80,  60)
-    wt_os = st.slider("WaveTrend Aşırı Satım:",  -80, -20, -60)
+    wt_n1           = st.slider("WaveTrend Kanal (n1):",    5,  20,  value=ss["wt_n1"])
+    wt_n2           = st.slider("WaveTrend Ortalama (n2):", 10, 40,  value=ss["wt_n2"])
+    wt_ob           = st.slider("WaveTrend Aşırı Alım:",    40, 80,  60)
+    wt_os           = st.slider("WaveTrend Aşırı Satım:",  -80, -20, -60)
 
     st.write("---")
     st.subheader("🔀 Divergence Ayarları")
-    div_window = st.slider("Divergence Pivot Pencere:", 3, 10, 5)
+    div_window      = st.slider("Divergence Pivot Pencere:", 3, 10, 5)
 
     st.write("---")
     st.subheader("📊 Backtest Ayarları")
-    commission_pct = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
-    slippage_pct   = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
+    commission_pct  = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
+    slippage_pct    = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
 
     st.write("---")
     st.subheader("🔁 Walk-Forward Optimizasyon")
-    n_windows = st.slider("Pencere Sayısı:", 2, 8, 4,
+    n_windows  = st.slider("Pencere Sayısı:", 2, 8, 4,
         help="Veri kaç eşit parçaya bölünsün?")
-    train_pct = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
+    train_pct  = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
         help="Her pencerenin %kaçı eğitim, kalanı test olsun?")
     st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test")
 
@@ -272,8 +228,8 @@ def calc_adx(high, low, close, period=14):
 
 
 def calc_kama(close, period=10, fast=2, slow=30):
-    ca   = close.values.astype(float)
-    kama = np.full(len(ca), np.nan)
+    ca      = close.values.astype(float)
+    kama    = np.full(len(ca), np.nan)
     kama[period - 1] = ca[period - 1]
     fsc = 2.0 / (fast + 1); ssc = 2.0 / (slow + 1)
     for i in range(period, len(ca)):
@@ -316,8 +272,8 @@ def calc_linear_regression_channel(close, period=50, std_mult=2.0):
     n = len(close)
     mid = np.full(n, np.nan); upper = np.full(n, np.nan); lower = np.full(n, np.nan)
     for i in range(period - 1, n):
-        y  = close.values[i - period + 1:i + 1].astype(float)
-        x  = np.arange(period)
+        y = close.values[i - period + 1:i + 1].astype(float)
+        x = np.arange(period)
         sl, ic = np.polyfit(x, y, 1)
         yp  = sl * x + ic
         std = np.std(y - yp)
@@ -340,12 +296,17 @@ def calc_nadaraya_watson(close, bandwidth=8, window=100):
 
 
 def calc_vwap_daily(high, low, close, volume):
-    tp = (high + low + close) / 3
-    dk = pd.Series(close.index.date, index=close.index)
+    tp  = (high + low + close) / 3
+    dk  = pd.Series(close.index.date, index=close.index)
     return (tp * volume).groupby(dk).cumsum() / volume.groupby(dk).cumsum().replace(0, np.nan)
 
 
+# ============================================================
+# YENİ: FİBONACCİ, WAVETREND, DIVERGENCE
+# ============================================================
+
 def calc_fibonacci(high, low, lookback=100):
+    """Swing high/low üzerinden Fibonacci retracement seviyeleri hesaplar."""
     recent_high = float(high.rolling(lookback, min_periods=1).max().iloc[-1])
     recent_low  = float(low.rolling(lookback, min_periods=1).min().iloc[-1])
     diff = recent_high - recent_low
@@ -364,6 +325,7 @@ def calc_fibonacci(high, low, lookback=100):
 
 
 def calc_wavetrend(high, low, close, n1=10, n2=21):
+    """LazyBear WaveTrend with Crosses hesaplar."""
     ap  = (high + low + close) / 3
     esa = ap.ewm(span=n1, adjust=False).mean()
     d   = (ap - esa).abs().ewm(span=n1, adjust=False).mean()
@@ -374,28 +336,43 @@ def calc_wavetrend(high, low, close, n1=10, n2=21):
 
 
 def detect_divergence(price, indicator, window=5):
+    """
+    Bullish divergence: fiyat düşük dip yapar, indikatör yüksek dip → 1
+    Bearish divergence: fiyat yüksek tepe yapar, indikatör düşük tepe → -1
+    window: pivot tespiti için yan bar sayısı
+    """
     n      = len(price)
     result = np.zeros(n)
     pv     = price.values.astype(float)
     iv     = indicator.values.astype(float)
+
     for i in range(window * 2, n):
         seg_p = pv[max(0, i - window * 4):i + 1]
         seg_i = iv[max(0, i - window * 4):i + 1]
         m     = len(seg_p)
+
+        # Yerel dipler (bullish için)
         lows_p = []; lows_i = []
         for j in range(window, m - window):
             if seg_p[j] == np.min(seg_p[j - window:j + window + 1]):
-                lows_p.append(seg_p[j]); lows_i.append(seg_i[j])
+                lows_p.append(seg_p[j])
+                lows_i.append(seg_i[j])
+
         if len(lows_p) >= 2:
             if lows_p[-1] < lows_p[-2] and lows_i[-1] > lows_i[-2]:
-                result[i] = 1
+                result[i] = 1  # Bullish divergence
+
+        # Yerel tepeler (bearish için)
         highs_p = []; highs_i = []
         for j in range(window, m - window):
             if seg_p[j] == np.max(seg_p[j - window:j + window + 1]):
-                highs_p.append(seg_p[j]); highs_i.append(seg_i[j])
+                highs_p.append(seg_p[j])
+                highs_i.append(seg_i[j])
+
         if len(highs_p) >= 2:
             if highs_p[-1] > highs_p[-2] and highs_i[-1] < highs_i[-2]:
-                result[i] = -1
+                result[i] = -1  # Bearish divergence
+
     return pd.Series(result, index=price.index)
 
 
@@ -403,8 +380,8 @@ def detect_divergence(price, indicator, window=5):
 # 5. SİNYAL FONKSİYONLARI
 # ============================================================
 def sig_sma(close, atr_high, sma_s=20, sma_l=100):
-    sh  = close.rolling(sma_s, min_periods=sma_s).mean()
-    sl  = close.rolling(sma_l, min_periods=sma_l).mean()
+    sh = close.rolling(sma_s, min_periods=sma_s).mean()
+    sl = close.rolling(sma_l, min_periods=sma_l).mean()
     sig = np.where(sh > sl, 1, -1)
     sig = np.where(sh.isna() | sl.isna(), 0, sig)
     sig = np.where(atr_high | (sig == 0), sig, 0)
@@ -412,9 +389,9 @@ def sig_sma(close, atr_high, sma_s=20, sma_l=100):
 
 
 def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70):
-    d   = close.diff()
-    g   = d.where(d > 0, 0.0).rolling(rsi_period).mean()
-    l   = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
+    d = close.diff()
+    g = d.where(d > 0, 0.0).rolling(rsi_period).mean()
+    l = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
     rsi = 100 - (100 / (1 + g / l.replace(0, np.nan)))
     sig = np.where(rsi < rsi_lower, 1, np.where(rsi > rsi_upper, -1, 0))
     return pd.Series(sig, index=close.index), rsi
@@ -446,11 +423,11 @@ def sig_z(close, z_period, z_thresh=2.0):
 
 
 def sig_obv(close, volume, obv_short, obv_long):
-    obv = (volume * np.sign(close.diff()).fillna(0)).cumsum()
-    s   = obv.rolling(obv_short, min_periods=obv_short).mean()
-    l   = obv.rolling(obv_long,  min_periods=obv_long).mean()
-    sig = np.where(s > l, 1, -1)
-    sig = np.where(s.isna() | l.isna(), 0, sig)
+    obv  = (volume * np.sign(close.diff()).fillna(0)).cumsum()
+    s    = obv.rolling(obv_short, min_periods=obv_short).mean()
+    l    = obv.rolling(obv_long,  min_periods=obv_long).mean()
+    sig  = np.where(s > l, 1, -1)
+    sig  = np.where(s.isna() | l.isna(), 0, sig)
     return pd.Series(sig, index=close.index), obv, s, l
 
 
@@ -515,7 +492,8 @@ def sig_vwap_fn(high, low, close, volume, vwap_band_pct):
 
 
 def sig_wavetrend_fn(high, low, close, n1=10, n2=21, ob=60, os_=-60):
-    wt1, wt2   = calc_wavetrend(high, low, close, n1=n1, n2=n2)
+    """WaveTrend crossover sinyali: aşırı satım bölgesinde yukarı kesişim = AL."""
+    wt1, wt2 = calc_wavetrend(high, low, close, n1=n1, n2=n2)
     cross_up   = (wt1 > wt2) & (wt1.shift(1) <= wt2.shift(1))
     cross_down = (wt1 < wt2) & (wt1.shift(1) >= wt2.shift(1))
     sig = np.where(cross_up & (wt1 < os_), 1,
@@ -573,45 +551,52 @@ def _score(stats, metric):
 
 def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
                   n_windows=4, train_pct=70, metric="Sharpe", min_trades=3):
-    keys   = list(param_grid.keys())
-    combos = list(iter_product(*param_grid.values()))
-    n      = len(close_arr)
+    keys    = list(param_grid.keys())
+    combos  = list(iter_product(*param_grid.values()))
+    n       = len(close_arr)
     default = {k: v[0] for k, v in param_grid.items()}
 
     win_size = n // n_windows
     if win_size < 30:
-        n_windows = 1; win_size = n
+        n_windows = 1
+        win_size  = n
 
     windows = []
     for w in range(n_windows):
-        s     = w * win_size
-        e     = s + win_size if w < n_windows - 1 else n
+        s = w * win_size
+        e = s + win_size if w < n_windows - 1 else n
         split = s + int((e - s) * train_pct / 100)
-        if split - s < 10 or e - split < 5: continue
+        if split - s < 10 or e - split < 5:
+            continue
         windows.append((s, split, e))
 
     if not windows:
         return default, None
 
     combo_scores = {combo: [] for combo in combos}
+
     for (ts, te, es) in windows:
-        test_arr = close_arr[te:es]
+        test_arr  = close_arr[te:es]
         for combo in combos:
-            p        = dict(zip(keys, combo))
+            p = dict(zip(keys, combo))
             sig_full = signal_fn(p)
-            if sig_full is None: continue
-            sig_vals   = sig_full.values if hasattr(sig_full, "values") else sig_full
-            test_sig   = sig_vals[te:es]
+            if sig_full is None:
+                continue
+            sig_vals  = sig_full.values if hasattr(sig_full, "values") else sig_full
+            test_sig  = sig_vals[te:es]
             test_stats = run_backtest(test_sig, test_arr, cost_pct)
-            if test_stats["n"] < min_trades: continue
+            if test_stats["n"] < min_trades:
+                continue
             combo_scores[combo].append(_score(test_stats, metric))
 
     best_combo = None; best_avg = -np.inf
     for combo, scores in combo_scores.items():
-        if not scores: continue
+        if not scores:
+            continue
         avg = float(np.mean(scores))
         if avg > best_avg:
-            best_avg = avg; best_combo = combo
+            best_avg   = avg
+            best_combo = combo
 
     if best_combo is None:
         return default, None
@@ -627,78 +612,15 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
 
 
 # ============================================================
-# 7. VERİ ÇEKME — TradingView + yfinance
+# 7. VERİ ÇEKME
 # ============================================================
-@st.cache_data(ttl=50)
-def fetch_tv_data(symbol: str, period: str, interval: str) -> pd.DataFrame:
-    """XAUUSD için TradingView/OANDA'dan veri çeker."""
-    if not TV_AVAILABLE:
-        st.error("tvdatafeed kurulu değil → `pip install tvdatafeed`")
-        return pd.DataFrame()
-
-    tv_interval_key = TV_INTERVAL_MAP.get(interval)
-    if tv_interval_key is None:
-        st.warning(f"'{interval}' TradingView'da desteklenmiyor. '1h' kullanılıyor.")
-        tv_interval_key = "in_1_hour"
-
-    tv_interval = getattr(TvInterval, tv_interval_key, TvInterval.in_1_hour)
-    n_bars      = TV_PERIOD_BARS.get(period, 500)
-
-    exchanges = ["OANDA", "FX_IDC", "FOREXCOM"]
-    raw = None
-
-    for exchange in exchanges:
-        try:
-            tv  = TvDatafeed()
-            raw = tv.get_hist(
-                symbol   = "XAUUSD",
-                exchange = exchange,
-                interval = tv_interval,
-                n_bars   = n_bars,
-            )
-            if raw is not None and not raw.empty:
-                break
-        except Exception:
-            continue
-
-    if raw is None or raw.empty:
-        return pd.DataFrame()
-
-    raw = raw.rename(columns={
-        "open":   "Open",
-        "high":   "High",
-        "low":    "Low",
-        "close":  "Close",
-        "volume": "Volume",
-    })
-
-    raw = raw[[c for c in ["Open", "High", "Low", "Close", "Volume"] if c in raw.columns]]
-
-    if "Volume" not in raw.columns:
-        raw["Volume"] = 0.0
-
-    return raw.dropna()
-
-
-@st.cache_data(ttl=50)
-def fetch_live_data(symbol: str, p: str, i: str) -> pd.DataFrame:
-    """
-    XAUUSD  → TradingView (tvdatafeed), başarısız olursa GC=F yfinance fallback
-    Diğerleri → yfinance
-    """
-    if symbol.upper() in XAUUSD_SYMBOLS:
-        df_tv = fetch_tv_data(symbol, p, i)
-        if not df_tv.empty:
-            return df_tv
-        st.warning("⚠️ TradingView başarısız. yfinance GC=F (Altın Futures) kullanılıyor…")
-        symbol = "GC=F"
-
+@st.cache_data(ttl=55)
+def fetch_live_data(symbol, p, i):
     try:
         data = yf.download(symbol, period=p, interval=i, progress=False)
         return pd.DataFrame() if data is None or data.empty else data
     except Exception as e:
-        st.error(f"Veri çekme hatası: {e}")
-        return pd.DataFrame()
+        st.error(f"Veri çekme hatası: {e}"); return pd.DataFrame()
 
 
 PLOTLY_CONFIG = dict(scrollZoom=True, displayModeBar=True,
@@ -722,8 +644,8 @@ if ticker:
         if missing:
             st.error(f"Eksik sütunlar: {missing}."); st.stop()
 
-        close     = df["Close"].squeeze(); high = df["High"].squeeze()
-        low       = df["Low"].squeeze();   volume = df["Volume"].squeeze()
+        close = df["Close"].squeeze(); high = df["High"].squeeze()
+        low   = df["Low"].squeeze();   volume = df["Volume"].squeeze()
         close_arr = close.values
 
         min_req = max(150, adx_period * 3, ichi_senkou_b)
@@ -814,32 +736,33 @@ if ticker:
             st.session_state[OPT_KEY] = {"params": opt_params, "stats": opt_stats}
 
             p = opt_params
-            st.session_state["sma_short"]     = int(p["SMA Crossover"]["sma_s"])
-            st.session_state["sma_long"]      = int(p["SMA Crossover"]["sma_l"])
-            st.session_state["rsi_period"]    = int(p["RSI"]["rsi_period"])
-            st.session_state["rsi_lower"]     = int(p["RSI"]["rsi_lower"])
-            st.session_state["rsi_upper"]     = int(p["RSI"]["rsi_upper"])
-            st.session_state["bb_period"]     = int(p["Bollinger Bands"]["bb_period"])
-            st.session_state["bb_std"]        = float(p["Bollinger Bands"]["bb_std"])
-            st.session_state["macd_fast"]     = int(p["MACD"]["macd_fast"])
-            st.session_state["macd_slow"]     = int(p["MACD"]["macd_slow"])
-            st.session_state["macd_signal"]   = int(p["MACD"]["macd_signal"])
-            st.session_state["z_period"]      = int(p["Mean Reversion"]["z_period"])
-            st.session_state["z_thresh"]      = float(p["Mean Reversion"]["z_thresh"])
-            st.session_state["adx_period"]    = int(p["ADX"]["adx_period"])
-            st.session_state["adx_threshold"] = int(p["ADX"]["adx_threshold"])
-            st.session_state["st_period"]     = int(p["SuperTrend"]["st_period"])
-            st.session_state["st_multiplier"] = float(p["SuperTrend"]["st_multiplier"])
-            st.session_state["lrc_period"]    = int(p["LR Channel"]["lrc_period"])
-            st.session_state["lrc_std_mult"]  = float(p["LR Channel"]["lrc_std_mult"])
-            st.session_state["wt_n1"]         = int(p["WaveTrend"]["wt_n1"])
-            st.session_state["wt_n2"]         = int(p["WaveTrend"]["wt_n2"])
+            st.session_state["sma_short"]    = int(p["SMA Crossover"]["sma_s"])
+            st.session_state["sma_long"]     = int(p["SMA Crossover"]["sma_l"])
+            st.session_state["rsi_period"]   = int(p["RSI"]["rsi_period"])
+            st.session_state["rsi_lower"]    = int(p["RSI"]["rsi_lower"])
+            st.session_state["rsi_upper"]    = int(p["RSI"]["rsi_upper"])
+            st.session_state["bb_period"]    = int(p["Bollinger Bands"]["bb_period"])
+            st.session_state["bb_std"]       = float(p["Bollinger Bands"]["bb_std"])
+            st.session_state["macd_fast"]    = int(p["MACD"]["macd_fast"])
+            st.session_state["macd_slow"]    = int(p["MACD"]["macd_slow"])
+            st.session_state["macd_signal"]  = int(p["MACD"]["macd_signal"])
+            st.session_state["z_period"]     = int(p["Mean Reversion"]["z_period"])
+            st.session_state["z_thresh"]     = float(p["Mean Reversion"]["z_thresh"])
+            st.session_state["adx_period"]   = int(p["ADX"]["adx_period"])
+            st.session_state["adx_threshold"]= int(p["ADX"]["adx_threshold"])
+            st.session_state["st_period"]    = int(p["SuperTrend"]["st_period"])
+            st.session_state["st_multiplier"]= float(p["SuperTrend"]["st_multiplier"])
+            st.session_state["lrc_period"]   = int(p["LR Channel"]["lrc_period"])
+            st.session_state["lrc_std_mult"] = float(p["LR Channel"]["lrc_std_mult"])
+            st.session_state["wt_n1"]        = int(p["WaveTrend"]["wt_n1"])
+            st.session_state["wt_n2"]        = int(p["WaveTrend"]["wt_n2"])
             st.rerun()
 
         else:
             opt_params = st.session_state[OPT_KEY]["params"]
             opt_stats  = st.session_state[OPT_KEY]["stats"]
 
+        # Parametreler doğrudan slider'dan (session_state)
         p_sma  = {"sma_s": sma_short,  "sma_l": sma_long}
         p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper}
         p_bb   = {"bb_period": bb_period,   "bb_std": bb_std}
@@ -850,6 +773,7 @@ if ticker:
         p_lrc  = {"lrc_period": lrc_period, "lrc_std_mult": lrc_std_mult}
         p_wt   = {"wt_n1": wt_n1,           "wt_n2": wt_n2}
 
+        # Sinyalleri üret
         df["Sig_SMA"], df["SMA_SHORT"], df["SMA_LONG"] = sig_sma(
             close, atr_high, p_sma["sma_s"], p_sma["sma_l"])
 
@@ -896,11 +820,14 @@ if ticker:
         else:
             df["Sig_VWAP"] = 0; df["VWAP"] = np.nan
 
+        # YENİ: WaveTrend
         df["Sig_WaveTrend"], df["WT1"], df["WT2"] = sig_wavetrend_fn(
             high, low, close, p_wt["wt_n1"], p_wt["wt_n2"], wt_ob, wt_os)
 
+        # YENİ: Fibonacci
         fib_levels, fib_high, fib_low = calc_fibonacci(high, low, lookback=fib_lookback)
 
+        # YENİ: Divergence (RSI ve MACD üzerinden)
         df["Div_RSI"]  = detect_divergence(close, df["RSI"],  window=div_window)
         df["Div_MACD"] = detect_divergence(close, df["MACD"], window=div_window)
 
@@ -918,7 +845,7 @@ if ticker:
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         vol_at_price = np.zeros(vrp_bins)
         for i in range(len(df)):
-            lo_i  = float(low.iloc[i]); hi_i = float(high.iloc[i]); vol_i = float(volume.iloc[i])
+            lo_i = float(low.iloc[i]); hi_i = float(high.iloc[i]); vol_i = float(volume.iloc[i])
             if hi_i == lo_i:
                 idx = np.clip(np.searchsorted(bin_edges, lo_i, side="right") - 1, 0, vrp_bins - 1)
                 vol_at_price[idx] += vol_i
@@ -950,7 +877,6 @@ if ticker:
         else:
             fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
                 line=dict(color="white", width=1.5)), row=1, col=1)
-
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
             name=f"SMA {p_sma['sma_s']}", line=dict(color="orange")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
@@ -988,6 +914,7 @@ if ticker:
                 name="VWAP", visible="legendonly",
                 line=dict(color="yellow", dash="dash", width=1.5)), row=1, col=1)
 
+        # YENİ: Fibonacci seviyeleri ana grafiğe
         FIB_COLORS = {
             "0.0%":   "rgba(128,128,128,0.7)",
             "23.6%":  "rgba(255,165,0,0.8)",
@@ -999,16 +926,22 @@ if ticker:
         }
         for lvl_name, lvl_price in fib_levels.items():
             fig.add_hline(
-                y=lvl_price, line_dash="dot",
-                line_color=FIB_COLORS.get(lvl_name, "gray"), line_width=1,
+                y=lvl_price,
+                line_dash="dot",
+                line_color=FIB_COLORS.get(lvl_name, "gray"),
+                line_width=1,
                 annotation_text=f"  Fib {lvl_name} {lvl_price:.2f}",
                 annotation_font=dict(color=FIB_COLORS.get(lvl_name, "gray"), size=9, family="monospace"),
-                annotation_position="top left", row=1, col=1,
+                annotation_position="top left",
+                row=1, col=1,
             )
 
         fig.add_trace(go.Bar(
-            x=vol_at_price, y=bin_centers, orientation="h",
-            marker_color=bar_colors, name="Hacim Profili", showlegend=False,
+            x=vol_at_price, y=bin_centers,
+            orientation="h",
+            marker_color=bar_colors,
+            name="Hacim Profili",
+            showlegend=False,
             hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
         ), row=1, col=2)
 
@@ -1023,28 +956,28 @@ if ticker:
             annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
             annotation_position="bottom right", row=1, col=2)
 
-        # Kaynak etiketi
-        data_source = "TradingView/OANDA" if (ticker.upper() in XAUUSD_SYMBOLS and TV_AVAILABLE) else "yfinance"
-        fig.add_annotation(
-            text=f"<b>{ticker.upper()}  {lp:,.4f}</b>  <span style='font-size:10px;color:#aaa'>({data_source})</span>",
+        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
             xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
             font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
             align="left", bgcolor="rgba(255,255,255,0.92)",
             bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
 
         fig.update_layout(
-            template="plotly_dark", height=580, dragmode="pan",
+            template="plotly_dark", height=580,
+            dragmode="pan",
             xaxis=dict(rangeslider_visible=False),
             xaxis2=dict(showgrid=False, showticklabels=False),
             yaxis2=dict(showticklabels=False),
             legend=dict(
-                orientation="v", x=-0.06, y=1,
+                orientation="v",
+                x=-0.06, y=1,
                 xanchor="right", yanchor="top",
-                bgcolor="rgba(0,0,0,0)", font=dict(size=11),
+                bgcolor="rgba(0,0,0,0)",
+                font=dict(size=11),
             ),
             margin=dict(l=160, r=10, t=30, b=30),
         )
-
+     
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================
@@ -1066,13 +999,17 @@ if ticker:
             f.add_hline(y=p_rsi["rsi_upper"], line_dash="dash", line_color="red",
                 annotation_text=f"Aşırı Alım ({p_rsi['rsi_upper']})")
             f.add_hline(y=50, line_dash="dot", line_color="gray")
-            bull_div_rsi = df["Div_RSI"] == 1; bear_div_rsi = df["Div_RSI"] == -1
+            # Divergence işaretleri
+            bull_div_rsi = df["Div_RSI"] == 1
+            bear_div_rsi = df["Div_RSI"] == -1
             if bull_div_rsi.any():
-                f.add_trace(go.Scatter(x=df.index[bull_div_rsi], y=df["RSI"][bull_div_rsi],
+                f.add_trace(go.Scatter(
+                    x=df.index[bull_div_rsi], y=df["RSI"][bull_div_rsi],
                     name="Bullish Div", mode="markers",
                     marker=dict(color="lime", size=10, symbol="triangle-up")))
             if bear_div_rsi.any():
-                f.add_trace(go.Scatter(x=df.index[bear_div_rsi], y=df["RSI"][bear_div_rsi],
+                f.add_trace(go.Scatter(
+                    x=df.index[bear_div_rsi], y=df["RSI"][bear_div_rsi],
                     name="Bearish Div", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
@@ -1086,9 +1023,9 @@ if ticker:
 | RSI > Aşırı Alım eşiği | 🔴 Aşırı alınmış → potansiyel SAT sinyali |
 | RSI ~ 50 | ⚪ Nötr bölge |
 
-- **RSI MA (sarı noktalı):** RSI'nın hareketli ortalaması.
-- **Bullish Divergence 🔺:** Fiyat düşük dip yaparken RSI yüksek dip → güçlü dönüş sinyali.
-- **Bearish Divergence 🔻:** Fiyat yüksek tepe yaparken RSI alçak tepe → zayıflama uyarısı.
+- **RSI MA (sarı noktalı):** RSI'nın hareketli ortalaması. RSI bu çizgiyi yukarı keserse momentum güçleniyor demektir.
+- **Bullish Divergence 🔺:** Fiyat düşük dip yaparken RSI yüksek dip yapıyor → güçlü dönüş sinyali.
+- **Bearish Divergence 🔻:** Fiyat yüksek tepe yaparken RSI alçak tepe yapıyor → zayıflama uyarısı.
                 """)
 
         with tab2:
@@ -1098,46 +1035,60 @@ if ticker:
             hist = df["MACD"] - df["MACD_S"]
             f.add_trace(go.Bar(x=df.index, y=hist, name="Histogram",
                 marker_color=["lime" if v >= 0 else "red" for v in hist], opacity=0.5))
-            bull_div_macd = df["Div_MACD"] == 1; bear_div_macd = df["Div_MACD"] == -1
+            # Divergence işaretleri
+            bull_div_macd = df["Div_MACD"] == 1
+            bear_div_macd = df["Div_MACD"] == -1
             if bull_div_macd.any():
-                f.add_trace(go.Scatter(x=df.index[bull_div_macd], y=df["MACD"][bull_div_macd],
+                f.add_trace(go.Scatter(
+                    x=df.index[bull_div_macd], y=df["MACD"][bull_div_macd],
                     name="Bullish Div", mode="markers",
                     marker=dict(color="lime", size=10, symbol="triangle-up")))
             if bear_div_macd.any():
-                f.add_trace(go.Scatter(x=df.index[bear_div_macd], y=df["MACD"][bear_div_macd],
+                f.add_trace(go.Scatter(
+                    x=df.index[bear_div_macd], y=df["MACD"][bear_div_macd],
                     name="Bearish Div", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 MACD Nasıl Okunur?"):
                 st.markdown("""
-**MACD** — trend yönü ve momentumu ölçer.
+**MACD (Moving Average Convergence Divergence)** — trend yönü ve momentumu ölçer.
 
 | Unsur | Anlam |
 |---|---|
-| MACD > Sinyal | 🟢 Yukarı momentum |
-| MACD < Sinyal | 🔴 Aşağı momentum |
+| MACD > Sinyal çizgisi | 🟢 Yukarı momentum → AL eğilimi |
+| MACD < Sinyal çizgisi | 🔴 Aşağı momentum → SAT eğilimi |
 | Histogram yeşil & büyüyor | 🟢 Momentum güçleniyor |
 | Histogram kırmızı & büyüyor | 🔴 Momentum zayıflıyor |
+
+- **Sıfır çizgisi geçişi:** MACD sıfırı yukarı kesiyor = güçlü boğa sinyali; aşağı kesiyor = ayı sinyali.
+- **Bullish Divergence 🔺:** Fiyat düşük dip, MACD yüksek dip → trend dönüş öncüsü.
+- **Bearish Divergence 🔻:** Fiyat yüksek tepe, MACD alçak tepe → zirve uyarısı.
                 """)
 
         with tab3:
             f = go.Figure()
             f.add_trace(go.Scatter(x=df.index, y=df["ADX"],      name="ADX",  line=dict(color="yellow", width=2)))
-            f.add_trace(go.Scatter(x=df.index, y=df["PLUS_DI"],  name="+DI",  line=dict(color="lime",   dash="dot")))
-            f.add_trace(go.Scatter(x=df.index, y=df["MINUS_DI"], name="-DI",  line=dict(color="red",    dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=df["PLUS_DI"],  name="+DI",  line=dict(color="lime", dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=df["MINUS_DI"], name="-DI",  line=dict(color="red",  dash="dot")))
             f.add_hline(y=p_adx["adx_threshold"], line_dash="dash", line_color="white",
                 annotation_text=f"Trend Eşiği ({p_adx['adx_threshold']})")
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 ADX Nasıl Okunur?"):
                 st.markdown("""
-**ADX** — trendin gücünü ölçer.
+**ADX (Average Directional Index)** — trendin gücünü ölçer (yön değil, sadece güç).
 
-| ADX | Trend Gücü |
+| ADX Değeri | Trend Gücü |
 |---|---|
-| < 20 | Zayıf / yatay |
-| 20–25 | Oluşuyor |
-| > 25 | Güçlü |
-| > 40 | Çok güçlü |
+| < 20 | Zayıf / yatay piyasa |
+| 20–25 | Trend oluşuyor |
+| > 25 | Güçlü trend |
+| > 40 | Çok güçlü trend |
+
+- **+DI (yeşil):** Yukarı yönlü hareketin gücü.
+- **-DI (kırmızı):** Aşağı yönlü hareketin gücü.
+- **+DI > -DI ve ADX > eşik:** 🟢 Güçlü yükseliş trendi.
+- **-DI > +DI ve ADX > eşik:** 🔴 Güçlü düşüş trendi.
+- ADX düşükken verilen sinyaller güvenilmezdir.
                 """)
 
         with tab4:
@@ -1148,13 +1099,18 @@ if ticker:
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 OBV Nasıl Okunur?"):
                 st.markdown("""
-**OBV** — hacim akışını kümülatif izler.
+**OBV (On-Balance Volume)** — hacim akışını kümülatif olarak izler; fiyat hareketini önceden haber verebilir.
 
 | Durum | Anlam |
 |---|---|
-| OBV ↑, fiyat ↑ | 🟢 Trend onayı |
-| OBV ↑, fiyat ↓ | 🟢 Gizli birikim |
-| OBV ↓, fiyat ↑ | 🔴 Dağıtım uyarısı |
+| OBV yükseliyor, fiyat yükseliyor | 🟢 Trend onaylanıyor |
+| OBV yükseliyor, fiyat düşüyor | 🟢 Gizli birikim → potansiyel yukarı kırılım |
+| OBV düşüyor, fiyat yükseliyor | 🔴 Dağıtım var → zayıflama uyarısı |
+| OBV düşüyor, fiyat düşüyor | 🔴 Trend onaylanıyor |
+
+- **Kısa SMA (turuncu) > Uzun SMA (cyan):** OBV momentumu pozitif → AL eğilimi.
+- **Kısa SMA < Uzun SMA:** OBV momentumu negatif → SAT eğilimi.
+- OBV'nin mutlak değeri değil, eğimi önemlidir.
                 """)
 
         with tab5:
@@ -1168,10 +1124,18 @@ if ticker:
             f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 Stochastic RSI Nasıl Okunur?"):
                 st.markdown("""
-**Stochastic RSI** — RSI'ya uygulanan Stochastic. Daha hassas ve hızlıdır.
+**Stochastic RSI** — RSI'ya uygulanan Stochastic göstergesidir. RSI'dan daha hassas ve hızlıdır.
 
+| Bölge | Anlam |
+|---|---|
+| %K < Aşırı Satım eşiği | 🟢 Aşırı satılmış → AL bölgesi |
+| %K > Aşırı Alım eşiği | 🔴 Aşırı alınmış → SAT bölgesi |
+
+- **%K (mor):** Hızlı çizgi — anlık sinyal verir.
+- **%D (turuncu noktalı):** %K'nın ortalaması — yavaş, daha güvenilir.
 - **%K, %D'yi aşırı satım bölgesinde yukarı kesiyor:** 🟢 Güçlü AL sinyali.
 - **%K, %D'yi aşırı alım bölgesinde aşağı kesiyor:** 🔴 Güçlü SAT sinyali.
+- RSI aşırı bölgelerde değilken Stoch RSI sinyalleri daha az güvenilirdir.
                 """)
 
         with tab6:
@@ -1189,11 +1153,22 @@ if ticker:
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 Ichimoku Nasıl Okunur?"):
                 st.markdown("""
-**Ichimoku** — trend, destek/direnç ve momentumu tek grafikte gösterir.
+**Ichimoku Kinko Hyo** — trend yönü, destek/direnç ve momentum'u tek grafikte gösterir.
 
+| Unsur | Renk | Anlam |
+|---|---|---|
+| Tenkan-sen | Cyan | Kısa vadeli denge çizgisi (9 bar) |
+| Kijun-sen | Kırmızı | Orta vadeli denge çizgisi (26 bar) |
+| Senkou Span A | Yeşil | Bulutun üst sınırı |
+| Senkou Span B | Kırmızı | Bulutun alt sınırı |
+
+**Okuma Kuralları:**
 - **Fiyat bulutun üstünde:** 🟢 Yükseliş trendi.
 - **Fiyat bulutun altında:** 🔴 Düşüş trendi.
+- **Fiyat bulut içinde:** ⚪ Konsolidasyon.
 - **Tenkan > Kijun:** 🟢 Kısa vadeli momentum pozitif.
+- **Yeşil bulut (Span A > Span B):** Boğa piyasası.
+- **Kırmızı bulut (Span B > Span A):** Ayı piyasası.
                 """)
 
         with tab7:
@@ -1208,13 +1183,17 @@ if ticker:
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 SuperTrend Nasıl Okunur?"):
                 st.markdown("""
-**SuperTrend** — ATR tabanlı dinamik destek/direnç çizgisi.
+**SuperTrend** — ATR tabanlı dinamik destek/direnç çizgisidir.
 
 | Durum | Anlam |
 |---|---|
-| Yeşil (fiyatın altında) | 🟢 Yükseliş trendi |
-| Kırmızı (fiyatın üstünde) | 🔴 Düşüş trendi |
-| Renk değişimi | ⚡ Trend dönüşü |
+| Çizgi yeşil (fiyatın altında) | 🟢 Yükseliş trendi — uzun pozisyon |
+| Çizgi kırmızı (fiyatın üstünde) | 🔴 Düşüş trendi — kısa pozisyon |
+| Renk değişimi | ⚡ Trend dönüşü sinyali |
+
+- **ATR Çarpanı (multiplier):** Yüksek değer → daha az sinyal, daha az gürültü. Düşük değer → daha fazla sinyal, daha fazla whipsaw riski.
+- **En güçlü sinyal:** SuperTrend renk değişimi + ADX > eşik değeri kombinasyonu.
+- Yatay piyasalarda yanlış sinyal üretebilir; ADX filtresiyle kullanın.
                 """)
 
         with tab8:
@@ -1231,9 +1210,27 @@ if ticker:
             f.update_layout(**sub_layout(height=350)); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 KAMA & LR Channel Nasıl Okunur?"):
                 st.markdown("""
-**KAMA** — piyasa koşullarına göre hız adapte eden akıllı ortalama.
+**KAMA (Kaufman Adaptive Moving Average)** — piyasa koşullarına göre hız adapte eden akıllı bir ortalamadır.
 
-**LR Channel** — son N bardaki doğrusal regresyon kanalı. Alt banda değmek potansiyel destek/AL bölgesidir.
+| Durum | Anlam |
+|---|---|
+| Fiyat > KAMA | 🟢 Yükseliş eğilimi |
+| Fiyat < KAMA | 🔴 Düşüş eğilimi |
+| KAMA düz seyrediyor | ⚪ Piyasa yatay, bekle |
+
+- Trend güçlüyken KAMA hızlanır, yatay piyasada yavaşlar → whipsaw'ı filtreler.
+
+---
+
+**LR Channel (Linear Regression Channel)** — son N bardaki fiyatın doğrusal regresyon kanalıdır.
+
+| Durum | Anlam |
+|---|---|
+| Fiyat alt banda değiyor | 🟢 Potansiyel destek / AL bölgesi |
+| Fiyat üst banda değiyor | 🔴 Potansiyel direnç / SAT bölgesi |
+| Fiyat orta çizginin üstünde | 🟢 Kısa vadeli güç |
+
+- Kanal eğimi trendin yönünü gösterir.
                 """)
 
         with tab9:
@@ -1256,58 +1253,94 @@ if ticker:
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 Nadaraya-Watson Nasıl Okunur?"):
                 st.markdown("""
-**Nadaraya-Watson Envelope** — çekirdek regresyon ile hesaplanan non-parametrik zarf göstergesi.
+**Nadaraya-Watson Envelope** — çekirdek regresyon ile hesaplanan non-parametrik bir zarf göstergesidir.
 
-- Fiyat üst zarfın üstünde → 🔴 Aşırı alım
-- Fiyat alt zarfın altında → 🟢 Aşırı satım
+| Durum | Anlam |
+|---|---|
+| Fiyat üst zarfın üstünde 🔴 | Aşırı alım — geri çekilme beklenebilir |
+| Fiyat alt zarfın altında 🟢 | Aşırı satım — toparlanma beklenebilir |
+| Fiyat zarf içinde | Normal seyir |
+
+- **Bant genişliği (h):** Düşük değer → zarf fiyata yakın, daha hassas. Yüksek değer → düzgün ama gecikmeli.
+- **Orta çizgi (altın sarısı):** Fiyatın istatistiksel "adil değeri"ni temsil eder.
+- Kısa vadeli sapmaların orta çizgiye döneceği varsayımına dayanır — mean reversion stratejisiyle uyumlu.
                 """)
 
+        # YENİ: WaveTrend tab
         with tab10:
             f = go.Figure()
-            f.add_trace(go.Scatter(x=df.index, y=df["WT1"], name="WT1", line=dict(color="cyan", width=1.5)))
-            f.add_trace(go.Scatter(x=df.index, y=df["WT2"], name="WT2", line=dict(color="orange", width=1.5, dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=df["WT1"], name="WT1",
+                line=dict(color="cyan", width=1.5)))
+            f.add_trace(go.Scatter(x=df.index, y=df["WT2"], name="WT2",
+                line=dict(color="orange", width=1.5, dash="dot")))
             wt_hist = df["WT1"] - df["WT2"]
             f.add_trace(go.Bar(x=df.index, y=wt_hist, name="WT Histogram",
                 marker_color=["lime" if v >= 0 else "red" for v in wt_hist], opacity=0.4))
-            f.add_hline(y=wt_ob,  line_dash="dash", line_color="red",  annotation_text=f"Aşırı Alım ({wt_ob})")
-            f.add_hline(y=wt_os,  line_dash="dash", line_color="lime", annotation_text=f"Aşırı Satım ({wt_os})")
+            f.add_hline(y=wt_ob,  line_dash="dash", line_color="red",
+                annotation_text=f"Aşırı Alım ({wt_ob})")
+            f.add_hline(y=wt_os,  line_dash="dash", line_color="lime",
+                annotation_text=f"Aşırı Satım ({wt_os})")
             f.add_hline(y=0, line_dash="dot", line_color="gray")
-            wt_buy  = df["Sig_WaveTrend"] == 1; wt_sell = df["Sig_WaveTrend"] == -1
+            # AL/SAT işaretleri
+            wt_buy  = df["Sig_WaveTrend"] == 1
+            wt_sell = df["Sig_WaveTrend"] == -1
             if wt_buy.any():
-                f.add_trace(go.Scatter(x=df.index[wt_buy], y=df["WT1"][wt_buy],
-                    name="AL", mode="markers", marker=dict(color="lime", size=10, symbol="triangle-up")))
+                f.add_trace(go.Scatter(
+                    x=df.index[wt_buy], y=df["WT1"][wt_buy],
+                    name="AL", mode="markers",
+                    marker=dict(color="lime", size=10, symbol="triangle-up")))
             if wt_sell.any():
-                f.add_trace(go.Scatter(x=df.index[wt_sell], y=df["WT1"][wt_sell],
-                    name="SAT", mode="markers", marker=dict(color="red", size=10, symbol="triangle-down")))
+                f.add_trace(go.Scatter(
+                    x=df.index[wt_sell], y=df["WT1"][wt_sell],
+                    name="SAT", mode="markers",
+                    marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout(height=300))
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 WaveTrend Nasıl Okunur?"):
                 st.markdown("""
-**WaveTrend** — momentum ve aşırı bölge tespiti için osilatör.
+**WaveTrend (WT_CROSS_LB)** — momentum ve aşırı bölge tespiti için kullanılan osilatördür.
 
-- **WT1, WT2'yi aşırı satım bölgesinde yukarı kesiyor 🔺:** Güçlü AL.
-- **WT1, WT2'yi aşırı alım bölgesinde aşağı kesiyor 🔻:** Güçlü SAT.
+| Unsur | Anlam |
+|---|---|
+| WT1 (cyan) | Hızlı sinyal çizgisi |
+| WT2 (turuncu noktalı) | Yavaş sinyal çizgisi |
+| Histogram | WT1 - WT2 farkı |
+
+**Sinyal Kuralları:**
+- **WT1, WT2'yi aşırı satım bölgesinde yukarı kesiyor 🔺:** Güçlü AL sinyali.
+- **WT1, WT2'yi aşırı alım bölgesinde aşağı kesiyor 🔻:** Güçlü SAT sinyali.
+- Sinyaller yalnızca aşırı bölgelerde (ob/os eşiklerinin ötesinde) tetiklenir — bu sayede gürültü azalır.
+- Histogram rengi değişimi (kırmızı→yeşil) erken momentum dönüşünün işareti olabilir.
                 """)
 
+        # YENİ: Divergence özet tab
         with tab11:
             f = go.Figure()
-            f.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat", line=dict(color="red", width=1.5)))
-            bull_div_r = df["Div_RSI"] == 1;  bear_div_r = df["Div_RSI"] == -1
-            bull_div_m = df["Div_MACD"] == 1; bear_div_m = df["Div_MACD"] == -1
+            f.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
+                line=dict(color="red", width=1.5)))
+            # RSI divergence
+            bull_div_r = df["Div_RSI"] == 1
+            bear_div_r = df["Div_RSI"] == -1
+            bull_div_m = df["Div_MACD"] == 1
+            bear_div_m = df["Div_MACD"] == -1
             if bull_div_r.any():
-                f.add_trace(go.Scatter(x=df.index[bull_div_r], y=close[bull_div_r],
+                f.add_trace(go.Scatter(
+                    x=df.index[bull_div_r], y=close[bull_div_r],
                     name="RSI Bullish Div", mode="markers",
                     marker=dict(color="lime", size=12, symbol="triangle-up")))
             if bear_div_r.any():
-                f.add_trace(go.Scatter(x=df.index[bear_div_r], y=close[bear_div_r],
+                f.add_trace(go.Scatter(
+                    x=df.index[bear_div_r], y=close[bear_div_r],
                     name="RSI Bearish Div", mode="markers",
                     marker=dict(color="red", size=12, symbol="triangle-down")))
             if bull_div_m.any():
-                f.add_trace(go.Scatter(x=df.index[bull_div_m], y=close[bull_div_m],
+                f.add_trace(go.Scatter(
+                    x=df.index[bull_div_m], y=close[bull_div_m],
                     name="MACD Bullish Div", mode="markers",
                     marker=dict(color="aquamarine", size=10, symbol="diamond")))
             if bear_div_m.any():
-                f.add_trace(go.Scatter(x=df.index[bear_div_m], y=close[bear_div_m],
+                f.add_trace(go.Scatter(
+                    x=df.index[bear_div_m], y=close[bear_div_m],
                     name="MACD Bearish Div", mode="markers",
                     marker=dict(color="salmon", size=10, symbol="diamond")))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False,
@@ -1315,12 +1348,23 @@ if ticker:
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 Divergence Nasıl Okunur?"):
                 st.markdown("""
-**Divergence** — fiyat ve indikatör arasındaki zıtlık; trend dönüşünün erken habercisi.
+**Divergence (Uyumsuzluk)** — fiyat hareketi ile indikatör arasındaki zıtlık; trend dönüşünün erken habercisidir.
 
 | Tür | Fiyat | İndikatör | Anlam |
 |---|---|---|---|
-| Bullish Div 🔺 | Düşük dip | Yüksek dip | 🟢 Yukarı dönüş |
-| Bearish Div 🔻 | Yüksek tepe | Düşük tepe | 🔴 Aşağı dönüş |
+| Bullish Div 🔺 | Düşük dip | Yüksek dip | 🟢 Satış baskısı azalıyor → yukarı dönüş olabilir |
+| Bearish Div 🔻 | Yüksek tepe | Düşük tepe | 🔴 Alış gücü zayıflıyor → aşağı dönüş olabilir |
+
+**Semboller:**
+- 🔺 Yeşil üçgen → RSI Bullish Divergence
+- 🔻 Kırmızı üçgen → RSI Bearish Divergence
+- 💠 Aquamarine elmas → MACD Bullish Divergence
+- 💠 Somon elmas → MACD Bearish Divergence
+
+**Önemli Notlar:**
+- Divergence tek başına yeterli değildir; SuperTrend veya Ichimoku gibi trend filtreleriyle doğrulayın.
+- En güvenilir divergence sinyalleri aşırı alım/satım bölgelerinde oluşanlardır.
+- Güçlü trendlerde divergence uzun süre devam edebilir — pozisyon almak için momentum değişimini bekleyin.
                 """)
 
         # ============================================================
@@ -1445,6 +1489,7 @@ if ticker:
         else:
             res.append(["N/A", "Nadaraya-Watson", "Yetersiz veri."])
 
+        # YENİ: WaveTrend kararı
         lwt1 = safe_scalar(last["WT1"]); lwt_sig = safe_scalar(last["Sig_WaveTrend"])
         if not np.isnan(lwt1):
             if lwt1 > wt_ob:   wt_zone = f"Aşırı Alım (WT1={lwt1:.1f})"
@@ -1455,12 +1500,13 @@ if ticker:
         else:
             res.append(["N/A", "WaveTrend", "Yetersiz veri."])
 
+        # YENİ: Divergence özet kararı
         last_div_rsi  = safe_scalar(last["Div_RSI"])
         last_div_macd = safe_scalar(last["Div_MACD"])
         if last_div_rsi == 1:
-            res.append(["BİLGİ", "Divergence (RSI)", "🔺 Bullish Divergence"])
+            res.append(["BİLGİ", "Divergence (RSI)", "🔺 Bullish Divergence — güçlü dip sinyali olabilir"])
         elif last_div_rsi == -1:
-            res.append(["BİLGİ", "Divergence (RSI)", "🔻 Bearish Divergence"])
+            res.append(["BİLGİ", "Divergence (RSI)", "🔻 Bearish Divergence — zayıflayan momentum"])
         else:
             res.append(["BİLGİ", "Divergence (RSI)", "Aktif divergence yok"])
         if last_div_macd == 1:
@@ -1470,6 +1516,7 @@ if ticker:
         else:
             res.append(["BİLGİ", "Divergence (MACD)", "Aktif divergence yok"])
 
+        # Fibonacci seviyesi bilgisi
         if fib_levels:
             closest_lvl = min(fib_levels.items(), key=lambda x: abs(x[1] - last_close))
             res.append(["BİLGİ", f"Fibonacci ({fib_lookback} bar)",
@@ -1563,7 +1610,9 @@ if ticker:
         # ============================================================
         st.write("---")
         st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
-        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe")
+        st.caption(
+            f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe"
+        )
 
         def opt_color(val):
             if isinstance(val, (int, float)):
@@ -1572,23 +1621,25 @@ if ticker:
             return ""
 
         score_col = "Ort. Test Sharpe"
-        opt_rows  = []
+
+        opt_rows = []
         for algo_name, grid in PARAM_GRIDS.items():
             p = opt_params.get(algo_name, {})
-            s = opt_stats.get(algo_name,  {})
+            s = opt_stats.get(algo_name, {})
             row = {"Algoritma": algo_name}
-            row["Parametreler"]  = "  |  ".join(f"{k} = {v}" for k, v in p.items())
-            row["Getiri (%)"]    = round(s.get("total_ret", 0), 2)
-            row["Sharpe"]        = round(s.get("sharpe",    0), 2)
-            row["Trade"]         = s.get("n", 0)
-            row["Win Rate (%)"]  = round(s.get("win_rate",  0), 1)
-            row[score_col]       = round(s.get("wf_avg_score", 0), 3)
+            param_str = "  |  ".join(f"{k} = {v}" for k, v in p.items())
+            row["Parametreler"]      = param_str
+            row["Getiri (%)"]        = round(s.get("total_ret", 0), 2)
+            row["Sharpe"]            = round(s.get("sharpe",    0), 2)
+            row["Trade"]             = s.get("n", 0)
+            row["Win Rate (%)"]      = round(s.get("win_rate",  0), 1)
+            row[score_col]           = round(s.get("wf_avg_score", 0), 3)
             opt_rows.append(row)
 
-        opt_df     = pd.DataFrame(opt_rows)
+        opt_df = pd.DataFrame(opt_rows)
         color_cols = [c for c in ["Getiri (%)", "Sharpe", score_col] if c in opt_df.columns]
-        fmt        = {k: v for k, v in {"Getiri (%)": "{:.2f}", "Sharpe": "{:.2f}",
-                       "Win Rate (%)": "{:.1f}", score_col: "{:.3f}"}.items() if k in opt_df.columns}
+        fmt = {"Getiri (%)": "{:.2f}", "Sharpe": "{:.2f}", "Win Rate (%)": "{:.1f}", score_col: "{:.3f}"}
+        fmt = {k: v for k, v in fmt.items() if k in opt_df.columns}
         st.dataframe(
             opt_df.style.format(fmt).map(opt_color, subset=color_cols),
             use_container_width=True, hide_index=True)

@@ -4,4 +4,4 @@ pandas
 numpy
 plotly
 streamlit-autorefresh
-tvdatafeed==1.3.3
+ 

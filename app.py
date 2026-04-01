@@ -904,7 +904,7 @@ if ticker:
                 low=df["Low"], close=df["Close"], name="Fiyat"), row=1, col=1)
         else:
             fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
-                line=dict(color="white", width=1.5)), row=1, col=1)
+                line=dict(color="orange", width=1.5)), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
             name=f"SMA {p_sma['sma_s']}", visible="legendonly", line=dict(color="orange")), row=1, col=1)

@@ -919,6 +919,7 @@ if ticker:
             name="SuperTrend (Boğa çizgi)",
             mode="lines",
             line=dict(color="rgba(0,255,100,0.5)", width=1.5),
+            visible="legendonly",
             showlegend=True,
         ), row=1, col=1)
         fig.add_trace(go.Scatter(
@@ -926,6 +927,7 @@ if ticker:
             name="SuperTrend (Ayı çizgi)",
             mode="lines",
             line=dict(color="rgba(255,60,60,0.5)", width=1.5),
+            visible="legendonly",
             showlegend=True,
         ), row=1, col=1)
 

@@ -907,9 +907,9 @@ if ticker:
                 line=dict(color="white", width=1.5)), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
-            name=f"SMA {p_sma['sma_s']}", line=dict(color="orange")), row=1, col=1)
+            name=f"SMA {p_sma['sma_s']}", visible="legendonly", line=dict(color="orange")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
-            name=f"SMA {p_sma['sma_l']}", line=dict(color="cyan")), row=1, col=1)
+            name=f"SMA {p_sma['sma_l']}", visible="legendonly", line=dict(color="cyan")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
             name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
 

@@ -24,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📈 ölçemediğini yönetemezsin...")
-st.caption("tahmin.ai")
+st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI

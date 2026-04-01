@@ -941,11 +941,11 @@ if ticker:
                 marker=dict(
                     symbol="square",
                     color="#00c853",
-                    size=32,
+                    size=18,
                     line=dict(color="#00c853", width=0),
                 ),
                 text="AL",
-                textfont=dict(color="white", size=10, family="Arial Black"),
+                textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
             ), row=1, col=1)
 
@@ -961,11 +961,11 @@ if ticker:
                 marker=dict(
                     symbol="square",
                     color="#d50000",
-                    size=32,
+                    size=18,
                     line=dict(color="#d50000", width=0),
                 ),
                 text="SAT",
-                textfont=dict(color="white", size=10, family="Arial Black"),
+                textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
             ), row=1, col=1)
 
@@ -1263,9 +1263,9 @@ if ticker:
                     y=df["SuperTrend"][st_buy_signal],
                     name="AL",
                     mode="markers+text",
-                    marker=dict(symbol="square", color="#00c853", size=32, line=dict(width=0)),
+                    marker=dict(symbol="square", color="#00c853", size=18, line=dict(width=0)),
                     text="AL",
-                    textfont=dict(color="white", size=10, family="Arial Black"),
+                    textfont=dict(color="white", size=8, family="Arial Black"),
                     textposition="middle center",
                 ))
             if st_sell_signal.any():
@@ -1274,9 +1274,9 @@ if ticker:
                     y=df["SuperTrend"][st_sell_signal],
                     name="SAT",
                     mode="markers+text",
-                    marker=dict(symbol="square", color="#d50000", size=32, line=dict(width=0)),
+                    marker=dict(symbol="square", color="#d50000", size=18, line=dict(width=0)),
                     text="SAT",
-                    textfont=dict(color="white", size=10, family="Arial Black"),
+                    textfont=dict(color="white", size=8, family="Arial Black"),
                     textposition="middle center",
                 ))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)

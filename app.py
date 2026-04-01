@@ -9,7 +9,7 @@ from itertools import product as iter_product
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
 # ============================================================
-st.set_page_config(page_title="Algo-Trader Pro v7.0", layout="wide")
+st.set_page_config(page_title="SRIDVANY", layout="wide")
 
 auto_refresh_on = st.sidebar.toggle("🔄 Canlı Yenileme", value=True)
 if auto_refresh_on:

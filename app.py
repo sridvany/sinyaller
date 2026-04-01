@@ -65,7 +65,7 @@ with st.sidebar:
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
-        index=5,
+        index=3,
     )
 
     if period in ["1d", "5d"]:

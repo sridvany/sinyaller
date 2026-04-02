@@ -1713,6 +1713,213 @@ if ticker:
         st.dataframe(
             opt_df.style.format(fmt).map(opt_color, subset=color_cols),
             use_container_width=True, hide_index=True)
+        # ============================================================
+        # RAPOR BÖLÜMÜ
+        # ============================================================
+        st.write("---")
+        st.header("📋 Teknik Analiz Raporu")
+        st.caption("Kural tabanlı otomatik analiz. Yatırım tavsiyesi içermez.")
+
+        # --- Veri Toplama ---
+        r_close   = safe_scalar(last["Close"])
+        r_kama    = safe_scalar(last["KAMA"])
+        r_adx     = safe_scalar(last["ADX"])
+        r_pdi     = safe_scalar(last["PLUS_DI"])
+        r_mdi     = safe_scalar(last["MINUS_DI"])
+        r_macd    = safe_scalar(last["MACD"])
+        r_macds   = safe_scalar(last["MACD_S"])
+        r_rsi     = safe_scalar(last["RSI"])
+        r_stk     = safe_scalar(last["StochRSI_K"])
+        r_std     = safe_scalar(last["ST_Direction"])
+        r_lrc_sig = safe_scalar(last["Sig_LRC"])
+        r_lrc_mid = safe_scalar(last["LRC_Mid"])
+        r_lrc_up  = safe_scalar(last["LRC_Upper"])
+        r_lrc_lo  = safe_scalar(last["LRC_Lower"])
+        r_nw      = safe_scalar(last["NW_Line"])
+        r_nw_up   = safe_scalar(last["NW_Upper"])
+        r_nw_lo   = safe_scalar(last["NW_Lower"])
+        r_obv_sig = safe_scalar(last["Sig_OBV"])
+        r_div_rsi = safe_scalar(last["Div_RSI"])
+        r_div_mac = safe_scalar(last["Div_MACD"])
+        r_ichi    = safe_scalar(last["Sig_Ichimoku"])
+        r_wt1     = safe_scalar(last["WT1"])
+        r_atr_hi  = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
+
+        # Fibonacci en yakın seviye
+        if fib_levels:
+            r_fib_closest = min(fib_levels.items(), key=lambda x: abs(x[1] - r_close))
+        else:
+            r_fib_closest = ("N/A", r_close)
+
+        # --- Adım Adım Değerlendirme ---
+        steps = []
+
+        # ADIM 1 — Büyük Resim
+        kama_pos   = "ÜSTÜNDE ✅" if r_close > r_kama else "ALTINDA ❌"
+        st_signal  = "AL ✅" if r_std == 1 else "SAT ❌"
+        poc_dist   = abs(r_close - poc_price) / r_close * 100
+        steps.append({
+            "Adım": "1 — Büyük Resim",
+            "Gösterge": "Fiyat / KAMA / SuperTrend / POC",
+            "Değer": f"Fiyat: {r_close:.2f} | KAMA: {r_kama:.2f} | POC: {poc_price:.2f} (%{poc_dist:.1f} uzakta)",
+            "Yorum": f"Fiyat KAMA'nın {kama_pos} | SuperTrend: {st_signal} | En yakın Fib: {r_fib_closest[0]} ({r_fib_closest[1]:.2f})",
+            "Sinyal": "AL" if (r_close > r_kama and r_std == 1) else ("SAT" if (r_close < r_kama and r_std == -1) else "NÖTR"),
+        })
+
+        # ADIM 2 — Trend Gücü
+        if not np.isnan(r_adx):
+            adx_str  = f"ADX: {r_adx:.1f}"
+            adx_sig  = "GÜÇLÜ TREND ✅" if r_adx > adx_threshold else "ZAYIF / YATAY ⚠️"
+            adx_hint = "Trend sinyallerine güven" if r_adx > adx_threshold else "Mean-reversion sinyallerine ağırlık ver"
+            steps.append({
+                "Adım": "2 — Trend Gücü",
+                "Gösterge": "ADX",
+                "Değer": f"{adx_str} (eşik: {adx_threshold})",
+                "Yorum": f"{adx_sig} — {adx_hint}",
+                "Sinyal": "GÜÇLÜ" if r_adx > adx_threshold else "ZAYIF",
+            })
+        else:
+            steps.append({"Adım": "2 — Trend Gücü", "Gösterge": "ADX", "Değer": "N/A", "Yorum": "Yetersiz veri", "Sinyal": "N/A"})
+
+        # ADIM 3 — Trend Yönü
+        macd_pos  = r_macd > r_macds
+        ichi_bull = r_ichi == 1; ichi_bear = r_ichi == -1
+        macd_str  = "Pozitif ✅" if macd_pos else "Negatif ❌"
+        ichi_str  = "Boğa ✅" if ichi_bull else ("Ayı ❌" if ichi_bear else "Nötr ⚠️")
+        trend_sig = "AL" if (macd_pos and ichi_bull) else ("SAT" if (not macd_pos and ichi_bear) else "NÖTR")
+        steps.append({
+            "Adım": "3 — Trend Yönü",
+            "Gösterge": "MACD + Ichimoku",
+            "Değer": f"MACD: {r_macd:.4f} | Sinyal: {r_macds:.4f}",
+            "Yorum": f"MACD: {macd_str} | Ichimoku: {ichi_str}",
+            "Sinyal": trend_sig,
+        })
+
+        # ADIM 4 — Giriş Noktası
+        rsi_os   = r_rsi < rsi_lower; rsi_ob   = r_rsi > rsi_upper
+        stk_os   = r_stk < stoch_lower; stk_ob = r_stk > stoch_upper
+        rsi_str  = f"Aşırı Satım ✅ ({r_rsi:.1f})" if rsi_os else (f"Aşırı Alım ❌ ({r_rsi:.1f})" if rsi_ob else f"Nötr ({r_rsi:.1f})")
+        stk_str  = f"Aşırı Satım ✅ ({r_stk:.1f})" if stk_os else (f"Aşırı Alım ❌ ({r_stk:.1f})" if stk_ob else f"Nötr ({r_stk:.1f})")
+        entry_sig = "AL" if (rsi_os or stk_os) else ("SAT" if (rsi_ob or stk_ob) else "BEKLE")
+        steps.append({
+            "Adım": "4 — Giriş Noktası",
+            "Gösterge": "RSI + Stoch RSI",
+            "Değer": f"RSI: {r_rsi:.1f} | Stoch %K: {r_stk:.1f}",
+            "Yorum": f"RSI: {rsi_str} | Stoch RSI: {stk_str}",
+            "Sinyal": entry_sig,
+        })
+
+        # ADIM 5 — Seviye Teyidi
+        lrc_str = "Alt banda yakın ✅" if r_lrc_sig == 1 else ("Üst banda yakın ❌" if r_lrc_sig == -1 else "Kanal ortası ⚪")
+        nw_str  = ("Üst zarfın üstünde ❌" if r_close > r_nw_up
+                   else ("Alt zarfın altında ✅" if r_close < r_nw_lo else "Zarf içinde ⚪"))
+        level_sig = "AL" if (r_lrc_sig == 1 or r_close < r_nw_lo) else ("SAT" if (r_lrc_sig == -1 or r_close > r_nw_up) else "NÖTR")
+        steps.append({
+            "Adım": "5 — Seviye Teyidi",
+            "Gösterge": "LR Channel + Nadaraya-Watson",
+            "Değer": f"LRC Alt: {r_lrc_lo:.2f} | LRC Üst: {r_lrc_up:.2f} | NW: {r_nw:.2f}",
+            "Yorum": f"LRC: {lrc_str} | NW: {nw_str}",
+            "Sinyal": level_sig,
+        })
+
+        # ADIM 6 — Hacim Onayı
+        obv_str = "Birikim ✅ (kısa SMA > uzun SMA)" if r_obv_sig == 1 else ("Dağıtım ❌ (kısa SMA < uzun SMA)" if r_obv_sig == -1 else "Nötr ⚪")
+        steps.append({
+            "Adım": "6 — Hacim Onayı",
+            "Gösterge": "OBV",
+            "Değer": f"Sinyal: {int(r_obv_sig)}",
+            "Yorum": obv_str,
+            "Sinyal": "AL" if r_obv_sig == 1 else ("SAT" if r_obv_sig == -1 else "NÖTR"),
+        })
+
+        # ADIM 7 — Uyarı / Divergence
+        div_rsi_str  = ("🔺 Bullish Divergence — güçlü dip sinyali" if r_div_rsi == 1
+                        else ("🔻 Bearish Divergence — zayıflama uyarısı" if r_div_rsi == -1 else "Yok ✅"))
+        div_macd_str = ("🔺 Bullish Divergence" if r_div_mac == 1
+                        else ("🔻 Bearish Divergence" if r_div_mac == -1 else "Yok ✅"))
+        div_risk     = (r_div_rsi == -1 or r_div_mac == -1)
+        div_boost    = (r_div_rsi == 1  or r_div_mac == 1)
+        steps.append({
+            "Adım": "7 — Uyarı Kontrolü",
+            "Gösterge": "Divergence (RSI + MACD)",
+            "Değer": f"RSI Div: {int(r_div_rsi)} | MACD Div: {int(r_div_mac)}",
+            "Yorum": f"RSI: {div_rsi_str} | MACD: {div_macd_str}",
+            "Sinyal": "UYARI ❌" if div_risk else ("GÜÇLENDIRICI ✅" if div_boost else "TEMİZ ✅"),
+        })
+
+        # --- Tablo ---
+        report_df = pd.DataFrame(steps)
+
+        def report_color(val):
+            if "AL" in str(val) and "SAT" not in str(val): return "color: #00ff00; font-weight: bold"
+            if "SAT" in str(val): return "color: #ff4b4b; font-weight: bold"
+            if "UYARI" in str(val): return "color: #ff4b4b; font-weight: bold"
+            if "TEMİZ" in str(val) or "GÜÇLEND" in str(val): return "color: #00bfff; font-weight: bold"
+            if "NÖTR" in str(val) or "BEKLE" in str(val): return "color: #aaaaaa"
+            if "ZAYIF" in str(val): return "color: #ffaa00; font-weight: bold"
+            if "GÜÇLÜ" in str(val): return "color: #00ff00; font-weight: bold"
+            return ""
+
+        st.dataframe(
+            report_df.style.map(report_color, subset=["Sinyal"]),
+            use_container_width=True, hide_index=True
+        )
+
+        # --- Onay Sayacı ---
+        al_onay  = sum(1 for s in steps if s["Sinyal"] in ("AL", "GÜÇLÜ", "GÜÇLENDIRICI ✅", "TEMİZ ✅"))
+        sat_onay = sum(1 for s in steps if "SAT" in s["Sinyal"] or "UYARI" in s["Sinyal"])
+        toplam   = len(steps)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("✅ AL Onayı",  f"{al_onay} / {toplam}")
+        col2.metric("❌ SAT/Uyarı", f"{sat_onay} / {toplam}")
+        col3.metric("Volatilite",   "Yüksek ↑" if r_atr_hi else "Düşük ↓")
+
+        # --- Özet Metin ---
+        st.subheader("📝 Özet")
+        ozet_parcalar = []
+
+        if r_adx > adx_threshold:
+            ozet_parcalar.append(f"ADX {r_adx:.1f} ile **güçlü bir trend** mevcut.")
+        else:
+            ozet_parcalar.append(f"ADX {r_adx:.1f} — piyasa **yatay seyirde**, mean-reversion sinyalleri daha geçerli.")
+
+        if r_std == 1:
+            ozet_parcalar.append("SuperTrend **AL** konumunda, yükseliş trendi destekleniyor.")
+        else:
+            ozet_parcalar.append("SuperTrend **SAT** konumunda, düşüş baskısı var.")
+
+        if macd_pos:
+            ozet_parcalar.append("MACD pozitif — momentum yukarı yönlü.")
+        else:
+            ozet_parcalar.append("MACD negatif — momentum aşağı yönlü.")
+
+        if rsi_os:
+            ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı satım** bölgesinde — potansiyel giriş noktası.")
+        elif rsi_ob:
+            ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı alım** bölgesinde — dikkatli olunmalı.")
+
+        if r_obv_sig == 1:
+            ozet_parcalar.append("OBV birikim sinyali veriyor — hacim fiyatı destekliyor.")
+        elif r_obv_sig == -1:
+            ozet_parcalar.append("OBV dağıtım sinyali veriyor — hacim zayıflıyor.")
+
+        if div_risk:
+            ozet_parcalar.append("⚠️ **Bearish divergence** tespit edildi — mevcut sinyaller zayıflayabilir.")
+        if div_boost:
+            ozet_parcalar.append("🔺 **Bullish divergence** mevcut — AL sinyalini güçlendiriyor.")
+
+        # Genel sonuç
+        if al_onay >= 5 and not div_risk:
+            ozet_parcalar.append(f"\n> 🟢 **Genel Değerlendirme: {al_onay}/7 onay — güçlü AL sinyali.**")
+        elif al_onay >= 3 and not div_risk:
+            ozet_parcalar.append(f"\n> 🟡 **Genel Değerlendirme: {al_onay}/7 onay — zayıf AL, teyit bekle.**")
+        elif sat_onay >= 3 or div_risk:
+            ozet_parcalar.append(f"\n> 🔴 **Genel Değerlendirme: {sat_onay} uyarı — SAT/bekle baskın.**")
+        else:
+            ozet_parcalar.append("\n> ⚪ **Genel Değerlendirme: Karışık sinyal — bekle.**")
+
+        st.markdown(" ".join(ozet_parcalar))
 
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")

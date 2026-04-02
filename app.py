@@ -65,7 +65,7 @@ with st.sidebar:
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
-        index=4,
+        index=5,
     )
 
     if period in ["1d", "5d"]:
@@ -145,7 +145,7 @@ with st.sidebar:
 
     st.write("---")
     st.subheader("🔁 Walk-Forward Optimizasyon")
-    n_windows  = st.slider("Pencere Sayısı:", 2, 8, 4,
+    n_windows  = st.slider("Pencere Sayısı:", 2, 8, 3,
         help="Veri kaç eşit parçaya bölünsün?")
     train_pct  = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
         help="Her pencerenin %kaçı eğitim, kalanı test olsun?")

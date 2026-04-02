@@ -87,67 +87,67 @@ with st.sidebar:
     st.write("---")
     st.subheader("Sabit Parametreler")
     ss = st.session_state
-    sma_short       = st.slider("SMA Kısa Periyot:",        5,   50,  value=ss["sma_short"])
-    sma_long        = st.slider("SMA Uzun Periyot:",        50,  300, value=ss["sma_long"])
-    rsi_period      = st.slider("RSI Periyodu:",            7,   21,  value=ss["rsi_period"])
-    rsi_lower       = st.slider("RSI Alt Eşik:",            20,  40,  value=ss["rsi_lower"])
-    rsi_upper       = st.slider("RSI Üst Eşik:",            60,  80,  value=ss["rsi_upper"])
-    rsi_ma_period   = st.slider("RSI MA Periyodu:",         5,   50,  14)
-    bb_period       = st.slider("BB Periyodu:",             10,  50,  value=ss["bb_period"])
-    bb_std          = st.slider("BB Standart Sapma:",       1.0, 3.0, value=ss["bb_std"],        step=0.5)
-    macd_fast       = st.slider("MACD Hızlı EMA:",          5,   20,  value=ss["macd_fast"])
-    macd_slow       = st.slider("MACD Yavaş EMA:",          15,  40,  value=ss["macd_slow"])
-    macd_signal     = st.slider("MACD Sinyal:",             5,   15,  value=ss["macd_signal"])
-    z_period        = st.slider("Z-Score Pencere:",         10,  60,  value=ss["z_period"])
-    z_thresh        = st.slider("Z-Score Eşik:",            1.0, 3.0, value=ss["z_thresh"],      step=0.5)
-    obv_short       = st.slider("OBV Kısa SMA:",            5,   20,  10)
-    obv_long        = st.slider("OBV Uzun SMA:",            15,  50,  30)
-    adx_period      = st.slider("ADX Periyodu:",            7,   30,  value=ss["adx_period"])
-    adx_threshold   = st.slider("ADX Trend Eşiği:",        15,  35,  value=ss["adx_threshold"])
-    atr_period      = st.slider("ATR Periyodu:",            7,   30,  14)
-    stoch_rsi_period= st.slider("Stoch RSI Periyodu:",      7,   21,  14)
-    stoch_d_period  = st.slider("Stoch RSI %D Smoothing:",  2,   5,   3)
-    stoch_lower     = st.slider("Stoch RSI Alt Eşik:",      5,   30,  20)
-    stoch_upper     = st.slider("Stoch RSI Üst Eşik:",      70,  95,  80)
-    ichi_tenkan     = st.slider("Tenkan-sen:",              5,   20,  9)
-    ichi_kijun      = st.slider("Kijun-sen:",               20,  40,  26)
-    ichi_senkou_b   = st.slider("Senkou Span B:",           40,  65,  52)
-    st_period       = st.slider("SuperTrend ATR Periyodu:", 5,   20,  value=ss["st_period"])
-    st_multiplier   = st.slider("SuperTrend Çarpan:",       1.0, 5.0, value=ss["st_multiplier"], step=0.5)
-    kama_period     = st.slider("KAMA Etkinlik Periyodu:",  5,   20,  10)
-    kama_fast       = st.slider("KAMA Hızlı EMA:",          2,   5,   2)
-    kama_slow       = st.slider("KAMA Yavaş EMA:",          20,  40,  30)
-    lrc_period      = st.slider("LRC Periyodu:",            20,  100, value=ss["lrc_period"])
-    lrc_std_mult    = st.slider("LRC Standart Sapma:",      1.0, 3.0, value=ss["lrc_std_mult"],  step=0.5)
-    nw_bandwidth    = st.slider("NW Bant Genişliği (h):",   3,   20,  8)
-    nw_window       = st.slider("NW Pencere (son N bar):",  50,  300, 100)
-    vwap_band_pct   = st.slider("VWAP Nötr Bant (%):",     0.0, 1.0, 0.1, step=0.05)
+    sma_short        = st.slider("SMA Kısa Periyot:",        5,   50,  value=ss["sma_short"])
+    sma_long         = st.slider("SMA Uzun Periyot:",        50,  300, value=ss["sma_long"])
+    rsi_period       = st.slider("RSI Periyodu:",            7,   21,  value=ss["rsi_period"])
+    rsi_lower        = st.slider("RSI Alt Eşik:",            20,  40,  value=ss["rsi_lower"])
+    rsi_upper        = st.slider("RSI Üst Eşik:",            60,  80,  value=ss["rsi_upper"])
+    rsi_ma_period    = st.slider("RSI MA Periyodu:",         5,   50,  14)
+    bb_period        = st.slider("BB Periyodu:",             10,  50,  value=ss["bb_period"])
+    bb_std           = st.slider("BB Standart Sapma:",       1.0, 3.0, value=ss["bb_std"],        step=0.5)
+    macd_fast        = st.slider("MACD Hızlı EMA:",          5,   20,  value=ss["macd_fast"])
+    macd_slow        = st.slider("MACD Yavaş EMA:",          15,  40,  value=ss["macd_slow"])
+    macd_signal      = st.slider("MACD Sinyal:",             5,   15,  value=ss["macd_signal"])
+    z_period         = st.slider("Z-Score Pencere:",         10,  60,  value=ss["z_period"])
+    z_thresh         = st.slider("Z-Score Eşik:",            1.0, 3.0, value=ss["z_thresh"],      step=0.5)
+    obv_short        = st.slider("OBV Kısa SMA:",            5,   20,  10)
+    obv_long         = st.slider("OBV Uzun SMA:",            15,  50,  30)
+    adx_period       = st.slider("ADX Periyodu:",            7,   30,  value=ss["adx_period"])
+    adx_threshold    = st.slider("ADX Trend Eşiği:",        15,  35,  value=ss["adx_threshold"])
+    atr_period       = st.slider("ATR Periyodu:",            7,   30,  14)
+    stoch_rsi_period = st.slider("Stoch RSI Periyodu:",      7,   21,  14)
+    stoch_d_period   = st.slider("Stoch RSI %D Smoothing:",  2,   5,   3)
+    stoch_lower      = st.slider("Stoch RSI Alt Eşik:",      5,   30,  20)
+    stoch_upper      = st.slider("Stoch RSI Üst Eşik:",      70,  95,  80)
+    ichi_tenkan      = st.slider("Tenkan-sen:",              5,   20,  9)
+    ichi_kijun       = st.slider("Kijun-sen:",               20,  40,  26)
+    ichi_senkou_b    = st.slider("Senkou Span B:",           40,  65,  52)
+    st_period        = st.slider("SuperTrend ATR Periyodu:", 5,   20,  value=ss["st_period"])
+    st_multiplier    = st.slider("SuperTrend Çarpan:",       1.0, 5.0, value=ss["st_multiplier"], step=0.5)
+    kama_period      = st.slider("KAMA Etkinlik Periyodu:",  5,   20,  10)
+    kama_fast        = st.slider("KAMA Hızlı EMA:",          2,   5,   2)
+    kama_slow        = st.slider("KAMA Yavaş EMA:",          20,  40,  30)
+    lrc_period       = st.slider("LRC Periyodu:",            20,  100, value=ss["lrc_period"])
+    lrc_std_mult     = st.slider("LRC Standart Sapma:",      1.0, 3.0, value=ss["lrc_std_mult"],  step=0.5)
+    nw_bandwidth     = st.slider("NW Bant Genişliği (h):",   3,   20,  8)
+    nw_window        = st.slider("NW Pencere (son N bar):",  50,  300, 100)
+    vwap_band_pct    = st.slider("VWAP Nötr Bant (%):",     0.0, 1.0, 0.1, step=0.05)
 
     st.write("---")
     st.subheader("📐 Fibonacci Ayarları")
-    fib_lookback    = st.slider("Fibonacci Lookback (bar):", 20, 300, 100)
+    fib_lookback = st.slider("Fibonacci Lookback (bar):", 20, 300, 100)
 
     st.write("---")
     st.subheader("〰️ WaveTrend Ayarları")
-    wt_n1           = st.slider("WaveTrend Kanal (n1):",    5,  20,  value=ss["wt_n1"])
-    wt_n2           = st.slider("WaveTrend Ortalama (n2):", 10, 40,  value=ss["wt_n2"])
-    wt_ob           = st.slider("WaveTrend Aşırı Alım:",    40, 80,  60)
-    wt_os           = st.slider("WaveTrend Aşırı Satım:",  -80, -20, -60)
+    wt_n1 = st.slider("WaveTrend Kanal (n1):",    5,  20,  value=ss["wt_n1"])
+    wt_n2 = st.slider("WaveTrend Ortalama (n2):", 10, 40,  value=ss["wt_n2"])
+    wt_ob = st.slider("WaveTrend Aşırı Alım:",    40, 80,  60)
+    wt_os = st.slider("WaveTrend Aşırı Satım:",  -80, -20, -60)
 
     st.write("---")
     st.subheader("🔀 Divergence Ayarları")
-    div_window      = st.slider("Divergence Pivot Pencere:", 3, 10, 5)
+    div_window = st.slider("Divergence Pivot Pencere:", 3, 10, 5)
 
     st.write("---")
     st.subheader("📊 Backtest Ayarları")
-    commission_pct  = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
-    slippage_pct    = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
+    commission_pct = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
+    slippage_pct   = st.slider("Slippage (% / işlem):", 0.0, 0.5, 0.05, step=0.01)
 
     st.write("---")
     st.subheader("🔁 Walk-Forward Optimizasyon")
-    n_windows  = st.slider("Pencere Sayısı:", 2, 8, 3,
+    n_windows = st.slider("Pencere Sayısı:", 2, 8, 3,
         help="Veri kaç eşit parçaya bölünsün?")
-    train_pct  = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
+    train_pct = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
         help="Her pencerenin %kaçı eğitim, kalanı test olsun?")
     st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test")
 
@@ -228,10 +228,11 @@ def calc_adx(high, low, close, period=14):
 
 
 def calc_kama(close, period=10, fast=2, slow=30):
-    ca      = close.values.astype(float)
-    kama    = np.full(len(ca), np.nan)
+    ca   = close.values.astype(float)
+    kama = np.full(len(ca), np.nan)
     kama[period - 1] = ca[period - 1]
-    fsc = 2.0 / (fast + 1); ssc = 2.0 / (slow + 1)
+    fsc = 2.0 / (fast + 1)
+    ssc = 2.0 / (slow + 1)
     for i in range(period, len(ca)):
         direction  = abs(ca[i] - ca[i - period])
         volatility = np.sum(np.abs(np.diff(ca[i - period:i + 1])))
@@ -251,12 +252,14 @@ def calc_supertrend(high, low, close, period=10, multiplier=3.0):
     ub  = (hl2 + multiplier * atr).values.astype(float)
     lb  = (hl2 - multiplier * atr).values.astype(float)
     ca  = close.values.astype(float)
-    ubf = ub.copy(); lbf = lb.copy()
+    ubf = ub.copy()
+    lbf = lb.copy()
     direction  = np.ones(len(ca), dtype=float)
     supertrend = np.full(len(ca), np.nan)
     for i in range(1, len(ca)):
         if np.isnan(ubf[i-1]) or np.isnan(lbf[i-1]):
-            ubf[i] = ub[i]; lbf[i] = lb[i]
+            ubf[i] = ub[i]
+            lbf[i] = lb[i]
         else:
             ubf[i] = ub[i] if (ub[i] < ubf[i-1] or ca[i-1] > ubf[i-1]) else ubf[i-1]
             lbf[i] = lb[i] if (lb[i] > lbf[i-1] or ca[i-1] < lbf[i-1]) else lbf[i-1]
@@ -270,23 +273,28 @@ def calc_supertrend(high, low, close, period=10, multiplier=3.0):
 
 def calc_linear_regression_channel(close, period=50, std_mult=2.0):
     n = len(close)
-    mid = np.full(n, np.nan); upper = np.full(n, np.nan); lower = np.full(n, np.nan)
+    mid   = np.full(n, np.nan)
+    upper = np.full(n, np.nan)
+    lower = np.full(n, np.nan)
     for i in range(period - 1, n):
         y = close.values[i - period + 1:i + 1].astype(float)
         x = np.arange(period)
         sl, ic = np.polyfit(x, y, 1)
         yp  = sl * x + ic
         std = np.std(y - yp)
-        mid[i] = yp[-1]; upper[i] = yp[-1] + std_mult * std; lower[i] = yp[-1] - std_mult * std
+        mid[i]   = yp[-1]
+        upper[i] = yp[-1] + std_mult * std
+        lower[i] = yp[-1] - std_mult * std
     return (pd.Series(mid, index=close.index), pd.Series(upper, index=close.index),
             pd.Series(lower, index=close.index))
 
 
 def calc_nadaraya_watson(close, bandwidth=8, window=100):
-    n   = len(close)
-    nwl = np.full(n, np.nan)
+    n     = len(close)
+    nwl   = np.full(n, np.nan)
     start = max(0, n - window)
-    y = close.values[start:].astype(float); m = len(y)
+    y = close.values[start:].astype(float)
+    m = len(y)
     for i in range(m):
         w = np.exp(-((i - np.arange(m)) ** 2) / (2 * bandwidth ** 2))
         nwl[start + i] = np.sum(w * y) / np.sum(w)
@@ -296,15 +304,14 @@ def calc_nadaraya_watson(close, bandwidth=8, window=100):
 
 
 def calc_vwap_daily(high, low, close, volume):
-    tp  = (high + low + close) / 3
-    dk  = pd.Series(close.index.date, index=close.index)
+    tp = (high + low + close) / 3
+    dk = pd.Series(close.index.date, index=close.index)
     return (tp * volume).groupby(dk).cumsum() / volume.groupby(dk).cumsum().replace(0, np.nan)
 
 
 # ============================================================
 # FİBONACCİ, WAVETREND, DIVERGENCE
 # ============================================================
-
 def calc_fibonacci(high, low, lookback=100):
     recent_high = float(high.rolling(lookback, min_periods=1).max().iloc[-1])
     recent_low  = float(low.rolling(lookback, min_periods=1).min().iloc[-1])
@@ -338,32 +345,26 @@ def detect_divergence(price, indicator, window=5):
     result = np.zeros(n)
     pv     = price.values.astype(float)
     iv     = indicator.values.astype(float)
-
     for i in range(window * 2, n):
         seg_p = pv[max(0, i - window * 4):i + 1]
         seg_i = iv[max(0, i - window * 4):i + 1]
         m     = len(seg_p)
-
         lows_p = []; lows_i = []
         for j in range(window, m - window):
             if seg_p[j] == np.min(seg_p[j - window:j + window + 1]):
                 lows_p.append(seg_p[j])
                 lows_i.append(seg_i[j])
-
         if len(lows_p) >= 2:
             if lows_p[-1] < lows_p[-2] and lows_i[-1] > lows_i[-2]:
                 result[i] = 1
-
         highs_p = []; highs_i = []
         for j in range(window, m - window):
             if seg_p[j] == np.max(seg_p[j - window:j + window + 1]):
                 highs_p.append(seg_p[j])
                 highs_i.append(seg_i[j])
-
         if len(highs_p) >= 2:
             if highs_p[-1] > highs_p[-2] and highs_i[-1] < highs_i[-2]:
                 result[i] = -1
-
     return pd.Series(result, index=price.index)
 
 
@@ -371,8 +372,8 @@ def detect_divergence(price, indicator, window=5):
 # 5. SİNYAL FONKSİYONLARI
 # ============================================================
 def sig_sma(close, atr_high, sma_s=20, sma_l=100):
-    sh = close.rolling(sma_s, min_periods=sma_s).mean()
-    sl = close.rolling(sma_l, min_periods=sma_l).mean()
+    sh  = close.rolling(sma_s, min_periods=sma_s).mean()
+    sl  = close.rolling(sma_l, min_periods=sma_l).mean()
     sig = np.where(sh > sl, 1, -1)
     sig = np.where(sh.isna() | sl.isna(), 0, sig)
     sig = np.where(atr_high | (sig == 0), sig, 0)
@@ -380,9 +381,9 @@ def sig_sma(close, atr_high, sma_s=20, sma_l=100):
 
 
 def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70):
-    d = close.diff()
-    g = d.where(d > 0, 0.0).rolling(rsi_period).mean()
-    l = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
+    d   = close.diff()
+    g   = d.where(d > 0, 0.0).rolling(rsi_period).mean()
+    l   = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
     rsi = 100 - (100 / (1 + g / l.replace(0, np.nan)))
     sig = np.where(rsi < rsi_lower, 1, np.where(rsi > rsi_upper, -1, 0))
     return pd.Series(sig, index=close.index), rsi
@@ -391,7 +392,8 @@ def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70):
 def sig_bb(close, bb_period, bb_std_val=2.0):
     mid = close.rolling(bb_period).mean()
     std = close.rolling(bb_period).std()
-    up  = mid + bb_std_val * std; lo = mid - bb_std_val * std
+    up  = mid + bb_std_val * std
+    lo  = mid - bb_std_val * std
     sig = np.where(close < lo, 1, np.where(close > up, -1, 0))
     return pd.Series(sig, index=close.index), mid, up, lo
 
@@ -399,7 +401,8 @@ def sig_bb(close, bb_period, bb_std_val=2.0):
 def sig_macd(close, atr_high, macd_fast=12, macd_slow=26, macd_sig_p=9):
     ef   = close.ewm(span=macd_fast, adjust=False).mean()
     es   = close.ewm(span=macd_slow, adjust=False).mean()
-    macd = ef - es; ms = macd.ewm(span=macd_sig_p, adjust=False).mean()
+    macd = ef - es
+    ms   = macd.ewm(span=macd_sig_p, adjust=False).mean()
     sig  = np.where(macd > ms, 1, -1)
     sig  = np.where(atr_high | (sig == 0), sig, 0)
     return pd.Series(sig, index=close.index), macd, ms
@@ -414,11 +417,11 @@ def sig_z(close, z_period, z_thresh=2.0):
 
 
 def sig_obv(close, volume, obv_short, obv_long):
-    obv  = (volume * np.sign(close.diff()).fillna(0)).cumsum()
-    s    = obv.rolling(obv_short, min_periods=obv_short).mean()
-    l    = obv.rolling(obv_long,  min_periods=obv_long).mean()
-    sig  = np.where(s > l, 1, -1)
-    sig  = np.where(s.isna() | l.isna(), 0, sig)
+    obv = (volume * np.sign(close.diff()).fillna(0)).cumsum()
+    s   = obv.rolling(obv_short, min_periods=obv_short).mean()
+    l   = obv.rolling(obv_long,  min_periods=obv_long).mean()
+    sig = np.where(s > l, 1, -1)
+    sig = np.where(s.isna() | l.isna(), 0, sig)
     return pd.Series(sig, index=close.index), obv, s, l
 
 
@@ -483,7 +486,7 @@ def sig_vwap_fn(high, low, close, volume, vwap_band_pct):
 
 
 def sig_wavetrend_fn(high, low, close, n1=10, n2=21, ob=60, os_=-60):
-    wt1, wt2 = calc_wavetrend(high, low, close, n1=n1, n2=n2)
+    wt1, wt2   = calc_wavetrend(high, low, close, n1=n1, n2=n2)
     cross_up   = (wt1 > wt2) & (wt1.shift(1) <= wt2.shift(1))
     cross_down = (wt1 < wt2) & (wt1.shift(1) >= wt2.shift(1))
     sig = np.where(cross_up & (wt1 < os_), 1,
@@ -495,11 +498,14 @@ def sig_wavetrend_fn(high, low, close, n1=10, n2=21, ob=60, os_=-60):
 # 6. BACKTEST YARDIMCISI
 # ============================================================
 def run_backtest(signal_series, close_arr, cost_pct):
-    sig = signal_series.values if hasattr(signal_series, "values") else signal_series
-    trades = []; in_pos = False; entry_p = 0.0
+    sig    = signal_series.values if hasattr(signal_series, "values") else signal_series
+    trades = []
+    in_pos = False
+    entry_p = 0.0
     for i in range(1, len(sig)):
         if not in_pos and sig[i] == 1 and sig[i-1] != 1:
-            entry_p = float(close_arr[i]); in_pos = True
+            entry_p = float(close_arr[i])
+            in_pos  = True
         elif in_pos and sig[i] == -1 and sig[i-1] != -1:
             ep = float(close_arr[i])
             trades.append(((ep * (1 - cost_pct) - entry_p * (1 + cost_pct)) / (entry_p * (1 + cost_pct))) * 100)
@@ -510,23 +516,27 @@ def run_backtest(signal_series, close_arr, cost_pct):
     if not trades:
         return {"total_ret": 0.0, "sharpe": 0.0, "n": 0,
                 "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd": 0.0, "pf": 0.0}
-    r = np.array(trades)
-    cumul = 1.0; peak = 1.0; max_dd = 0.0
+    r      = np.array(trades)
+    cumul  = 1.0
+    peak   = 1.0
+    max_dd = 0.0
     for rv in r:
         cumul *= (1 + rv / 100)
         if cumul > peak: peak = cumul
         dd = ((peak - cumul) / peak) * 100
         if dd > max_dd: max_dd = dd
-    wins = r[r > 0]; losses = r[r <= 0]
+    wins      = r[r > 0]
+    losses    = r[r <= 0]
     total_ret = (cumul - 1) * 100
     wr        = len(wins) / len(r) * 100
     sharpe    = float(np.mean(r) / np.std(r)) * np.sqrt(len(r)) if len(r) > 1 and np.std(r) > 0 else 0.0
     pf        = abs(wins.sum() / losses.sum()) if len(losses) > 0 and losses.sum() != 0 else float("inf")
     return {"total_ret": round(total_ret, 4), "sharpe": round(sharpe, 4), "n": len(r),
-            "win_rate": round(wr, 2), "avg_win": round(float(wins.mean()) if len(wins) > 0 else 0.0, 4),
-            "avg_loss": round(float(losses.mean()) if len(losses) > 0 else 0.0, 4),
-            "max_dd": round(max_dd, 4),
-            "pf": round(pf, 4) if pf != float("inf") else float("inf")}
+            "win_rate": round(wr, 2),
+            "avg_win":  round(float(wins.mean())   if len(wins)   > 0 else 0.0, 4),
+            "avg_loss": round(float(losses.mean())  if len(losses) > 0 else 0.0, 4),
+            "max_dd":   round(max_dd, 4),
+            "pf":       round(pf, 4) if pf != float("inf") else float("inf")}
 
 
 def _score(stats, metric):
@@ -553,8 +563,8 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
 
     windows = []
     for w in range(n_windows):
-        s = w * win_size
-        e = s + win_size if w < n_windows - 1 else n
+        s     = w * win_size
+        e     = s + win_size if w < n_windows - 1 else n
         split = s + int((e - s) * train_pct / 100)
         if split - s < 10 or e - split < 5:
             continue
@@ -566,20 +576,21 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     combo_scores = {combo: [] for combo in combos}
 
     for (ts, te, es) in windows:
-        test_arr  = close_arr[te:es]
+        test_arr = close_arr[te:es]
         for combo in combos:
-            p = dict(zip(keys, combo))
+            p        = dict(zip(keys, combo))
             sig_full = signal_fn(p)
             if sig_full is None:
                 continue
-            sig_vals  = sig_full.values if hasattr(sig_full, "values") else sig_full
-            test_sig  = sig_vals[te:es]
+            sig_vals   = sig_full.values if hasattr(sig_full, "values") else sig_full
+            test_sig   = sig_vals[te:es]
             test_stats = run_backtest(test_sig, test_arr, cost_pct)
             if test_stats["n"] < min_trades:
                 continue
             combo_scores[combo].append(_score(test_stats, metric))
 
-    best_combo = None; best_avg = -np.inf
+    best_combo = None
+    best_avg   = -np.inf
     for combo, scores in combo_scores.items():
         if not scores:
             continue
@@ -610,12 +621,14 @@ def fetch_live_data(symbol, p, i):
         data = yf.download(symbol, period=p, interval=i, progress=False)
         return pd.DataFrame() if data is None or data.empty else data
     except Exception as e:
-        st.error(f"Veri çekme hatası: {e}"); return pd.DataFrame()
+        st.error(f"Veri çekme hatası: {e}")
+        return pd.DataFrame()
 
 
 PLOTLY_CONFIG = dict(scrollZoom=True, displayModeBar=True,
-    modeBarButtonsToAdd=["pan2d","zoomIn2d","zoomOut2d","resetScale2d"],
-    modeBarButtonsToRemove=["lasso2d","select2d"])
+    modeBarButtonsToAdd=["pan2d", "zoomIn2d", "zoomOut2d", "resetScale2d"],
+    modeBarButtonsToRemove=["lasso2d", "select2d"])
+
 
 def sub_layout(height=250):
     return dict(template="plotly_dark", height=height, margin=dict(t=30, b=30), dragmode="pan")
@@ -629,19 +642,19 @@ if ticker:
 
     if not df.empty:
         df = flatten_columns(df)
-        df = df.dropna(subset=["Open","High","Low","Close","Volume"])
-        missing = [c for c in ["Open","High","Low","Close","Volume"] if c not in df.columns]
+        df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+        missing = [c for c in ["Open", "High", "Low", "Close", "Volume"] if c not in df.columns]
         if missing:
-            st.error(f"Eksik sütunlar: {missing}."); st.stop()
+            st.error(f"Eksik sütunlar: {missing}.")
+            st.stop()
 
-        close = df["Close"].squeeze(); high = df["High"].squeeze()
-        low   = df["Low"].squeeze();   volume = df["Volume"].squeeze()
+        close     = df["Close"].squeeze()
+        high      = df["High"].squeeze()
+        low       = df["Low"].squeeze()
+        volume    = df["Volume"].squeeze()
         close_arr = close.values
-        n_bars = len(close)
+        n_bars    = len(close)
 
-        # ============================================================
-        # DEĞİŞİKLİK 2: HANGİ İNDİKATÖRLERİN YETERSİZ VERİ ALDIĞINI GÖSTER
-        # ============================================================
         indicator_min_reqs = {
             "SMA Crossover":    sma_long,
             "Bollinger Bands":  bb_period,
@@ -676,12 +689,14 @@ if ticker:
                 st.warning(f"Yeterli veri yok: {n_bars} mum, en az {min_req} gerekli.")
 
         cost_pct    = (commission_pct + slippage_pct) / 100
-        is_intraday = interval in ["1m","2m","5m","15m","30m","60m","1h"]
+        is_intraday = interval in ["1m", "2m", "5m", "15m", "30m", "60m", "1h"]
 
         # ATR
-        tr1 = high - low; tr2 = (high - close.shift(1)).abs(); tr3 = (low - close.shift(1)).abs()
-        tr  = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr_series = tr.ewm(alpha=1.0/atr_period, min_periods=atr_period, adjust=False).mean()
+        tr1        = high - low
+        tr2        = (high - close.shift(1)).abs()
+        tr3        = (low  - close.shift(1)).abs()
+        tr         = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        atr_series = tr.ewm(alpha=1.0 / atr_period, min_periods=atr_period, adjust=False).mean()
         atr_ma     = atr_series.rolling(atr_period, min_periods=atr_period).mean()
         atr_high   = (atr_series > atr_ma).values
 
@@ -691,9 +706,10 @@ if ticker:
         OPT_KEY = f"opt_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
 
         if run_opt or OPT_KEY not in st.session_state:
-            opt_params = {}; opt_stats = {}
-            prog = st.progress(0, text="Optimizasyon başlatılıyor…")
-            algo_list = list(PARAM_GRIDS.keys())
+            opt_params = {}
+            opt_stats  = {}
+            prog       = st.progress(0, text="Optimizasyon başlatılıyor…")
+            algo_list  = list(PARAM_GRIDS.keys())
 
             for idx, algo_name in enumerate(algo_list):
                 prog.progress(idx / len(algo_list), text=f"Optimize ediliyor: {algo_name}")
@@ -759,33 +775,33 @@ if ticker:
             st.session_state[OPT_KEY] = {"params": opt_params, "stats": opt_stats}
 
             p = opt_params
-            st.session_state["sma_short"]    = int(p["SMA Crossover"]["sma_s"])
-            st.session_state["sma_long"]     = int(p["SMA Crossover"]["sma_l"])
-            st.session_state["rsi_period"]   = int(p["RSI"]["rsi_period"])
-            st.session_state["rsi_lower"]    = int(p["RSI"]["rsi_lower"])
-            st.session_state["rsi_upper"]    = int(p["RSI"]["rsi_upper"])
-            st.session_state["bb_period"]    = int(p["Bollinger Bands"]["bb_period"])
-            st.session_state["bb_std"]       = float(p["Bollinger Bands"]["bb_std"])
-            st.session_state["macd_fast"]    = int(p["MACD"]["macd_fast"])
-            st.session_state["macd_slow"]    = int(p["MACD"]["macd_slow"])
-            st.session_state["macd_signal"]  = int(p["MACD"]["macd_signal"])
-            st.session_state["z_period"]     = int(p["Mean Reversion"]["z_period"])
-            st.session_state["z_thresh"]     = float(p["Mean Reversion"]["z_thresh"])
-            st.session_state["adx_period"]   = int(p["ADX"]["adx_period"])
-            st.session_state["adx_threshold"]= int(p["ADX"]["adx_threshold"])
-            st.session_state["st_period"]    = int(p["SuperTrend"]["st_period"])
-            st.session_state["st_multiplier"]= float(p["SuperTrend"]["st_multiplier"])
-            st.session_state["lrc_period"]   = int(p["LR Channel"]["lrc_period"])
-            st.session_state["lrc_std_mult"] = float(p["LR Channel"]["lrc_std_mult"])
-            st.session_state["wt_n1"]        = int(p["WaveTrend"]["wt_n1"])
-            st.session_state["wt_n2"]        = int(p["WaveTrend"]["wt_n2"])
+            st.session_state["sma_short"]     = int(p["SMA Crossover"]["sma_s"])
+            st.session_state["sma_long"]      = int(p["SMA Crossover"]["sma_l"])
+            st.session_state["rsi_period"]    = int(p["RSI"]["rsi_period"])
+            st.session_state["rsi_lower"]     = int(p["RSI"]["rsi_lower"])
+            st.session_state["rsi_upper"]     = int(p["RSI"]["rsi_upper"])
+            st.session_state["bb_period"]     = int(p["Bollinger Bands"]["bb_period"])
+            st.session_state["bb_std"]        = float(p["Bollinger Bands"]["bb_std"])
+            st.session_state["macd_fast"]     = int(p["MACD"]["macd_fast"])
+            st.session_state["macd_slow"]     = int(p["MACD"]["macd_slow"])
+            st.session_state["macd_signal"]   = int(p["MACD"]["macd_signal"])
+            st.session_state["z_period"]      = int(p["Mean Reversion"]["z_period"])
+            st.session_state["z_thresh"]      = float(p["Mean Reversion"]["z_thresh"])
+            st.session_state["adx_period"]    = int(p["ADX"]["adx_period"])
+            st.session_state["adx_threshold"] = int(p["ADX"]["adx_threshold"])
+            st.session_state["st_period"]     = int(p["SuperTrend"]["st_period"])
+            st.session_state["st_multiplier"] = float(p["SuperTrend"]["st_multiplier"])
+            st.session_state["lrc_period"]    = int(p["LR Channel"]["lrc_period"])
+            st.session_state["lrc_std_mult"]  = float(p["LR Channel"]["lrc_std_mult"])
+            st.session_state["wt_n1"]         = int(p["WaveTrend"]["wt_n1"])
+            st.session_state["wt_n2"]         = int(p["WaveTrend"]["wt_n2"])
             st.rerun()
 
         else:
             opt_params = st.session_state[OPT_KEY]["params"]
             opt_stats  = st.session_state[OPT_KEY]["stats"]
 
-        p_sma  = {"sma_s": sma_short,  "sma_l": sma_long}
+        p_sma  = {"sma_s": sma_short,   "sma_l": sma_long}
         p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper}
         p_bb   = {"bb_period": bb_period,   "bb_std": bb_std}
         p_macd = {"macd_fast": macd_fast,   "macd_slow": macd_slow, "macd_signal": macd_signal}
@@ -834,12 +850,14 @@ if ticker:
         df["NW_Line"], df["NW_Upper"], df["NW_Lower"] = calc_nadaraya_watson(
             close, bandwidth=nw_bandwidth, window=nw_window)
 
-        df["ATR"] = atr_series; df["ATR_High"] = atr_high
+        df["ATR"]      = atr_series
+        df["ATR_High"] = atr_high
 
         if is_intraday:
             df["Sig_VWAP"], df["VWAP"] = sig_vwap_fn(high, low, close, volume, vwap_band_pct)
         else:
-            df["Sig_VWAP"] = 0; df["VWAP"] = np.nan
+            df["Sig_VWAP"] = 0
+            df["VWAP"]     = np.nan
 
         df["Sig_WaveTrend"], df["WT1"], df["WT2"] = sig_wavetrend_fn(
             high, low, close, p_wt["wt_n1"], p_wt["wt_n2"], wt_ob, wt_os)
@@ -857,23 +875,23 @@ if ticker:
         bull_st = df["ST_Direction"] == 1
         bear_st = df["ST_Direction"] == -1
 
-        # ============================================================
-        # DEĞİŞİKLİK 1: GEÇIŞ NOKTALARINDA AL/SAT KUTUSU
-        # Yeşil nokta/kırmızı nokta yerine renkli kutu + metin
-        # ============================================================
         st_dir_shifted = df["ST_Direction"].shift(1).fillna(0)
-        st_buy_signal  = (df["ST_Direction"] == 1)  & (st_dir_shifted != 1)   # -1→1 geçişi = AL
-        st_sell_signal = (df["ST_Direction"] == -1) & (st_dir_shifted != -1)  # 1→-1 geçişi = SAT
+        st_buy_signal  = (df["ST_Direction"] == 1)  & (st_dir_shifted != 1)
+        st_sell_signal = (df["ST_Direction"] == -1) & (st_dir_shifted != -1)
 
-        lp = float(close.iloc[-1]); pp = float(close.iloc[-2]) if len(close) > 1 else lp
+        lp = float(close.iloc[-1])
+        pp = float(close.iloc[-2]) if len(close) > 1 else lp
 
-        vrp_bins    = 40
-        price_min   = float(low.min());  price_max = float(high.max())
-        bin_edges   = np.linspace(price_min, price_max, vrp_bins + 1)
-        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        vrp_bins     = 40
+        price_min    = float(low.min())
+        price_max    = float(high.max())
+        bin_edges    = np.linspace(price_min, price_max, vrp_bins + 1)
+        bin_centers  = (bin_edges[:-1] + bin_edges[1:]) / 2
         vol_at_price = np.zeros(vrp_bins)
         for i in range(len(df)):
-            lo_i = float(low.iloc[i]); hi_i = float(high.iloc[i]); vol_i = float(volume.iloc[i])
+            lo_i  = float(low.iloc[i])
+            hi_i  = float(high.iloc[i])
+            vol_i = float(volume.iloc[i])
             if hi_i == lo_i:
                 idx = np.clip(np.searchsorted(bin_edges, lo_i, side="right") - 1, 0, vrp_bins - 1)
                 vol_at_price[idx] += vol_i
@@ -907,65 +925,44 @@ if ticker:
                 line=dict(color="orange", width=1.5)), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
-            name=f"SMA {p_sma['sma_s']}", visible="legendonly", line=dict(color="orange")), row=1, col=1)
+            name=f"SMA {p_sma['sma_s']}", visible="legendonly",
+            line=dict(color="orange")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
-            name=f"SMA {p_sma['sma_l']}", visible="legendonly", line=dict(color="cyan")), row=1, col=1)
+            name=f"SMA {p_sma['sma_l']}", visible="legendonly",
+            line=dict(color="cyan")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
             name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
 
-        # SuperTrend çizgisi (sürekli, boğa/ayı renkli) — ana grafik
         fig.add_trace(go.Scatter(
             x=df.index[bull_st], y=df["SuperTrend"][bull_st],
-            name="SuperTrend (Boğa çizgi)",
-            mode="lines",
+            name="SuperTrend (Boğa çizgi)", mode="lines",
             line=dict(color="rgba(0,255,100,0.5)", width=1.5),
-            visible="legendonly",
-            showlegend=True,
-        ), row=1, col=1)
+            visible="legendonly", showlegend=True), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df.index[bear_st], y=df["SuperTrend"][bear_st],
-            name="SuperTrend (Ayı çizgi)",
-            mode="lines",
+            name="SuperTrend (Ayı çizgi)", mode="lines",
             line=dict(color="rgba(255,60,60,0.5)", width=1.5),
-            visible="legendonly",
-            showlegend=True,
-        ), row=1, col=1)
+            visible="legendonly", showlegend=True), row=1, col=1)
 
-        # ============================================================
-        # AL KUTUSU — geçiş noktasında yeşil kutu + "AL" yazısı
-        # ============================================================
         if st_buy_signal.any():
             fig.add_trace(go.Scatter(
                 x=df.index[st_buy_signal],
                 y=df["SuperTrend"][st_buy_signal],
                 name="SuperTrend AL",
                 mode="markers+text",
-                marker=dict(
-                    symbol="square",
-                    color="#00c853",
-                    size=18,
-                    line=dict(color="#00c853", width=0),
-                ),
+                marker=dict(symbol="square", color="#00c853", size=18, line=dict(color="#00c853", width=0)),
                 text="AL",
                 textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
             ), row=1, col=1)
 
-        # ============================================================
-        # SAT KUTUSU — geçiş noktasında kırmızı kutu + "SAT" yazısı
-        # ============================================================
         if st_sell_signal.any():
             fig.add_trace(go.Scatter(
                 x=df.index[st_sell_signal],
                 y=df["SuperTrend"][st_sell_signal],
                 name="SuperTrend SAT",
                 mode="markers+text",
-                marker=dict(
-                    symbol="square",
-                    color="#d50000",
-                    size=18,
-                    line=dict(color="#d50000", width=0),
-                ),
+                marker=dict(symbol="square", color="#d50000", size=18, line=dict(color="#d50000", width=0)),
                 text="SAT",
                 textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
@@ -991,6 +988,7 @@ if ticker:
             name="NW Alt", visible="legendonly",
             line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
             fill="tonexty", fillcolor="rgba(255,215,0,0.04)"), row=1, col=1)
+
         if is_intraday:
             fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
                 name="VWAP", visible="legendonly",
@@ -1064,9 +1062,9 @@ if ticker:
         # ============================================================
         # ALT GRAFİKLER
         # ============================================================
-        tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10,tab11 = st.tabs([
-            "RSI","MACD","ADX","OBV","Stoch RSI","Ichimoku","SuperTrend",
-            "KAMA & LRC","Nadaraya-Watson","WaveTrend","Divergence"])
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+            "RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku", "SuperTrend",
+            "KAMA & LRC", "Nadaraya-Watson", "WaveTrend", "Divergence"])
 
         with tab1:
             f = go.Figure()
@@ -1083,16 +1081,15 @@ if ticker:
             bull_div_rsi = df["Div_RSI"] == 1
             bear_div_rsi = df["Div_RSI"] == -1
             if bull_div_rsi.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bull_div_rsi], y=df["RSI"][bull_div_rsi],
+                f.add_trace(go.Scatter(x=df.index[bull_div_rsi], y=df["RSI"][bull_div_rsi],
                     name="Bullish Div", mode="markers",
                     marker=dict(color="lime", size=10, symbol="triangle-up")))
             if bear_div_rsi.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bear_div_rsi], y=df["RSI"][bear_div_rsi],
+                f.add_trace(go.Scatter(x=df.index[bear_div_rsi], y=df["RSI"][bear_div_rsi],
                     name="Bearish Div", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
-            f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            f.update_layout(**sub_layout())
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 RSI Nasıl Okunur?"):
                 st.markdown("""
 **RSI (Relative Strength Index)** — 0–100 arasında salınan momentum göstergesidir.
@@ -1118,16 +1115,15 @@ if ticker:
             bull_div_macd = df["Div_MACD"] == 1
             bear_div_macd = df["Div_MACD"] == -1
             if bull_div_macd.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bull_div_macd], y=df["MACD"][bull_div_macd],
+                f.add_trace(go.Scatter(x=df.index[bull_div_macd], y=df["MACD"][bull_div_macd],
                     name="Bullish Div", mode="markers",
                     marker=dict(color="lime", size=10, symbol="triangle-up")))
             if bear_div_macd.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bear_div_macd], y=df["MACD"][bear_div_macd],
+                f.add_trace(go.Scatter(x=df.index[bear_div_macd], y=df["MACD"][bear_div_macd],
                     name="Bearish Div", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
-            f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            f.update_layout(**sub_layout())
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 MACD Nasıl Okunur?"):
                 st.markdown("""
 **MACD (Moving Average Convergence Divergence)** — trend yönü ve momentumu ölçer.
@@ -1146,12 +1142,13 @@ if ticker:
 
         with tab3:
             f = go.Figure()
-            f.add_trace(go.Scatter(x=df.index, y=df["ADX"],      name="ADX",  line=dict(color="yellow", width=2)))
-            f.add_trace(go.Scatter(x=df.index, y=df["PLUS_DI"],  name="+DI",  line=dict(color="lime", dash="dot")))
-            f.add_trace(go.Scatter(x=df.index, y=df["MINUS_DI"], name="-DI",  line=dict(color="red",  dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=df["ADX"],      name="ADX", line=dict(color="yellow", width=2)))
+            f.add_trace(go.Scatter(x=df.index, y=df["PLUS_DI"],  name="+DI", line=dict(color="lime", dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=df["MINUS_DI"], name="-DI", line=dict(color="red",  dash="dot")))
             f.add_hline(y=p_adx["adx_threshold"], line_dash="dash", line_color="white",
                 annotation_text=f"Trend Eşiği ({p_adx['adx_threshold']})")
-            f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            f.update_layout(**sub_layout())
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 ADX Nasıl Okunur?"):
                 st.markdown("""
 **ADX (Average Directional Index)** — trendin gücünü ölçer (yön değil, sadece güç).
@@ -1173,9 +1170,12 @@ if ticker:
         with tab4:
             f = go.Figure()
             f.add_trace(go.Scatter(x=df.index, y=df["OBV"], name="OBV", line=dict(color="dodgerblue")))
-            f.add_trace(go.Scatter(x=df.index, y=obv_sma_short, name=f"OBV SMA {obv_short}", line=dict(color="orange", dash="dot")))
-            f.add_trace(go.Scatter(x=df.index, y=obv_sma_long,  name=f"OBV SMA {obv_long}",  line=dict(color="cyan",   dash="dot")))
-            f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            f.add_trace(go.Scatter(x=df.index, y=obv_sma_short,
+                name=f"OBV SMA {obv_short}", line=dict(color="orange", dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=obv_sma_long,
+                name=f"OBV SMA {obv_long}", line=dict(color="cyan", dash="dot")))
+            f.update_layout(**sub_layout())
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 OBV Nasıl Okunur?"):
                 st.markdown("""
 **OBV (On-Balance Volume)** — hacim akışını kümülatif olarak izler; fiyat hareketini önceden haber verebilir.
@@ -1200,7 +1200,8 @@ if ticker:
                 annotation_text=f"Aşırı Satım ({stoch_lower})")
             f.add_hline(y=stoch_upper, line_dash="dash", line_color="red",
                 annotation_text=f"Aşırı Alım ({stoch_upper})")
-            f.update_layout(**sub_layout()); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            f.update_layout(**sub_layout())
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 Stochastic RSI Nasıl Okunur?"):
                 st.markdown("""
 **Stochastic RSI** — RSI'ya uygulanan Stochastic göstergesidir. RSI'dan daha hassas ve hızlıdır.
@@ -1258,29 +1259,22 @@ if ticker:
                 name="SuperTrend (Boğa)", mode="lines", line=dict(color="lime", width=2)))
             f.add_trace(go.Scatter(x=df.index[bear_st], y=df["SuperTrend"][bear_st],
                 name="SuperTrend (Ayı)", mode="lines", line=dict(color="red", width=2)))
-            # Tab7'de de AL/SAT kutuları
             if st_buy_signal.any():
                 f.add_trace(go.Scatter(
-                    x=df.index[st_buy_signal],
-                    y=df["SuperTrend"][st_buy_signal],
-                    name="AL",
-                    mode="markers+text",
+                    x=df.index[st_buy_signal], y=df["SuperTrend"][st_buy_signal],
+                    name="AL", mode="markers+text",
                     marker=dict(symbol="square", color="#00c853", size=18, line=dict(width=0)),
                     text="AL",
                     textfont=dict(color="white", size=8, family="Arial Black"),
-                    textposition="middle center",
-                ))
+                    textposition="middle center"))
             if st_sell_signal.any():
                 f.add_trace(go.Scatter(
-                    x=df.index[st_sell_signal],
-                    y=df["SuperTrend"][st_sell_signal],
-                    name="SAT",
-                    mode="markers+text",
+                    x=df.index[st_sell_signal], y=df["SuperTrend"][st_sell_signal],
+                    name="SAT", mode="markers+text",
                     marker=dict(symbol="square", color="#d50000", size=18, line=dict(width=0)),
                     text="SAT",
                     textfont=dict(color="white", size=8, family="Arial Black"),
-                    textposition="middle center",
-                ))
+                    textposition="middle center"))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 SuperTrend Nasıl Okunur?"):
@@ -1310,7 +1304,8 @@ if ticker:
             f.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"], name="LRC Alt",
                 line=dict(color="rgba(200,200,200,0.6)", dash="dot"),
                 fill="tonexty", fillcolor="rgba(150,150,150,0.07)"))
-            f.update_layout(**sub_layout(height=350)); st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+            f.update_layout(**sub_layout(height=350))
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 KAMA & LR Channel Nasıl Okunur?"):
                 st.markdown("""
 **KAMA (Kaufman Adaptive Moving Average)** — piyasa koşullarına göre hız adapte eden akıllı bir ortalamadır.
@@ -1338,7 +1333,8 @@ if ticker:
             f.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"], name="NW Alt",
                 line=dict(color="lime", width=1, dash="dot"),
                 fill="tonexty", fillcolor="rgba(255,215,0,0.05)"))
-            nw_ob = close > df["NW_Upper"]; nw_os = close < df["NW_Lower"]
+            nw_ob = close > df["NW_Upper"]
+            nw_os = close < df["NW_Lower"]
             if nw_ob.any():
                 f.add_trace(go.Scatter(x=df.index[nw_ob], y=close[nw_ob],
                     name="Aşırı Alım", mode="markers", marker=dict(color="red", size=6)))
@@ -1367,21 +1363,19 @@ if ticker:
             wt_hist = df["WT1"] - df["WT2"]
             f.add_trace(go.Bar(x=df.index, y=wt_hist, name="WT Histogram",
                 marker_color=["lime" if v >= 0 else "red" for v in wt_hist], opacity=0.4))
-            f.add_hline(y=wt_ob,  line_dash="dash", line_color="red",
+            f.add_hline(y=wt_ob, line_dash="dash", line_color="red",
                 annotation_text=f"Aşırı Alım ({wt_ob})")
-            f.add_hline(y=wt_os,  line_dash="dash", line_color="lime",
+            f.add_hline(y=wt_os, line_dash="dash", line_color="lime",
                 annotation_text=f"Aşırı Satım ({wt_os})")
             f.add_hline(y=0, line_dash="dot", line_color="gray")
             wt_buy  = df["Sig_WaveTrend"] == 1
             wt_sell = df["Sig_WaveTrend"] == -1
             if wt_buy.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[wt_buy], y=df["WT1"][wt_buy],
+                f.add_trace(go.Scatter(x=df.index[wt_buy], y=df["WT1"][wt_buy],
                     name="AL", mode="markers",
                     marker=dict(color="lime", size=10, symbol="triangle-up")))
             if wt_sell.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[wt_sell], y=df["WT1"][wt_sell],
+                f.add_trace(go.Scatter(x=df.index[wt_sell], y=df["WT1"][wt_sell],
                     name="SAT", mode="markers",
                     marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout(height=300))
@@ -1403,28 +1397,24 @@ if ticker:
             f = go.Figure()
             f.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
                 line=dict(color="red", width=1.5)))
-            bull_div_r = df["Div_RSI"] == 1
-            bear_div_r = df["Div_RSI"] == -1
+            bull_div_r = df["Div_RSI"]  == 1
+            bear_div_r = df["Div_RSI"]  == -1
             bull_div_m = df["Div_MACD"] == 1
             bear_div_m = df["Div_MACD"] == -1
             if bull_div_r.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bull_div_r], y=close[bull_div_r],
+                f.add_trace(go.Scatter(x=df.index[bull_div_r], y=close[bull_div_r],
                     name="RSI Bullish Div", mode="markers",
                     marker=dict(color="lime", size=12, symbol="triangle-up")))
             if bear_div_r.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bear_div_r], y=close[bear_div_r],
+                f.add_trace(go.Scatter(x=df.index[bear_div_r], y=close[bear_div_r],
                     name="RSI Bearish Div", mode="markers",
                     marker=dict(color="red", size=12, symbol="triangle-down")))
             if bull_div_m.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bull_div_m], y=close[bull_div_m],
+                f.add_trace(go.Scatter(x=df.index[bull_div_m], y=close[bull_div_m],
                     name="MACD Bullish Div", mode="markers",
                     marker=dict(color="aquamarine", size=10, symbol="diamond")))
             if bear_div_m.any():
-                f.add_trace(go.Scatter(
-                    x=df.index[bear_div_m], y=close[bear_div_m],
+                f.add_trace(go.Scatter(x=df.index[bear_div_m], y=close[bear_div_m],
                     name="MACD Bearish Div", mode="markers",
                     marker=dict(color="salmon", size=10, symbol="diamond")))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False,
@@ -1446,11 +1436,13 @@ if ticker:
         last       = df.iloc[-1]
         last_close = safe_scalar(last["Close"])
         last_ath   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
-        res = []
+        res        = []
 
-        def trend_dec(raw_dec, atr_ok): return raw_dec if atr_ok else "TUT (düşük vol.)"
+        def trend_dec(raw_dec, atr_ok):
+            return raw_dec if atr_ok else "TUT (düşük vol.)"
 
-        lss = safe_scalar(last["SMA_SHORT"]); lsl = safe_scalar(last["SMA_LONG"])
+        lss = safe_scalar(last["SMA_SHORT"])
+        lsl = safe_scalar(last["SMA_LONG"])
         if not (np.isnan(lss) or np.isnan(lsl)):
             res.append([trend_dec("AL" if lss > lsl else "SAT", last_ath),
                         f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})", "Trend yönü."])
@@ -1464,14 +1456,16 @@ if ticker:
         else:
             res.append(["N/A", "RSI", "Yetersiz veri."])
 
-        lup = safe_scalar(last["Up"]); llb = safe_scalar(last["Low_BB"])
+        lup = safe_scalar(last["Up"])
+        llb = safe_scalar(last["Low_BB"])
         if not any(np.isnan(v) for v in [last_close, llb, lup]):
             dec = "AL" if last_close < llb else ("SAT" if last_close > lup else "TUT")
             res.append([dec, f"Bollinger Bands (σ={p_bb['bb_std']})", "Fiyatın kanaldaki yeri."])
         else:
             res.append(["N/A", "Bollinger Bands", "Yetersiz veri."])
 
-        lm = safe_scalar(last["MACD"]); lms = safe_scalar(last["MACD_S"])
+        lm  = safe_scalar(last["MACD"])
+        lms = safe_scalar(last["MACD_S"])
         if not (np.isnan(lm) or np.isnan(lms)):
             res.append([trend_dec("AL" if lm > lms else "SAT", last_ath),
                         f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{macd_signal})", "Momentum."])
@@ -1491,7 +1485,9 @@ if ticker:
         else:
             res.append(["N/A", f"OBV ({obv_short}/{obv_long})", "Yetersiz veri."])
 
-        la = safe_scalar(last["ADX"]); lpd = safe_scalar(last["PLUS_DI"]); lmd2 = safe_scalar(last["MINUS_DI"])
+        la   = safe_scalar(last["ADX"])
+        lpd  = safe_scalar(last["PLUS_DI"])
+        lmd2 = safe_scalar(last["MINUS_DI"])
         if not np.isnan(la):
             if la > p_adx["adx_threshold"]:
                 res.append([trend_dec("AL" if lpd > lmd2 else "SAT", last_ath),
@@ -1502,7 +1498,8 @@ if ticker:
             res.append(["N/A", "ADX", "Yetersiz veri."])
 
         if is_intraday:
-            lv = safe_scalar(last["VWAP"]); lvs = safe_scalar(last["Sig_VWAP"])
+            lv  = safe_scalar(last["VWAP"])
+            lvs = safe_scalar(last["Sig_VWAP"])
             if not np.isnan(lv):
                 dec = "AL" if lvs == 1 else ("SAT" if lvs == -1 else "TUT")
                 res.append([dec, "VWAP", f"VWAP: {lv:.2f} | bant: ±%{vwap_band_pct:.2f}"])
@@ -1532,28 +1529,33 @@ if ticker:
         else:
             res.append(["N/A", "KAMA", "Yetersiz veri."])
 
-        lst = safe_scalar(last["SuperTrend"]); lstd = safe_scalar(last["ST_Direction"])
+        lst  = safe_scalar(last["SuperTrend"])
+        lstd = safe_scalar(last["ST_Direction"])
         if not np.isnan(lst):
             res.append([trend_dec("AL" if lstd == 1 else "SAT", last_ath),
                         f"SuperTrend ({p_st['st_period']}, x{p_st['st_multiplier']})", f"Seviye: {lst:.2f}"])
         else:
             res.append(["N/A", "SuperTrend", "Yetersiz veri."])
 
-        llrc = safe_scalar(last["Sig_LRC"]); llm = safe_scalar(last["LRC_Mid"])
+        llrc = safe_scalar(last["Sig_LRC"])
+        llm  = safe_scalar(last["LRC_Mid"])
         if not np.isnan(llm):
             dec = "AL" if llrc == 1 else ("SAT" if llrc == -1 else "TUT")
             res.append([dec, f"LR Channel (σ={p_lrc['lrc_std_mult']})", f"Orta: {llm:.2f}"])
         else:
             res.append(["N/A", "LR Channel", "Yetersiz veri."])
 
-        la2 = safe_scalar(last["ATR"]); lam = safe_scalar(atr_ma.iloc[-1])
+        la2 = safe_scalar(last["ATR"])
+        lam = safe_scalar(atr_ma.iloc[-1])
         if not np.isnan(la2):
             res.append(["BİLGİ", "ATR Filtre",
                 f"Volatilite: {'Yüksek ↑' if last_ath else 'Düşük ↓'} | ATR: {la2:.2f} | MA: {lam:.2f}"])
         else:
             res.append(["N/A", "ATR Filtre", "Yetersiz veri."])
 
-        lnw = safe_scalar(last["NW_Line"]); lnu = safe_scalar(last["NW_Upper"]); lnl = safe_scalar(last["NW_Lower"])
+        lnw = safe_scalar(last["NW_Line"])
+        lnu = safe_scalar(last["NW_Upper"])
+        lnl = safe_scalar(last["NW_Lower"])
         if not np.isnan(lnw):
             if last_close > lnu:   nw_note = "Üst zarfın üstünde (aşırı alım)"
             elif last_close < lnl: nw_note = "Alt zarfın altında (aşırı satım)"
@@ -1562,7 +1564,8 @@ if ticker:
         else:
             res.append(["N/A", "Nadaraya-Watson", "Yetersiz veri."])
 
-        lwt1 = safe_scalar(last["WT1"]); lwt_sig = safe_scalar(last["Sig_WaveTrend"])
+        lwt1    = safe_scalar(last["WT1"])
+        lwt_sig = safe_scalar(last["Sig_WaveTrend"])
         if not np.isnan(lwt1):
             if lwt1 > wt_ob:   wt_zone = f"Aşırı Alım (WT1={lwt1:.1f})"
             elif lwt1 < wt_os: wt_zone = f"Aşırı Satım (WT1={lwt1:.1f})"
@@ -1592,7 +1595,7 @@ if ticker:
             res.append(["BİLGİ", f"Fibonacci ({fib_lookback} bar)",
                         f"En yakın seviye: {closest_lvl[0]} ({closest_lvl[1]:.2f}) | Swing: {fib_low:.2f} — {fib_high:.2f}"])
 
-        valid_sigs = [x for x in res if x[0] in ("AL","SAT")]
+        valid_sigs = [x for x in res if x[0] in ("AL", "SAT")]
         al_count   = sum(1 for x in valid_sigs if x[0] == "AL")
         sat_count  = sum(1 for x in valid_sigs if x[0] == "SAT")
 
@@ -1603,7 +1606,7 @@ if ticker:
         c4.metric("Zaman Dilimi", f"{interval}")
 
         st.subheader("🔍 Algoritmik Detaylar")
-        res_df = pd.DataFrame(res, columns=["Karar","Algoritma","Durum/Sebep"])
+        res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])
 
         def color_map(val):
             if val == "AL":    return "color: #00ff00; font-weight: bold"
@@ -1623,26 +1626,27 @@ if ticker:
         st.caption("⚠️ Geçmiş performans gelecekteki sonuçların garantisi değildir.")
 
         algo_signal_map = {
-            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                                   "Sig_SMA",
-            f"RSI (p={p_rsi['rsi_period']} [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}])": "Sig_RSI",
-            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":               "Sig_BB",
-            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})":"Sig_MACD",
-            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":                 "Sig_Z",
-            "OBV":                                                                          "Sig_OBV",
-            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":             "Sig_ADX",
-            "Stoch RSI":                                                                    "Sig_StochRSI",
-            "Ichimoku":                                                                     "Sig_Ichimoku",
-            "KAMA":                                                                         "Sig_KAMA",
-            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":              "Sig_SuperTrend",
-            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":          "Sig_LRC",
-            f"WaveTrend ({p_wt['wt_n1']}/{p_wt['wt_n2']})":                              "Sig_WaveTrend",
+            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                                    "Sig_SMA",
+            f"RSI (p={p_rsi['rsi_period']} [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}])":  "Sig_RSI",
+            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":                "Sig_BB",
+            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})": "Sig_MACD",
+            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":                  "Sig_Z",
+            "OBV":                                                                           "Sig_OBV",
+            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":              "Sig_ADX",
+            "Stoch RSI":                                                                     "Sig_StochRSI",
+            "Ichimoku":                                                                      "Sig_Ichimoku",
+            "KAMA":                                                                          "Sig_KAMA",
+            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":               "Sig_SuperTrend",
+            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":           "Sig_LRC",
+            f"WaveTrend ({p_wt['wt_n1']}/{p_wt['wt_n2']})":                               "Sig_WaveTrend",
         }
         if is_intraday:
             algo_signal_map["VWAP"] = "Sig_VWAP"
 
         algo_results = []
         for algo_name, sig_col in algo_signal_map.items():
-            if sig_col not in df.columns: continue
+            if sig_col not in df.columns:
+                continue
             stats = run_backtest(df[sig_col], close_arr, cost_pct)
             algo_results.append({
                 "Algoritma":       algo_name,
@@ -1680,9 +1684,7 @@ if ticker:
         # ============================================================
         st.write("---")
         st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
-        st.caption(
-            f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe"
-        )
+        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe")
 
         def opt_color(val):
             if isinstance(val, (int, float)):
@@ -1691,28 +1693,28 @@ if ticker:
             return ""
 
         score_col = "Ort. Test Sharpe"
-
-        opt_rows = []
+        opt_rows  = []
         for algo_name, grid in PARAM_GRIDS.items():
             p = opt_params.get(algo_name, {})
             s = opt_stats.get(algo_name, {})
             row = {"Algoritma": algo_name}
-            param_str = "  |  ".join(f"{k} = {v}" for k, v in p.items())
-            row["Parametreler"]      = param_str
-            row["Getiri (%)"]        = round(s.get("total_ret", 0), 2)
-            row["Sharpe"]            = round(s.get("sharpe",    0), 2)
-            row["Trade"]             = s.get("n", 0)
-            row["Win Rate (%)"]      = round(s.get("win_rate",  0), 1)
-            row[score_col]           = round(s.get("wf_avg_score", 0), 3)
+            param_str            = "  |  ".join(f"{k} = {v}" for k, v in p.items())
+            row["Parametreler"]  = param_str
+            row["Getiri (%)"]    = round(s.get("total_ret", 0), 2)
+            row["Sharpe"]        = round(s.get("sharpe",    0), 2)
+            row["Trade"]         = s.get("n", 0)
+            row["Win Rate (%)"]  = round(s.get("win_rate",  0), 1)
+            row[score_col]       = round(s.get("wf_avg_score", 0), 3)
             opt_rows.append(row)
 
-        opt_df = pd.DataFrame(opt_rows)
+        opt_df     = pd.DataFrame(opt_rows)
         color_cols = [c for c in ["Getiri (%)", "Sharpe", score_col] if c in opt_df.columns]
-        fmt = {"Getiri (%)": "{:.2f}", "Sharpe": "{:.2f}", "Win Rate (%)": "{:.1f}", score_col: "{:.3f}"}
-        fmt = {k: v for k, v in fmt.items() if k in opt_df.columns}
+        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe": "{:.2f}", "Win Rate (%)": "{:.1f}", score_col: "{:.3f}"}
+        fmt        = {k: v for k, v in fmt.items() if k in opt_df.columns}
         st.dataframe(
             opt_df.style.format(fmt).map(opt_color, subset=color_cols),
             use_container_width=True, hide_index=True)
+
         # ============================================================
         # RAPOR BÖLÜMÜ
         # ============================================================
@@ -1721,31 +1723,32 @@ if ticker:
         st.caption("Kural tabanlı otomatik analiz. Yatırım tavsiyesi içermez.")
 
         # --- Veri Toplama ---
-        r_close   = safe_scalar(last["Close"])
-        r_kama    = safe_scalar(last["KAMA"])
-        r_adx     = safe_scalar(last["ADX"])
-        r_pdi     = safe_scalar(last["PLUS_DI"])
-        r_mdi     = safe_scalar(last["MINUS_DI"])
-        r_macd    = safe_scalar(last["MACD"])
-        r_macds   = safe_scalar(last["MACD_S"])
-        r_rsi     = safe_scalar(last["RSI"])
-        r_stk     = safe_scalar(last["StochRSI_K"])
-        r_std     = safe_scalar(last["ST_Direction"])
-        r_lrc_sig = safe_scalar(last["Sig_LRC"])
-        r_lrc_mid = safe_scalar(last["LRC_Mid"])
-        r_lrc_up  = safe_scalar(last["LRC_Upper"])
-        r_lrc_lo  = safe_scalar(last["LRC_Lower"])
-        r_nw      = safe_scalar(last["NW_Line"])
-        r_nw_up   = safe_scalar(last["NW_Upper"])
-        r_nw_lo   = safe_scalar(last["NW_Lower"])
-        r_obv_sig = safe_scalar(last["Sig_OBV"])
-        r_div_rsi = safe_scalar(last["Div_RSI"])
-        r_div_mac = safe_scalar(last["Div_MACD"])
-        r_ichi    = safe_scalar(last["Sig_Ichimoku"])
-        r_wt1     = safe_scalar(last["WT1"])
-        r_atr_hi  = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
+        r_close    = safe_scalar(last["Close"])
+        r_kama     = safe_scalar(last["KAMA"])
+        r_adx      = safe_scalar(last["ADX"])
+        r_pdi      = safe_scalar(last["PLUS_DI"])
+        r_mdi      = safe_scalar(last["MINUS_DI"])
+        r_macd     = safe_scalar(last["MACD"])
+        r_macds    = safe_scalar(last["MACD_S"])
+        r_rsi      = safe_scalar(last["RSI"])
+        r_stk      = safe_scalar(last["StochRSI_K"])
+        r_std      = safe_scalar(last["ST_Direction"])
+        r_lrc_sig  = safe_scalar(last["Sig_LRC"])
+        r_lrc_mid  = safe_scalar(last["LRC_Mid"])
+        r_lrc_up   = safe_scalar(last["LRC_Upper"])
+        r_lrc_lo   = safe_scalar(last["LRC_Lower"])
+        r_nw       = safe_scalar(last["NW_Line"])
+        r_nw_up    = safe_scalar(last["NW_Upper"])
+        r_nw_lo    = safe_scalar(last["NW_Lower"])
+        r_vwap     = safe_scalar(last["VWAP"])     if is_intraday else np.nan
+        r_vwap_sig = safe_scalar(last["Sig_VWAP"]) if is_intraday else 0
+        r_obv_sig  = safe_scalar(last["Sig_OBV"])
+        r_div_rsi  = safe_scalar(last["Div_RSI"])
+        r_div_mac  = safe_scalar(last["Div_MACD"])
+        r_ichi     = safe_scalar(last["Sig_Ichimoku"])
+        r_wt1      = safe_scalar(last["WT1"])
+        r_atr_hi   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
 
-        # Fibonacci en yakın seviye
         if fib_levels:
             r_fib_closest = min(fib_levels.items(), key=lambda x: abs(x[1] - r_close))
         else:
@@ -1755,9 +1758,9 @@ if ticker:
         steps = []
 
         # ADIM 1 — Büyük Resim
-        kama_pos   = "ÜSTÜNDE ✅" if r_close > r_kama else "ALTINDA ❌"
-        st_signal  = "AL ✅" if r_std == 1 else "SAT ❌"
-        poc_dist   = abs(r_close - poc_price) / r_close * 100
+        kama_pos  = "ÜSTÜNDE ✅" if r_close > r_kama else "ALTINDA ❌"
+        st_signal = "AL ✅" if r_std == 1 else "SAT ❌"
+        poc_dist  = abs(r_close - poc_price) / r_close * 100
         steps.append({
             "Adım": "1 — Büyük Resim",
             "Gösterge": "Fiyat / KAMA / SuperTrend / POC",
@@ -1779,11 +1782,13 @@ if ticker:
                 "Sinyal": "GÜÇLÜ" if r_adx > adx_threshold else "ZAYIF",
             })
         else:
-            steps.append({"Adım": "2 — Trend Gücü", "Gösterge": "ADX", "Değer": "N/A", "Yorum": "Yetersiz veri", "Sinyal": "N/A"})
+            steps.append({"Adım": "2 — Trend Gücü", "Gösterge": "ADX",
+                          "Değer": "N/A", "Yorum": "Yetersiz veri", "Sinyal": "N/A"})
 
         # ADIM 3 — Trend Yönü
         macd_pos  = r_macd > r_macds
-        ichi_bull = r_ichi == 1; ichi_bear = r_ichi == -1
+        ichi_bull = r_ichi == 1
+        ichi_bear = r_ichi == -1
         macd_str  = "Pozitif ✅" if macd_pos else "Negatif ❌"
         ichi_str  = "Boğa ✅" if ichi_bull else ("Ayı ❌" if ichi_bear else "Nötr ⚠️")
         trend_sig = "AL" if (macd_pos and ichi_bull) else ("SAT" if (not macd_pos and ichi_bear) else "NÖTR")
@@ -1796,10 +1801,12 @@ if ticker:
         })
 
         # ADIM 4 — Giriş Noktası
-        rsi_os   = r_rsi < rsi_lower; rsi_ob   = r_rsi > rsi_upper
-        stk_os   = r_stk < stoch_lower; stk_ob = r_stk > stoch_upper
-        rsi_str  = f"Aşırı Satım ✅ ({r_rsi:.1f})" if rsi_os else (f"Aşırı Alım ❌ ({r_rsi:.1f})" if rsi_ob else f"Nötr ({r_rsi:.1f})")
-        stk_str  = f"Aşırı Satım ✅ ({r_stk:.1f})" if stk_os else (f"Aşırı Alım ❌ ({r_stk:.1f})" if stk_ob else f"Nötr ({r_stk:.1f})")
+        rsi_os    = r_rsi < rsi_lower
+        rsi_ob    = r_rsi > rsi_upper
+        stk_os    = r_stk < stoch_lower
+        stk_ob    = r_stk > stoch_upper
+        rsi_str   = f"Aşırı Satım ✅ ({r_rsi:.1f})" if rsi_os else (f"Aşırı Alım ❌ ({r_rsi:.1f})" if rsi_ob else f"Nötr ({r_rsi:.1f})")
+        stk_str   = f"Aşırı Satım ✅ ({r_stk:.1f})" if stk_os else (f"Aşırı Alım ❌ ({r_stk:.1f})" if stk_ob else f"Nötr ({r_stk:.1f})")
         entry_sig = "AL" if (rsi_os or stk_os) else ("SAT" if (rsi_ob or stk_ob) else "BEKLE")
         steps.append({
             "Adım": "4 — Giriş Noktası",
@@ -1810,9 +1817,9 @@ if ticker:
         })
 
         # ADIM 5 — Seviye Teyidi
-        lrc_str = "Alt banda yakın ✅" if r_lrc_sig == 1 else ("Üst banda yakın ❌" if r_lrc_sig == -1 else "Kanal ortası ⚪")
-        nw_str  = ("Üst zarfın üstünde ❌" if r_close > r_nw_up
-                   else ("Alt zarfın altında ✅" if r_close < r_nw_lo else "Zarf içinde ⚪"))
+        lrc_str   = "Alt banda yakın ✅" if r_lrc_sig == 1 else ("Üst banda yakın ❌" if r_lrc_sig == -1 else "Kanal ortası ⚪")
+        nw_str    = ("Üst zarfın üstünde ❌" if r_close > r_nw_up
+                     else ("Alt zarfın altında ✅" if r_close < r_nw_lo else "Zarf içinde ⚪"))
         level_sig = "AL" if (r_lrc_sig == 1 or r_close < r_nw_lo) else ("SAT" if (r_lrc_sig == -1 or r_close > r_nw_up) else "NÖTR")
         steps.append({
             "Adım": "5 — Seviye Teyidi",
@@ -1821,6 +1828,19 @@ if ticker:
             "Yorum": f"LRC: {lrc_str} | NW: {nw_str}",
             "Sinyal": level_sig,
         })
+
+        # ADIM 5b — VWAP Seviyesi (sadece intraday)
+        if is_intraday and not np.isnan(r_vwap):
+            vwap_pos = r_close > r_vwap
+            vwap_str = f"Fiyat VWAP {'üstünde ✅' if vwap_pos else 'altında ❌'} | VWAP: {r_vwap:.2f}"
+            vwap_dec = "AL" if r_vwap_sig == 1 else ("SAT" if r_vwap_sig == -1 else "NÖTR")
+            steps.append({
+                "Adım": "5b — VWAP Seviyesi",
+                "Gösterge": "VWAP",
+                "Değer": f"VWAP: {r_vwap:.2f} | Bant: ±%{vwap_band_pct:.2f}",
+                "Yorum": vwap_str,
+                "Sinyal": vwap_dec,
+            })
 
         # ADIM 6 — Hacim Onayı
         obv_str = "Birikim ✅ (kısa SMA > uzun SMA)" if r_obv_sig == 1 else ("Dağıtım ❌ (kısa SMA < uzun SMA)" if r_obv_sig == -1 else "Nötr ⚪")
@@ -1852,12 +1872,12 @@ if ticker:
 
         def report_color(val):
             if "AL" in str(val) and "SAT" not in str(val): return "color: #00ff00; font-weight: bold"
-            if "SAT" in str(val): return "color: #ff4b4b; font-weight: bold"
-            if "UYARI" in str(val): return "color: #ff4b4b; font-weight: bold"
+            if "SAT" in str(val):    return "color: #ff4b4b; font-weight: bold"
+            if "UYARI" in str(val):  return "color: #ff4b4b; font-weight: bold"
             if "TEMİZ" in str(val) or "GÜÇLEND" in str(val): return "color: #00bfff; font-weight: bold"
-            if "NÖTR" in str(val) or "BEKLE" in str(val): return "color: #aaaaaa"
-            if "ZAYIF" in str(val): return "color: #ffaa00; font-weight: bold"
-            if "GÜÇLÜ" in str(val): return "color: #00ff00; font-weight: bold"
+            if "NÖTR" in str(val) or "BEKLE" in str(val):    return "color: #aaaaaa"
+            if "ZAYIF" in str(val):  return "color: #ffaa00; font-weight: bold"
+            if "GÜÇLÜ" in str(val):  return "color: #00ff00; font-weight: bold"
             return ""
 
         st.dataframe(
@@ -1899,6 +1919,12 @@ if ticker:
         elif rsi_ob:
             ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı alım** bölgesinde — dikkatli olunmalı.")
 
+        if is_intraday and not np.isnan(r_vwap):
+            if r_close > r_vwap:
+                ozet_parcalar.append(f"Fiyat VWAP ({r_vwap:.2f}) üstünde — intraday momentum pozitif.")
+            else:
+                ozet_parcalar.append(f"Fiyat VWAP ({r_vwap:.2f}) altında — intraday baskı var.")
+
         if r_obv_sig == 1:
             ozet_parcalar.append("OBV birikim sinyali veriyor — hacim fiyatı destekliyor.")
         elif r_obv_sig == -1:
@@ -1911,9 +1937,9 @@ if ticker:
 
         # Genel sonuç
         if al_onay >= 5 and not div_risk:
-            ozet_parcalar.append(f"\n> 🟢 **Genel Değerlendirme: {al_onay}/7 onay — güçlü AL sinyali.**")
+            ozet_parcalar.append(f"\n> 🟢 **Genel Değerlendirme: {al_onay}/{toplam} onay — güçlü AL sinyali.**")
         elif al_onay >= 3 and not div_risk:
-            ozet_parcalar.append(f"\n> 🟡 **Genel Değerlendirme: {al_onay}/7 onay — zayıf AL, teyit bekle.**")
+            ozet_parcalar.append(f"\n> 🟡 **Genel Değerlendirme: {al_onay}/{toplam} onay — zayıf AL, teyit bekle.**")
         elif sat_onay >= 3 or div_risk:
             ozet_parcalar.append(f"\n> 🔴 **Genel Değerlendirme: {sat_onay} uyarı — SAT/bekle baskın.**")
         else:

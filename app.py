@@ -138,7 +138,7 @@ with st.sidebar:
     st.subheader("🔀 Divergence Ayarları")
     div_window = st.slider("Divergence Pivot Pencere:", 3, 10, 5)
 
-    # ── YENİ: Destek/Direnç Ayarları ──────────────────────────
+    # ── Destek/Direnç ve Trend Çizgisi Ayarları ───────────────
     st.write("---")
     st.subheader("📊 Destek / Direnç Ayarları")
     swing_window  = st.slider("S/R Pivot Pencere:",    5,  20, 10,
@@ -147,6 +147,17 @@ with st.sidebar:
         help="Bir seviyenin geçerli sayılması için minimum dokunuş")
     swing_tol     = st.slider("Tolerans (%):",        0.1, 1.0, 0.3, step=0.1,
         help="İki seviyenin aynı sayılması için maksimum fiyat farkı") / 100
+
+    st.write("---")
+    st.subheader("📐 Trend Çizgisi Ayarları")
+    tl_pivot_window = st.slider("TL Pivot Pencere:",       5,  20,  10,
+        help="Trend çizgisi pivot tespiti için pencere genişliği")
+    tl_max_lines    = st.slider("Max Çizgi Sayısı:",       1,   5,   3,
+        help="Her yönde (destek/direnç) gösterilecek maksimum çizgi")
+    tl_tolerance    = st.slider("TL Tolerans (%):",        0.3, 2.0, 1.2, step=0.1,
+        help="Pivotun çizgiye dokundu sayılması için fiyat toleransı") / 100
+    tl_show_channel = st.checkbox("Kanalları Göster", value=True,
+        help="Paralel destek+direnç kanallarını dolgulu göster")
     # ──────────────────────────────────────────────────────────
 
     st.write("---")
@@ -361,6 +372,106 @@ def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.00
     merged = [m for m in merged if m["touches"] >= min_touches]
     merged = sorted(merged, key=lambda x: -x["touches"])[:15]
     return merged
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── YENİ: Diyagonal Trend Çizgileri ───────────────────────────────────────────
+def find_trendlines(high, low, close, pivot_window=10, max_lines=3, tolerance=0.012):
+    """
+    Gelişmiş otomatik trend çizgisi tespiti.
+    - Swing high/low pivotları tespit edilir
+    - Her ikili kombinasyon için çizgi skoru hesaplanır
+       (dokunuş sayısı + yenilik + ihlal cezası)
+    - Benzer eğimli çizgiler tekilleştirilir
+    - Paralel destek+direnç çiftleri kanal olarak işaretlenir
+    Döndürür: (lines, channels)
+      lines   : list of dict  {type, x0,y0,x1,y1,slope,touches,last_touch}
+      channels: list of dict  {support, resistance}
+    """
+    n     = len(close)
+    dates = close.index
+
+    # Pivot tespiti
+    pivot_highs, pivot_lows = [], []
+    for i in range(pivot_window, n - pivot_window):
+        if high.iloc[i] == high.iloc[i - pivot_window: i + pivot_window + 1].max():
+            pivot_highs.append((i, float(high.iloc[i])))
+        if low.iloc[i] == low.iloc[i - pivot_window: i + pivot_window + 1].min():
+            pivot_lows.append((i, float(low.iloc[i])))
+
+    def _score_line(p1, p2, pivots, violation_series):
+        x1, y1 = p1;  x2, y2 = p2
+        if x2 == x1: return 0, []
+        slope     = (y2 - y1) / (x2 - x1)
+        intercept = y1 - slope * x1
+        touches   = []
+        violations = 0
+        for xi in range(min(x1, x2), n):
+            y_line = slope * xi + intercept
+            y_act  = float(violation_series.iloc[xi])
+            rel    = (y_act - y_line) / (abs(y_line) + 1e-9)
+            # Dokunuş: pivot bu çizgiye yeterince yakın mı?
+            for (px, py) in pivots:
+                if px == xi and abs(py - y_line) / (abs(y_line) + 1e-9) < tolerance:
+                    touches.append((xi, py))
+            # İhlal: fiyat destek/direnç çizgisini kırdı mı?
+            if slope >= 0 and rel < -tolerance * 3:   violations += 1
+            if slope < 0  and rel >  tolerance * 3:   violations += 1
+        score = len(touches) - violations * 0.5
+        return score, touches
+
+    def _best_lines(pivots, violation_series, line_type):
+        if len(pivots) < 2:
+            return []
+        candidates = []
+        for i in range(len(pivots)):
+            for j in range(i + 1, len(pivots)):
+                p1, p2 = pivots[i], pivots[j]
+                score, touches = _score_line(p1, p2, pivots, violation_series)
+                if score < 1.5 or len(touches) < 2:
+                    continue
+                x1, y1 = p1;  x2, y2 = p2
+                slope     = (y2 - y1) / (x2 - x1)
+                intercept = y1 - slope * x1
+                y_end     = slope * (n - 1) + intercept
+                last_bar  = max(t[0] for t in touches)
+                candidates.append({
+                    "type":       line_type,
+                    "x0":         x1,         "y0": y1,
+                    "x1":         n - 1,      "y1": y_end,
+                    "slope":      slope,
+                    "intercept":  intercept,
+                    "touches":    len(touches),
+                    "last_touch": last_bar,
+                    "score":      score,
+                })
+        # Sırala: skor desc, yenilik desc
+        candidates.sort(key=lambda c: (-c["score"], -c["last_touch"]))
+        # Benzer eğimli çizgileri tekilleştir
+        unique = []
+        for c in candidates:
+            dup = any(
+                abs(c["slope"] - u["slope"]) / (abs(u["slope"]) + 1e-9) < 0.08
+                for u in unique
+            )
+            if not dup:
+                unique.append(c)
+            if len(unique) >= max_lines:
+                break
+        return unique
+
+    support_lines    = _best_lines(pivot_lows,  low,  "support")
+    resistance_lines = _best_lines(pivot_highs, high, "resistance")
+
+    # Kanal tespiti: yaklaşık paralel destek + direnç çiftleri
+    channels = []
+    for sl in support_lines:
+        for rl in resistance_lines:
+            sdiff = abs(sl["slope"] - rl["slope"]) / (abs(sl["slope"]) + 1e-9)
+            if sdiff < 0.12:
+                channels.append({"support": sl, "resistance": rl})
+
+    return support_lines + resistance_lines, channels, dates
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -759,12 +870,20 @@ if ticker:
         df["EMA200"] = close.ewm(span=200, adjust=False).mean()
         # ──────────────────────────────────────────────────────────
 
-        # ── YENİ: Swing Destek/Direnç ─────────────────────────────
+        # ── Swing Destek/Direnç (yatay) ───────────────────────────
         swing_levels = find_swing_levels(
             high, low, close,
             window=swing_window,
             min_touches=swing_touches,
             tolerance=swing_tol,
+        )
+
+        # ── Diyagonal Trend Çizgileri ──────────────────────────────
+        trendlines, tl_channels, tl_dates = find_trendlines(
+            high, low, close,
+            pivot_window=tl_pivot_window,
+            max_lines=tl_max_lines,
+            tolerance=tl_tolerance,
         )
         # ──────────────────────────────────────────────────────────
 
@@ -1092,22 +1211,61 @@ if ticker:
                 row=1, col=1,
             )
 
-        # ── YENİ: Swing Destek/Direnç çizgileri ──────────────────
+        # ── Yatay S/R çizgileri (arka plan referans) ──────────────
         for lvl in swing_levels:
             is_support = lvl["type"] == "S"
-            color      = "rgba(0,255,100,0.85)"  if is_support else "rgba(255,80,80,0.85)"
-            thickness  = min(1 + lvl["touches"], 4)
-            label      = "Destek" if is_support else "Direnç"
+            color      = "rgba(0,255,100,0.35)" if is_support else "rgba(255,80,80,0.35)"
             fig.add_hline(
                 y=lvl["price"],
                 line_color=color,
-                line_width=thickness,
-                line_dash="solid",
-                annotation_text=f"  {label} {lvl['price']:.2f} (x{lvl['touches']})",
-                annotation_font=dict(color=color, size=9, family="monospace"),
-                annotation_position="top left",
+                line_width=1,
+                line_dash="dot",
                 row=1, col=1,
             )
+
+        # ── Diyagonal Trend Çizgileri (legend toggle destekli) ────
+        for tl in trendlines:
+            is_sup  = tl["type"] == "support"
+            color   = "rgba(0,255,120,0.9)" if is_sup else "rgba(255,80,80,0.9)"
+            width   = min(1 + tl["touches"], 4)
+            label   = f"{'↗ Destek' if is_sup else '↘ Direnç'} TL (x{tl['touches']})"
+            x0_date = tl_dates[tl["x0"]]
+            x1_date = tl_dates[tl["x1"]]
+            fig.add_trace(go.Scatter(
+                x=[x0_date, x1_date],
+                y=[tl["y0"], tl["y1"]],
+                mode="lines",
+                name=label,
+                line=dict(color=color, width=width, dash="solid"),
+                visible="legendonly",
+                legendgroup="trendlines",
+                legendgrouptitle_text="Trend Çizgileri" if tl == trendlines[0] else None,
+            ), row=1, col=1)
+
+        # ── Kanal dolgusu (legend toggle destekli) ────────────────
+        if tl_show_channel:
+            for ci, ch in enumerate(tl_channels):
+                sl   = ch["support"];  rl = ch["resistance"]
+                xi0  = max(sl["x0"], rl["x0"])
+                xi1  = sl["x1"]
+                xs   = [tl_dates[xi0], tl_dates[xi1],
+                        tl_dates[xi1], tl_dates[xi0], tl_dates[xi0]]
+                y_s0 = sl["slope"] * xi0 + sl["intercept"]
+                y_s1 = sl["slope"] * xi1 + sl["intercept"]
+                y_r0 = rl["slope"] * xi0 + rl["intercept"]
+                y_r1 = rl["slope"] * xi1 + rl["intercept"]
+                ys   = [y_s0, y_s1, y_r1, y_r0, y_s0]
+                fig.add_trace(go.Scatter(
+                    x=xs, y=ys,
+                    fill="toself",
+                    fillcolor="rgba(100,180,255,0.07)",
+                    line=dict(width=0),
+                    mode="lines",
+                    name=f"Kanal {ci+1}",
+                    visible="legendonly",
+                    legendgroup="trendlines",
+                    showlegend=True,
+                ), row=1, col=1)
         # ──────────────────────────────────────────────────────────
 
         fig.add_trace(go.Bar(

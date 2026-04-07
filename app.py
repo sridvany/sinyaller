@@ -1227,7 +1227,7 @@ if ticker:
         for tl in trendlines:
             is_sup  = tl["type"] == "support"
             color   = "rgba(0,255,120,0.9)" if is_sup else "rgba(255,80,80,0.9)"
-            width   = min(1 + tl["touches"], 4)
+            width   = 1 if tl["touches"] <= 2 else (2 if tl["touches"] <= 4 else 3)
             label   = f"{'↗ Destek' if is_sup else '↘ Direnç'} TL (x{tl['touches']})"
             x0_date = tl_dates[tl["x0"]]
             x1_date = tl_dates[tl["x1"]]

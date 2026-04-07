@@ -1305,9 +1305,9 @@ if ticker:
                 x=-0.06, y=1,
                 xanchor="right", yanchor="top",
                 bgcolor="rgba(0,0,0,0)",
-                font=dict(size=11),
+                font=dict(size=9),
             ),
-            margin=dict(l=160, r=10, t=30, b=30),
+            margin=dict(l=120, r=10, t=30, b=30),
         )
 
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)

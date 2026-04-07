@@ -1302,12 +1302,14 @@ if ticker:
             yaxis2=dict(showticklabels=False),
             legend=dict(
                 orientation="v",
-                x=-0.06, y=1,
+                x=-0.02, y=1,
                 xanchor="right", yanchor="top",
                 bgcolor="rgba(0,0,0,0)",
-                font=dict(size=9),
+                font=dict(size=8),
+                itemwidth=30,
+                tracegroupgap=2,
             ),
-            margin=dict(l=120, r=10, t=30, b=30),
+            margin=dict(l=110, r=10, t=30, b=30),
         )
 
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)

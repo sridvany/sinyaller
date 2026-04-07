@@ -138,6 +138,17 @@ with st.sidebar:
     st.subheader("🔀 Divergence Ayarları")
     div_window = st.slider("Divergence Pivot Pencere:", 3, 10, 5)
 
+    # ── YENİ: Destek/Direnç Ayarları ──────────────────────────
+    st.write("---")
+    st.subheader("📊 Destek / Direnç Ayarları")
+    swing_window  = st.slider("S/R Pivot Pencere:",    5,  20, 10,
+        help="Tepe/dip tespiti için her yönde bakılacak bar sayısı")
+    swing_touches = st.slider("Min. Dokunuş Sayısı:", 2,   5,  2,
+        help="Bir seviyenin geçerli sayılması için minimum dokunuş")
+    swing_tol     = st.slider("Tolerans (%):",        0.1, 1.0, 0.3, step=0.1,
+        help="İki seviyenin aynı sayılması için maksimum fiyat farkı") / 100
+    # ──────────────────────────────────────────────────────────
+
     st.write("---")
     st.subheader("📊 Backtest Ayarları")
     commission_pct = st.slider("Komisyon (% / işlem):", 0.0, 1.0, 0.1, step=0.01)
@@ -307,6 +318,50 @@ def calc_vwap_daily(high, low, close, volume):
     tp = (high + low + close) / 3
     dk = pd.Series(close.index.date, index=close.index)
     return (tp * volume).groupby(dk).cumsum() / volume.groupby(dk).cumsum().replace(0, np.nan)
+
+
+# ── YENİ: Swing Destek/Direnç ─────────────────────────────────────────────────
+def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.003):
+    """
+    Swing High/Low bazlı otomatik destek/direnç tespiti.
+    Yakın seviyeler birleştirilir, dokunuş sayısına göre güç atanır.
+    """
+    n      = len(close)
+    levels = []
+
+    for i in range(window, n - window):
+        if high.iloc[i] == high.iloc[i - window: i + window + 1].max():
+            levels.append(("R", float(high.iloc[i]), i))
+        if low.iloc[i] == low.iloc[i - window: i + window + 1].min():
+            levels.append(("S", float(low.iloc[i]), i))
+
+    merged = []
+    used   = set()
+    for idx, (typ, price, bar) in enumerate(levels):
+        if idx in used:
+            continue
+        touches     = [price]
+        touch_bars  = [bar]
+        for jdx, (typ2, price2, bar2) in enumerate(levels):
+            if jdx != idx and jdx not in used:
+                if abs(price2 - price) / price < tolerance:
+                    touches.append(price2)
+                    touch_bars.append(bar2)
+                    used.add(jdx)
+        used.add(idx)
+        avg_price  = float(np.mean(touches))
+        last_touch = max(touch_bars)
+        merged.append({
+            "type":       typ,
+            "price":      avg_price,
+            "touches":    len(touches),
+            "last_touch": last_touch,
+        })
+
+    merged = [m for m in merged if m["touches"] >= min_touches]
+    merged = sorted(merged, key=lambda x: -x["touches"])[:15]
+    return merged
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 # ============================================================
@@ -700,6 +755,19 @@ if ticker:
         atr_ma     = atr_series.rolling(atr_period, min_periods=atr_period).mean()
         atr_high   = (atr_series > atr_ma).values
 
+        # ── YENİ: 200 EMA ─────────────────────────────────────────
+        df["EMA200"] = close.ewm(span=200, adjust=False).mean()
+        # ──────────────────────────────────────────────────────────
+
+        # ── YENİ: Swing Destek/Direnç ─────────────────────────────
+        swing_levels = find_swing_levels(
+            high, low, close,
+            window=swing_window,
+            min_touches=swing_touches,
+            tolerance=swing_tol,
+        )
+        # ──────────────────────────────────────────────────────────
+
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
@@ -933,6 +1001,15 @@ if ticker:
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
             name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
 
+        # ── YENİ: 200 EMA trace ───────────────────────────────────
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["EMA200"],
+            name="EMA 200",
+            line=dict(color="yellow", width=2, dash="dot"),
+            visible="legendonly",
+        ), row=1, col=1)
+        # ──────────────────────────────────────────────────────────
+
         fig.add_trace(go.Scatter(
             x=df.index[bull_st], y=df["SuperTrend"][bull_st],
             name="SuperTrend (Boğa çizgi)", mode="lines",
@@ -1014,6 +1091,24 @@ if ticker:
                 annotation_position="top left",
                 row=1, col=1,
             )
+
+        # ── YENİ: Swing Destek/Direnç çizgileri ──────────────────
+        for lvl in swing_levels:
+            is_support = lvl["type"] == "S"
+            color      = "rgba(0,255,100,0.85)"  if is_support else "rgba(255,80,80,0.85)"
+            thickness  = min(1 + lvl["touches"], 4)
+            label      = "Destek" if is_support else "Direnç"
+            fig.add_hline(
+                y=lvl["price"],
+                line_color=color,
+                line_width=thickness,
+                line_dash="solid",
+                annotation_text=f"  {label} {lvl['price']:.2f} (x{lvl['touches']})",
+                annotation_font=dict(color=color, size=9, family="monospace"),
+                annotation_position="top left",
+                row=1, col=1,
+            )
+        # ──────────────────────────────────────────────────────────
 
         fig.add_trace(go.Bar(
             x=vol_at_price, y=bin_centers,
@@ -1575,6 +1670,24 @@ if ticker:
         else:
             res.append(["N/A", "WaveTrend", "Yetersiz veri."])
 
+        # ── YENİ: EMA200 karar satırı ─────────────────────────────
+        lema200 = safe_scalar(last["EMA200"])
+        if not np.isnan(lema200):
+            ema_dec = trend_dec("AL" if last_close > lema200 else "SAT", last_ath)
+            res.append([ema_dec, "EMA 200", f"EMA200: {lema200:.2f} | Fiyat {'üstünde ✅' if last_close > lema200 else 'altında ❌'}"])
+        else:
+            res.append(["N/A", "EMA 200", "Yetersiz veri (min 200 bar gerekli)."])
+
+        # ── YENİ: En yakın S/R seviyesi karar satırı ──────────────
+        if swing_levels:
+            closest_sr = min(swing_levels, key=lambda x: abs(x["price"] - last_close))
+            dist_pct   = abs(closest_sr["price"] - last_close) / last_close * 100
+            sr_label   = "Destek" if closest_sr["type"] == "S" else "Direnç"
+            res.append(["BİLGİ", "Swing S/R",
+                f"En yakın {sr_label}: {closest_sr['price']:.2f} "
+                f"(%{dist_pct:.1f} uzakta, {closest_sr['touches']}x dokunuş)"])
+        # ──────────────────────────────────────────────────────────
+
         last_div_rsi  = safe_scalar(last["Div_RSI"])
         last_div_macd = safe_scalar(last["Div_MACD"])
         if last_div_rsi == 1:
@@ -1722,7 +1835,6 @@ if ticker:
         st.header("📋 Teknik Analiz Raporu")
         st.caption("Kural tabanlı otomatik analiz. Yatırım tavsiyesi içermez.")
 
-        # --- Veri Toplama ---
         r_close    = safe_scalar(last["Close"])
         r_kama     = safe_scalar(last["KAMA"])
         r_adx      = safe_scalar(last["ADX"])
@@ -1748,25 +1860,27 @@ if ticker:
         r_ichi     = safe_scalar(last["Sig_Ichimoku"])
         r_wt1      = safe_scalar(last["WT1"])
         r_atr_hi   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
+        r_ema200   = safe_scalar(last["EMA200"])
 
         if fib_levels:
             r_fib_closest = min(fib_levels.items(), key=lambda x: abs(x[1] - r_close))
         else:
             r_fib_closest = ("N/A", r_close)
 
-        # --- Adım Adım Değerlendirme ---
         steps = []
 
-        # ADIM 1 — Büyük Resim
+        # ADIM 1 — Büyük Resim (EMA200 eklendi)
         kama_pos  = "ÜSTÜNDE ✅" if r_close > r_kama else "ALTINDA ❌"
         st_signal = "AL ✅" if r_std == 1 else "SAT ❌"
         poc_dist  = abs(r_close - poc_price) / r_close * 100
+        ema200_pos = "üstünde ✅" if r_close > r_ema200 else "altında ❌"
         steps.append({
             "Adım": "1 — Büyük Resim",
-            "Gösterge": "Fiyat / KAMA / SuperTrend / POC",
-            "Değer": f"Fiyat: {r_close:.2f} | KAMA: {r_kama:.2f} | POC: {poc_price:.2f} (%{poc_dist:.1f} uzakta)",
-            "Yorum": f"Fiyat KAMA'nın {kama_pos} | SuperTrend: {st_signal} | En yakın Fib: {r_fib_closest[0]} ({r_fib_closest[1]:.2f})",
-            "Sinyal": "AL" if (r_close > r_kama and r_std == 1) else ("SAT" if (r_close < r_kama and r_std == -1) else "NÖTR"),
+            "Gösterge": "Fiyat / KAMA / EMA200 / SuperTrend / POC",
+            "Değer": f"Fiyat: {r_close:.2f} | KAMA: {r_kama:.2f} | EMA200: {r_ema200:.2f} | POC: {poc_price:.2f} (%{poc_dist:.1f} uzakta)",
+            "Yorum": f"Fiyat KAMA'nın {kama_pos} | EMA200 {ema200_pos} | SuperTrend: {st_signal} | En yakın Fib: {r_fib_closest[0]} ({r_fib_closest[1]:.2f})",
+            "Sinyal": "AL" if (r_close > r_kama and r_std == 1 and r_close > r_ema200)
+                      else ("SAT" if (r_close < r_kama and r_std == -1 and r_close < r_ema200) else "NÖTR"),
         })
 
         # ADIM 2 — Trend Gücü
@@ -1816,20 +1930,24 @@ if ticker:
             "Sinyal": entry_sig,
         })
 
-        # ADIM 5 — Seviye Teyidi
+        # ADIM 5 — Seviye Teyidi (S/R eklendi)
         lrc_str   = "Alt banda yakın ✅" if r_lrc_sig == 1 else ("Üst banda yakın ❌" if r_lrc_sig == -1 else "Kanal ortası ⚪")
         nw_str    = ("Üst zarfın üstünde ❌" if r_close > r_nw_up
                      else ("Alt zarfın altında ✅" if r_close < r_nw_lo else "Zarf içinde ⚪"))
+        sr_note   = ""
+        if swing_levels:
+            csr      = min(swing_levels, key=lambda x: abs(x["price"] - r_close))
+            sr_note  = f" | En yakın {'Destek ✅' if csr['type']=='S' else 'Direnç ❌'}: {csr['price']:.2f} ({csr['touches']}x)"
         level_sig = "AL" if (r_lrc_sig == 1 or r_close < r_nw_lo) else ("SAT" if (r_lrc_sig == -1 or r_close > r_nw_up) else "NÖTR")
         steps.append({
             "Adım": "5 — Seviye Teyidi",
-            "Gösterge": "LR Channel + Nadaraya-Watson",
+            "Gösterge": "LR Channel + NW + S/R",
             "Değer": f"LRC Alt: {r_lrc_lo:.2f} | LRC Üst: {r_lrc_up:.2f} | NW: {r_nw:.2f}",
-            "Yorum": f"LRC: {lrc_str} | NW: {nw_str}",
+            "Yorum": f"LRC: {lrc_str} | NW: {nw_str}{sr_note}",
             "Sinyal": level_sig,
         })
 
-        # ADIM 5b — VWAP Seviyesi (sadece intraday)
+        # ADIM 5b — VWAP
         if is_intraday and not np.isnan(r_vwap):
             vwap_pos = r_close > r_vwap
             vwap_str = f"Fiyat VWAP {'üstünde ✅' if vwap_pos else 'altında ❌'} | VWAP: {r_vwap:.2f}"
@@ -1857,8 +1975,8 @@ if ticker:
                         else ("🔻 Bearish Divergence — zayıflama uyarısı" if r_div_rsi == -1 else "Yok ✅"))
         div_macd_str = ("🔺 Bullish Divergence" if r_div_mac == 1
                         else ("🔻 Bearish Divergence" if r_div_mac == -1 else "Yok ✅"))
-        div_risk     = (r_div_rsi == -1 or r_div_mac == -1)
-        div_boost    = (r_div_rsi == 1  or r_div_mac == 1)
+        div_risk  = (r_div_rsi == -1 or r_div_mac == -1)
+        div_boost = (r_div_rsi == 1  or r_div_mac == 1)
         steps.append({
             "Adım": "7 — Uyarı Kontrolü",
             "Gösterge": "Divergence (RSI + MACD)",
@@ -1867,7 +1985,6 @@ if ticker:
             "Sinyal": "UYARI ❌" if div_risk else ("GÜÇLENDIRICI ✅" if div_boost else "TEMİZ ✅"),
         })
 
-        # --- Tablo ---
         report_df = pd.DataFrame(steps)
 
         def report_color(val):
@@ -1885,7 +2002,6 @@ if ticker:
             use_container_width=True, hide_index=True
         )
 
-        # --- Onay Sayacı ---
         al_onay  = sum(1 for s in steps if s["Sinyal"] in ("AL", "GÜÇLÜ", "GÜÇLENDIRICI ✅", "TEMİZ ✅"))
         sat_onay = sum(1 for s in steps if "SAT" in s["Sinyal"] or "UYARI" in s["Sinyal"])
         toplam   = len(steps)
@@ -1895,7 +2011,6 @@ if ticker:
         col2.metric("❌ SAT/Uyarı", f"{sat_onay} / {toplam}")
         col3.metric("Volatilite",   "Yüksek ↑" if r_atr_hi else "Düşük ↓")
 
-        # --- Özet Metin ---
         st.subheader("📝 Özet")
         ozet_parcalar = []
 
@@ -1903,6 +2018,12 @@ if ticker:
             ozet_parcalar.append(f"ADX {r_adx:.1f} ile **güçlü bir trend** mevcut.")
         else:
             ozet_parcalar.append(f"ADX {r_adx:.1f} — piyasa **yatay seyirde**, mean-reversion sinyalleri daha geçerli.")
+
+        if not np.isnan(r_ema200):
+            if r_close > r_ema200:
+                ozet_parcalar.append(f"Fiyat EMA200 ({r_ema200:.2f}) üstünde — **uzun vadeli trend pozitif**.")
+            else:
+                ozet_parcalar.append(f"Fiyat EMA200 ({r_ema200:.2f}) altında — **uzun vadeli trend negatif**.")
 
         if r_std == 1:
             ozet_parcalar.append("SuperTrend **AL** konumunda, yükseliş trendi destekleniyor.")
@@ -1918,6 +2039,13 @@ if ticker:
             ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı satım** bölgesinde — potansiyel giriş noktası.")
         elif rsi_ob:
             ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı alım** bölgesinde — dikkatli olunmalı.")
+
+        if swing_levels:
+            csr = min(swing_levels, key=lambda x: abs(x["price"] - r_close))
+            dist = abs(csr["price"] - r_close) / r_close * 100
+            ozet_parcalar.append(
+                f"En yakın {'destek' if csr['type']=='S' else 'direnç'}: "
+                f"**{csr['price']:.2f}** (%{dist:.1f} uzakta, {csr['touches']}x test edilmiş).")
 
         if is_intraday and not np.isnan(r_vwap):
             if r_close > r_vwap:
@@ -1935,7 +2063,6 @@ if ticker:
         if div_boost:
             ozet_parcalar.append("🔺 **Bullish divergence** mevcut — AL sinyalini güçlendiriyor.")
 
-        # Genel sonuç
         if al_onay >= 5 and not div_risk:
             ozet_parcalar.append(f"\n> 🟢 **Genel Değerlendirme: {al_onay}/{toplam} onay — güçlü AL sinyali.**")
         elif al_onay >= 3 and not div_risk:

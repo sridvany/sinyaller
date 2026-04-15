@@ -82,7 +82,7 @@ with st.sidebar:
         "Mum Aralığı (Interval):", options=interval_options, index=default_int_idx
     )
     st.write("---")
-    chart_type = st.radio("📊 Grafik Tipi:", ["Çizgi", "Mum"], horizontal=True)
+    chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
     st.write("---")
     st.subheader("Sabit Parametreler")

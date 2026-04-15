@@ -1166,7 +1166,7 @@ if ticker:
                 fig.add_trace(go.Scatter(
                     x=[None], y=[None], mode="markers",
                     name=_leg_name,
-                    marker=dict(symbol="square", size=20, color=_leg_color),
+                    marker=dict(symbol="square", size=24, color=_leg_color),
                     showlegend=True,
                 ), row=1, col=1)
 

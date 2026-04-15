@@ -60,12 +60,12 @@ for k, v in _defaults.items():
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "aapl")
+    ticker = st.text_input("Ticker Sembolü:", "gc=f")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
-        index=4,
+        index=5,
     )
 
     if period in ["1d", "5d"]:
@@ -1166,7 +1166,7 @@ if ticker:
                 fig.add_trace(go.Scatter(
                     x=[None], y=[None], mode="markers",
                     name=_leg_name,
-                    marker=dict(symbol="square", size=10, color=_leg_color),
+                    marker=dict(symbol="square", size=16, color=_leg_color),
                     showlegend=True,
                 ), row=1, col=1)
 
@@ -1366,7 +1366,8 @@ if ticker:
                 bgcolor="rgba(0,0,0,0)",
                 font=dict(size=8),
                 itemwidth=30,
-                tracegroupgap=2,
+                itemsizing="constant",
+                tracegroupgap=4,
             ),
             margin=dict(l=110, r=10, t=30, b=30),
         )

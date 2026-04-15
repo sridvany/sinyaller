@@ -65,7 +65,7 @@ with st.sidebar:
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
-        index=5,
+        index=4,
     )
 
     if period in ["1d", "5d"]:
@@ -1154,6 +1154,21 @@ if ticker:
         else:
             fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
                 line=dict(color="orange", width=1.5)), row=1, col=1)
+
+        # ── Mum renk legend girişleri (dummy scatter) ─────────────
+        if chart_type == "Mum":
+            for _leg_name, _leg_color in [
+                ("🔴 Ayı",         "#ff4444"),
+                ("🟡 Kararsız",    "#ffcc00"),
+                ("🟢 Boğa",        "#00cc66"),
+                ("🔵 Güçlü Boğa",  "#00ffff"),
+            ]:
+                fig.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="markers",
+                    name=_leg_name,
+                    marker=dict(symbol="square", size=10, color=_leg_color),
+                    showlegend=True,
+                ), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
             name=f"SMA {p_sma['sma_s']}", visible="legendonly",

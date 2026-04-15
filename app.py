@@ -60,7 +60,7 @@ for k, v in _defaults.items():
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "gc=f")
+    ticker = st.text_input("Ticker Sembolü:", "aapl")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
@@ -1105,8 +1105,52 @@ if ticker:
         )
 
         if chart_type == "Mum":
-            fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"],
-                low=df["Low"], close=df["Close"], name="Fiyat"), row=1, col=1)
+            # ── Sinyal bazlı mum renklendirme ─────────────────────
+            cyan_raw   = (df["ST_Direction"] == 1) & (df["Sig_OBV"] == 1) & (df["RSI"] < 70)
+            cyan_mask  = cyan_raw & ~cyan_raw.shift(1).fillna(False)
+            yellow_mask = (~cyan_mask) & (df["ADX"] < adx_threshold) & (df["RSI"] >= 45) & (df["RSI"] <= 55)
+            red_mask   = (~cyan_mask) & (~yellow_mask) & (df["Close"] < df["Open"]) & (df["MACD"] < df["MACD_S"])
+            green_mask = ~cyan_mask & ~yellow_mask & ~red_mask
+
+            _color_defs = [
+                ("Cyan AL",  cyan_mask,   "#00ffff"),
+                ("Yeşil",    green_mask,  "#00cc66"),
+                ("Sarı",     yellow_mask, "#ffcc00"),
+                ("Ayı",      red_mask,    "#ff4444"),
+            ]
+            for _lbl, _mask, _color in _color_defs:
+                _rising  = _mask & (df["Close"] >= df["Open"])
+                _falling = _mask & (df["Close"] <  df["Open"])
+                for _m, _fill, _trace_lbl in [
+                    (_rising,  _color,   _lbl + " ↑"),
+                    (_falling, "#111111", _lbl + " ↓"),
+                ]:
+                    if _m.any():
+                        fig.add_trace(go.Candlestick(
+                            x=df.index[_m],
+                            open=df["Open"][_m], high=df["High"][_m],
+                            low=df["Low"][_m],   close=df["Close"][_m],
+                            name=_trace_lbl,
+                            increasing_fillcolor=_fill, increasing_line_color=_color,
+                            decreasing_fillcolor=_fill, decreasing_line_color=_color,
+                            showlegend=False,
+                        ), row=1, col=1)
+
+            # ── Divergence marker katmanı (ana grafik) ────────────
+            bull_div = (df["Div_RSI"] == 1) | (df["Div_MACD"] == 1)
+            bear_div = (df["Div_RSI"] == -1) | (df["Div_MACD"] == -1)
+            if bull_div.any():
+                fig.add_trace(go.Scatter(
+                    x=df.index[bull_div], y=df["Low"][bull_div] * 0.998,
+                    mode="markers", name="Bullish Div 🔺",
+                    marker=dict(symbol="triangle-up", color="lime", size=10),
+                ), row=1, col=1)
+            if bear_div.any():
+                fig.add_trace(go.Scatter(
+                    x=df.index[bear_div], y=df["High"][bear_div] * 1.002,
+                    mode="markers", name="Bearish Div 🔻",
+                    marker=dict(symbol="triangle-down", color="red", size=10),
+                ), row=1, col=1)
         else:
             fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
                 line=dict(color="orange", width=1.5)), row=1, col=1)

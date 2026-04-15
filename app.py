@@ -1149,7 +1149,7 @@ if ticker:
                 fig.add_trace(go.Scatter(
                     x=df.index[bear_div], y=df["High"][bear_div] * 1.002,
                     mode="markers", name="Bearish Div 🔻",
-                    marker=dict(symbol="triangle-down", color="red", size=10),
+                    marker=dict(symbol="triangle-down", color="red", size=16),
                 ), row=1, col=1)
         else:
             fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
@@ -1364,7 +1364,7 @@ if ticker:
                 x=-0.02, y=1,
                 xanchor="right", yanchor="top",
                 bgcolor="rgba(0,0,0,0)",
-                font=dict(size=8),
+                font=dict(size=11),
                 itemwidth=30,
                 itemsizing="constant",
                 tracegroupgap=4,

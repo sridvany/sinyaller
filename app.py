@@ -1585,6 +1585,155 @@ if ticker:
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================
+        # ANA GRAFİK REHBERİ (Expander)
+        # ============================================================
+        with st.expander("📖 Ana Grafikte Ne Ne Anlama Geliyor? (Detaylı Rehber)", expanded=False):
+            st.markdown("""
+### 🕯️ Mum Renkleri
+
+Her mum 4 kategoriden birine atanır. Hiyerarşik sıralama: önce **Cyan** kontrol edilir, olmazsa **Sarı**, olmazsa **Kırmızı**, kalanlar **Yeşil**.
+
+| Renk | Anlamı | Tetikleyici |
+|---|---|---|
+| 🔵 **Cyan (Güçlü Boğa)** | Taze AL sinyali | SuperTrend yukarı **VE** OBV birikim **VE** RSI aşırı alım değil **VE** önceki barda bu koşul yoktu |
+| 🟢 **Yeşil (Boğa)** | Normal yükseliş bağlamı | Diğer üç kategoriye girmeyen mumlar (varsayılan) |
+| 🟡 **Sarı (Kararsız)** | Yatay/düşük momentum | ADX zayıf **VE** RSI nötr bölgede (eşiklerin ortası ±5) |
+| 🔴 **Kırmızı (Ayı)** | Momentumlu düşüş | Düşüş mumu **VE** MACD negatif |
+
+**Gövde dolgu farkı:** Yükselen mumlar (Close ≥ Open) kategori renginde **dolu**. Düşen mumlar (Close < Open) **içi siyah**, kenarı kategori renginde. Böylece hem renk kategorisi hem yön tek bakışta görünür.
+
+---
+
+### 📈 Hareketli Ortalamalar & Trend
+
+| Çizgi | Renk/Stil | Neyi Gösterir |
+|---|---|---|
+| **SMA Kısa** | Turuncu | Kısa vadeli trend ortalaması (varsayılan 20 bar). Fiyat altındaysa zayıflık, üstündeyse güç |
+| **SMA Uzun** | Cyan | Orta vadeli ortalama (varsayılan 200 bar). Trend yönü anchor'ı |
+| **KAMA** | Mor | Kaufman Adaptif MA — volatiliteye göre hız değiştirir. Yatayda düz, trend başlayınca hızlanır |
+| **EMA 200** | Sarı, noktalı | Uzun vadeli trend filtresi. Fiyat üstündeyse "boğa piyasası", altındaysa "ayı piyasası" |
+| **SuperTrend çizgisi** | Yeşil (boğa) / Kırmızı (ayı) | ATR tabanlı trend takip. Çizginin rengi mevcut rejimi söyler |
+| **🔼 SuperTrend AL** | Yeşil kare, beyaz "AL" yazısı | ST rejimi AYI'dan BOĞA'ya geçti — trend değişim sinyali |
+| **🔽 SuperTrend SAT** | Kırmızı kare, beyaz "SAT" yazısı | ST rejimi BOĞA'dan AYI'ya geçti |
+
+💡 **İpucu:** SMA kısa > SMA uzun → "altın haç" (golden cross) bağlamı. EMA200 üstünde kalan bir fiyat, SMA ve KAMA'nın da yukarı eğimiyle birleşirse **çok katmanlı trend teyidi** vardır.
+
+---
+
+### 📊 Kanallar & Zarflar
+
+| Element | Renk | Neyi Gösterir |
+|---|---|---|
+| **LRC Orta** | Beyaz kesikli | Linear Regression Channel — periyoda göre fiyatın istatistiksel orta çizgisi |
+| **LRC Üst** | Gri noktalı | Orta + N standart sapma. Fiyat burada = kanalın üst sınırı, olası SAT bölgesi |
+| **LRC Alt** | Gri noktalı | Orta - N standart sapma. Fiyat burada = kanalın alt sınırı, olası AL bölgesi |
+| **NW Orta** | Altın sarısı | Nadaraya-Watson kernel smoother — fiyatın yumuşatılmış trendi |
+| **NW Üst/Alt** | Sarı soluk + dolgu | NW zarfı — fiyat üstündeyse aşırı alım, altındaysa aşırı satım |
+
+**LRC vs NW farkı:** LRC doğrusal regresyon (sabit açı), NW lokal ağırlıklı regresyon (kıvrımlı). Trendli piyasada LRC, dönüş noktalarında NW daha iyi çalışır.
+
+---
+
+### 📐 Fibonacci Seviyeleri
+
+Son `fib_lookback` bar içindeki en yüksek ve en düşük fiyat arasına çizilir. Yedi seviye:
+
+| Seviye | Renk (tipik) | Yorum |
+|---|---|---|
+| **0.0%** | Kırmızı | Swing dibi (aşağı hareket) / Swing tepesi (yukarı hareket) |
+| **23.6%** | Turuncu | Hafif geri çekilme — güçlü trendde burada dönüş beklenir |
+| **38.2%** | Sarı | Orta seviye geri çekilme — normal trend correction |
+| **50.0%** | Yeşil | Yarı yarıya geri çekilme — psikolojik seviye (Fib değil ama eklenmiştir) |
+| **61.8%** | Mavi | Altın oran — en önemli fib, burası kırılırsa trend zayıflar |
+| **78.6%** | Mor | Derin geri çekilme — trendin sonu yaklaşıyor |
+| **100.0%** | Kırmızı | Swing'in diğer ucu — tam tersine çevirmiş demek |
+
+💡 Fiyatın hangi Fib seviyesinde durduğu Rapor'da "**Büyük Resim**" adımında gösterilir.
+
+---
+
+### 🎯 Yatay Destek / Direnç
+
+Swing pivot tespiti + ATR tabanlı gruplama ile otomatik çiziliyor.
+
+| Görünüm | Anlamı |
+|---|---|
+| **Yeşil yatay çizgi** | Aktif **destek** (fiyatın altında) |
+| **Kırmızı yatay çizgi** | Aktif **direnç** (fiyatın üstünde) |
+| **Gri yatay çizgi** | Kırılmış seviye — artık aktif değil, referans için duruyor |
+
+**Kalınlık/stil dokunuş sayısını söyler:**
+- **İnce, dash** (— —) → 1 dokunuş (zayıf)
+- **Orta, dashdot** (—·—·) → 2 dokunuş (orta)
+- **Kalın, solid** (———) → 3+ dokunuş (güçlü)
+
+**🔄 Role-Reversal (Rol Değişimi):**
+- Fiyat eski bir direnci kırıp yukarı geçerse → o seviye **destek** rolüne geçer (yeşile döner)
+- Fiyat eski bir desteği kırıp aşağı inerse → o seviye **direnç** rolüne geçer (kırmızıya döner)
+- Klasik teknik analiz prensibi: "eski direnç yeni destektir"
+
+---
+
+### 📏 Diyagonal Trend Çizgileri (Legend'dan aç/kapa)
+
+Pivot high'ları birleştirince **direnç TL**, pivot low'ları birleştirince **destek TL** oluşur. Legend başlığı "Trend Çizgileri" altında:
+
+| Görünüm | Anlamı |
+|---|---|
+| **↗ Destek TL (xN)** yeşil | Yükselen trend çizgisi, N dokunuşla doğrulanmış |
+| **↘ Direnç TL (xN)** kırmızı | Düşen trend çizgisi, N dokunuşla doğrulanmış |
+| **Mavimsi dolgu alan** | Paralel kanal — fiyatın içinde hareket etmesi beklenen koridor |
+
+Dokunuş sayısı (xN) arttıkça çizgi daha kalın çizilir. 5+ dokunuşlu bir trend çizgisinin kırılması çok anlamlıdır.
+
+---
+
+### 🔻 Divergence İşaretleri
+
+| Sembol | Renk | Anlamı |
+|---|---|---|
+| **🔺 Bullish Div** | Yeşil üçgen (mumun altında) | Fiyat daha düşük dip yaptı **ama** RSI veya MACD daha yüksek dip yaptı → gizli güç, dönüş sinyali |
+| **🔻 Bearish Div** | Kırmızı üçgen (mumun üstünde) | Fiyat daha yüksek tepe yaptı **ama** RSI veya MACD daha düşük tepe yaptı → zayıflama, düşüş uyarısı |
+
+💡 Divergence tek başına giriş sinyali değildir — başka teyitlerle birlikte değerlendir.
+
+---
+
+### 📦 Volume Profile (Sağ Panel) & POC
+
+Grafiğin sağında yatay hacim çubukları var. Her çubuk, o fiyat seviyesinde geçmişte **ne kadar hacim** gerçekleştiğini gösterir.
+
+| Element | Renk | Anlamı |
+|---|---|---|
+| **POC (Point of Control)** | Turuncu kesikli yatay çizgi + etiket | En yüksek hacimli fiyat seviyesi — piyasanın "adil değer"i kabul edilir |
+| **Mavi-yeşil tonlu çubuklar** | Yoğunluğa göre renk | Hacim arttıkça daha doygun yeşile kayar |
+| **Son fiyat etiketi** | Yeşil (POC üstünde) / Kırmızı (POC altında) | Fiyatın POC'a göre konumu |
+
+**Nasıl yorumlanır?**
+- Fiyat POC'un **altında** → piyasa ucuza düşmüş, alıcılar devreye girebilir
+- Fiyat POC'un **üstünde** → değerinin üstünde, satış baskısı gelebilir
+- **Boş hacim bölgeleri** (az çubuk) = fiyat hızlı geçiyor, güçlü hareket zonu
+- **Dolu hacim bölgeleri** = konsolidasyon, güçlü destek/direnç
+
+---
+
+### 💡 Hepsini Birlikte Nasıl Okumalı?
+
+Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale değil, **birbiriyle örtüşen** sinyallere güvenin:
+
+1. **Büyük resim:** Fiyat EMA200'ün neresinde? Trend mi yatay mı?
+2. **Rejim:** SuperTrend ne diyor? Kısa MA uzun MA'nın neresinde?
+3. **Seviye:** Fiyat hangi Fib / LRC / S/R seviyesinde?
+4. **Momentum:** Mum rengi ne? Cyan/Yeşil mi, Sarı/Kırmızı mı?
+5. **Uyarı:** Divergence var mı? Kırılmış seviyeler hangileri?
+6. **Hacim:** POC'un neresinde? Volume profile dağılımı nasıl?
+
+Üç veya daha fazla sinyal **aynı yönü gösteriyorsa** konfidans yüksektir. Çelişiyorsa → **bekle**.
+
+> ⚠️ **Not:** Bu rehber sadece grafik elementlerini açıklar. Alt sekmelerdeki göstergelerin (RSI, MACD, ADX vb.) detaylı yorumu her sekmenin kendi "📖 Nasıl Okunur?" bölümündedir.
+""")
+
+        # ============================================================
         # ALT GRAFİKLER
         # ============================================================
         tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([

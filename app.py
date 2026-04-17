@@ -50,6 +50,8 @@ _defaults = {
     "lrc_std_mult":  2.0,
     "wt_n1":         10,
     "wt_n2":         21,
+    "obv_short":     10,
+    "obv_long":      30,
 }
 for k, v in _defaults.items():
     if k not in st.session_state:
@@ -100,8 +102,8 @@ with st.sidebar:
     macd_signal      = st.slider("MACD Sinyal:",             5,   15,  value=ss["macd_signal"])
     z_period         = st.slider("Z-Score Pencere:",         10,  60,  value=ss["z_period"])
     z_thresh         = st.slider("Z-Score Eşik:",            1.0, 3.0, value=ss["z_thresh"],      step=0.5)
-    obv_short        = st.slider("OBV Kısa SMA:",            5,   20,  10)
-    obv_long         = st.slider("OBV Uzun SMA:",            15,  50,  30)
+    obv_short        = st.slider("OBV Kısa SMA:",            5,   20,  value=ss["obv_short"])
+    obv_long         = st.slider("OBV Uzun SMA:",            15,  50,  value=ss["obv_long"])
     adx_period       = st.slider("ADX Periyodu:",            7,   30,  value=ss["adx_period"])
     adx_threshold    = st.slider("ADX Trend Eşiği:",        15,  35,  value=ss["adx_threshold"])
     atr_period       = st.slider("ATR Periyodu:",            7,   30,  14)
@@ -202,6 +204,8 @@ PARAM_GRIDS = {
                        "lrc_std_mult":  [1.5, 2.0, 2.5]},
     "WaveTrend":      {"wt_n1":         [8, 10, 14],
                        "wt_n2":         [15, 21, 28]},
+    "OBV":            {"obv_short":     [5, 10, 15],
+                       "obv_long":      [20, 30, 40]},
 }
 
 
@@ -663,8 +667,54 @@ def sig_wavetrend_fn(high, low, close, n1=10, n2=21, ob=60, os_=-60):
 # ============================================================
 # 6. BACKTEST YARDIMCISI
 # ============================================================
-def run_backtest(signal_series, close_arr, cost_pct):
+def bars_per_year_from_interval(interval):
+    """Interval string'i yıllık bar sayısına çevirir (Sharpe yıllıklandırması için)."""
+    m = {
+        "1m":  252 * 390,  "2m":  252 * 195,  "5m":  252 * 78,
+        "15m": 252 * 26,   "30m": 252 * 13,   "60m": 252 * 6.5,
+        "1h":  252 * 6.5,  "1d":  252,        "1wk": 52,         "1mo": 12,
+    }
+    return m.get(interval, 252)
+
+
+def _strategy_bar_returns(sig_vals, close_arr):
+    """Sinyal + fiyat → bar-bazlı strateji log getirisi (pozisyon 1 bar geciktirilmiş)."""
+    sig_vals  = np.asarray(sig_vals)
+    close_arr = np.asarray(close_arr, dtype=float)
+    if len(sig_vals) < 2 or not (close_arr > 0).all():
+        return np.array([])
+    position = np.zeros(len(sig_vals))
+    in_pos = False
+    for i in range(1, len(sig_vals)):
+        if not in_pos and sig_vals[i] == 1 and sig_vals[i-1] != 1: in_pos = True
+        elif in_pos and sig_vals[i] == -1 and sig_vals[i-1] != -1: in_pos = False
+        position[i] = 1.0 if in_pos else 0.0
+    pos_lag = np.concatenate(([0.0], position[:-1]))
+    log_ret = np.diff(np.log(close_arr), prepend=np.log(close_arr[0]))
+    return pos_lag * log_ret
+
+
+def permutation_pvalue(strat_ret, observed_sharpe, bars_per_year, n_perm=200, seed=42):
+    """Strateji getiri serisini karıştırarak gözlemlenen Sharpe'ın rastgele oluşma olasılığı.
+    Düşük p-değeri = sinyal istatistiksel olarak anlamlı."""
+    strat_ret = np.asarray(strat_ret)
+    if len(strat_ret) < 10 or strat_ret.std() == 0:
+        return 1.0
+    rng = np.random.default_rng(seed)
+    count_ge = 0
+    for _ in range(n_perm):
+        shuf = rng.permutation(strat_ret)
+        if shuf.std() == 0: continue
+        s = float(shuf.mean() / shuf.std() * np.sqrt(bars_per_year))
+        if s >= observed_sharpe:
+            count_ge += 1
+    return (count_ge + 1) / (n_perm + 1)
+
+
+def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
     sig    = signal_series.values if hasattr(signal_series, "values") else signal_series
+    sig    = np.asarray(sig)
+    close_arr = np.asarray(close_arr, dtype=float)
     trades = []
     in_pos = False
     entry_p = 0.0
@@ -679,8 +729,16 @@ def run_backtest(signal_series, close_arr, cost_pct):
     if in_pos:
         ep = float(close_arr[-1])
         trades.append(((ep * (1 - cost_pct) - entry_p * (1 + cost_pct)) / (entry_p * (1 + cost_pct))) * 100)
+
+    # ── Bar-bazlı yıllıklandırılmış Sharpe (akademik standart) ──
+    strat_ret = _strategy_bar_returns(sig, close_arr)
+    if len(strat_ret) > 1 and strat_ret.std() > 0:
+        sharpe_bar = float(strat_ret.mean() / strat_ret.std() * np.sqrt(bars_per_year))
+    else:
+        sharpe_bar = 0.0
+
     if not trades:
-        return {"total_ret": 0.0, "sharpe": 0.0, "n": 0,
+        return {"total_ret": 0.0, "sharpe": round(sharpe_bar, 4), "sharpe_trade": 0.0, "n": 0,
                 "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd": 0.0, "pf": 0.0}
     r      = np.array(trades)
     cumul  = 1.0
@@ -695,9 +753,12 @@ def run_backtest(signal_series, close_arr, cost_pct):
     losses    = r[r <= 0]
     total_ret = (cumul - 1) * 100
     wr        = len(wins) / len(r) * 100
-    sharpe    = float(np.mean(r) / np.std(r)) * np.sqrt(len(r)) if len(r) > 1 and np.std(r) > 0 else 0.0
+    sharpe_trade = float(np.mean(r) / np.std(r)) * np.sqrt(len(r)) if len(r) > 1 and np.std(r) > 0 else 0.0
     pf        = abs(wins.sum() / losses.sum()) if len(losses) > 0 and losses.sum() != 0 else float("inf")
-    return {"total_ret": round(total_ret, 4), "sharpe": round(sharpe, 4), "n": len(r),
+    return {"total_ret": round(total_ret, 4),
+            "sharpe":       round(sharpe_bar, 4),     # yıllıklandırılmış bar-bazlı
+            "sharpe_trade": round(sharpe_trade, 4),   # eski metrik (referans)
+            "n": len(r),
             "win_rate": round(wr, 2),
             "avg_win":  round(float(wins.mean())   if len(wins)   > 0 else 0.0, 4),
             "avg_loss": round(float(losses.mean())  if len(losses) > 0 else 0.0, 4),
@@ -716,14 +777,21 @@ def _score(stats, metric):
 
 
 def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
-                  n_windows=4, train_pct=70, metric="Sharpe", min_trades=3):
+                  n_windows=4, train_pct=70, metric="Sharpe", min_trades=5,
+                  bars_per_year=252, run_permutation=True, n_perm=200):
+    """Gerçek walk-forward optimizasyon:
+      1) Her pencerede TRAIN dilimi üzerinde en iyi kombo seçilir
+      2) Kazanan kombo TEST diliminde dokunulmamış OOS skoru alır
+      3) En çok seçilen (ve en yüksek OOS skora sahip) kombo sistem tarafından döndürülür
+      4) Tüm OOS test dilimleri birleştirilip permutation test ile p-değeri hesaplanır
+    """
     keys    = list(param_grid.keys())
     combos  = list(iter_product(*param_grid.values()))
     n       = len(close_arr)
     default = {k: v[0] for k, v in param_grid.items()}
 
     win_size = n // n_windows
-    if win_size < 30:
+    if win_size < 60:
         n_windows = 1
         win_size  = n
 
@@ -732,49 +800,111 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         s     = w * win_size
         e     = s + win_size if w < n_windows - 1 else n
         split = s + int((e - s) * train_pct / 100)
-        if split - s < 10 or e - split < 5:
+        if split - s < 20 or e - split < 10:
             continue
         windows.append((s, split, e))
 
     if not windows:
         return default, None
 
-    combo_scores = {combo: [] for combo in combos}
+    # Kombolara göre OOS sonuçları
+    combo_oos = {combo: [] for combo in combos}  # (test_stats, test_sig_slice, test_price_slice)
 
     for (ts, te, es) in windows:
-        test_arr = close_arr[te:es]
+        train_arr = close_arr[ts:te]
+        test_arr  = close_arr[te:es]
+
+        # TRAIN: her kombo için skor, en iyiyi bul
+        sigs_cache = {}
+        best_train_combo = None
+        best_train_score = -np.inf
         for combo in combos:
-            p        = dict(zip(keys, combo))
+            p = dict(zip(keys, combo))
             sig_full = signal_fn(p)
             if sig_full is None:
                 continue
-            sig_vals   = sig_full.values if hasattr(sig_full, "values") else sig_full
-            test_sig   = sig_vals[te:es]
-            test_stats = run_backtest(test_sig, test_arr, cost_pct)
-            if test_stats["n"] < min_trades:
+            sig_vals = np.asarray(sig_full.values if hasattr(sig_full, "values") else sig_full)
+            sigs_cache[combo] = sig_vals
+            train_sig = sig_vals[ts:te]
+            train_stats = run_backtest(train_sig, train_arr, cost_pct, bars_per_year)
+            if train_stats["n"] < min_trades:
                 continue
-            combo_scores[combo].append(_score(test_stats, metric))
+            sc = _score(train_stats, metric)
+            if sc > best_train_score:
+                best_train_score = sc
+                best_train_combo = combo
 
-    best_combo = None
-    best_avg   = -np.inf
-    for combo, scores in combo_scores.items():
-        if not scores:
+        if best_train_combo is None:
             continue
-        avg = float(np.mean(scores))
-        if avg > best_avg:
-            best_avg   = avg
-            best_combo = combo
 
-    if best_combo is None:
+        # TEST: yalnız train-kazananını out-of-sample test et (dokunulmamış)
+        test_sig  = sigs_cache[best_train_combo][te:es]
+        test_stats = run_backtest(test_sig, test_arr, cost_pct, bars_per_year)
+        combo_oos[best_train_combo].append((test_stats, test_sig, test_arr))
+
+    # En iyi kombo: en çok seçilen; eşitlikte en yüksek ortalama OOS skor
+    winners = [(c, v) for c, v in combo_oos.items() if v]
+    if not winners:
         return default, None
 
-    best_p   = dict(zip(keys, best_combo))
-    sig_full = signal_fn(best_p)
-    if sig_full is None:
-        return best_p, None
-    best_s = run_backtest(sig_full, close_arr, cost_pct)
-    best_s["wf_avg_score"] = round(best_avg, 4)
-    best_s["wf_windows"]   = len(windows)
+    def _rank_key(item):
+        combo, results = item
+        sel_count = len(results)
+        avg_score = float(np.mean([_score(st, metric) for (st, _, _) in results]))
+        return (sel_count, avg_score)
+
+    best_combo, best_results = max(winners, key=_rank_key)
+    best_p = dict(zip(keys, best_combo))
+
+    # ── OOS aggregate stats (asla train verisi dahil değil) ──
+    pooled_n  = sum(st["n"] for (st, _, _) in best_results)
+    cumul = 1.0
+    for (st, _, _) in best_results:
+        cumul *= (1 + st["total_ret"] / 100)
+    pooled_ret = (cumul - 1) * 100
+    pooled_max_dd = max((st["max_dd"] for (st, _, _) in best_results), default=0.0)
+    valid_stats = [st for (st, _, _) in best_results if st["n"] > 0]
+    pooled_wr   = float(np.mean([st["win_rate"] for st in valid_stats])) if valid_stats else 0.0
+    pooled_aw   = float(np.mean([st["avg_win"]  for st in valid_stats])) if valid_stats else 0.0
+    pooled_al   = float(np.mean([st["avg_loss"] for st in valid_stats])) if valid_stats else 0.0
+    finite_pfs  = [st["pf"] for st in valid_stats if st["pf"] != float("inf")]
+    pooled_pf   = float(np.mean(finite_pfs)) if finite_pfs else float("inf")
+
+    # ── Bar-bazlı OOS Sharpe: test dilimlerinin strateji getirileri concat ──
+    all_strat_ret = []
+    for (_, test_sig, test_price) in best_results:
+        sr = _strategy_bar_returns(test_sig, test_price)
+        if len(sr) > 0:
+            all_strat_ret.append(sr)
+    if all_strat_ret:
+        strat_ret_concat = np.concatenate(all_strat_ret)
+        if len(strat_ret_concat) > 1 and strat_ret_concat.std() > 0:
+            oos_sharpe = float(strat_ret_concat.mean() / strat_ret_concat.std() * np.sqrt(bars_per_year))
+        else:
+            oos_sharpe = 0.0
+    else:
+        strat_ret_concat = np.array([])
+        oos_sharpe = 0.0
+
+    best_s = {
+        "total_ret":     round(pooled_ret, 4),
+        "sharpe":        round(oos_sharpe, 4),
+        "n":             pooled_n,
+        "win_rate":      round(pooled_wr, 2),
+        "avg_win":       round(pooled_aw, 4),
+        "avg_loss":      round(pooled_al, 4),
+        "max_dd":        round(pooled_max_dd, 4),
+        "pf":            round(pooled_pf, 4) if pooled_pf != float("inf") else float("inf"),
+        "wf_windows":    len(windows),
+        "wf_selections": len(best_results),
+        "oos_only":      True,
+    }
+
+    # ── Permutation significance test ──
+    if run_permutation and len(strat_ret_concat) > 20:
+        p_value = permutation_pvalue(strat_ret_concat, oos_sharpe, bars_per_year, n_perm)
+        best_s["p_value"] = round(p_value, 4)
+
     return best_p, best_s
 
 
@@ -950,11 +1080,19 @@ if ticker:
                         def fn(p):
                             s, _, _ = sig_wavetrend_fn(high, low, close, p["wt_n1"], p["wt_n2"], wt_ob, wt_os); return s
                         return fn
+                elif algo_name == "OBV":
+                    def make_fn():
+                        def fn(p):
+                            if p["obv_short"] >= p["obv_long"]: return None
+                            s, _, _, _ = sig_obv(close, volume, p["obv_short"], p["obv_long"]); return s
+                        return fn
 
                 best_p, best_s = optimize_algo(
                     grid, make_fn(), close_arr, cost_pct,
                     n_windows=n_windows, train_pct=train_pct,
-                    metric="Sharpe", min_trades=1)
+                    metric="Sharpe", min_trades=5,
+                    bars_per_year=bars_per_year_from_interval(interval),
+                    run_permutation=True, n_perm=200)
                 opt_params[algo_name] = best_p
                 opt_stats[algo_name]  = best_s if best_s else {"total_ret": 0.0, "sharpe": 0.0, "n": 0, "win_rate": 0.0}
 
@@ -982,6 +1120,8 @@ if ticker:
             st.session_state["lrc_std_mult"]  = float(p["LR Channel"]["lrc_std_mult"])
             st.session_state["wt_n1"]         = int(p["WaveTrend"]["wt_n1"])
             st.session_state["wt_n2"]         = int(p["WaveTrend"]["wt_n2"])
+            st.session_state["obv_short"]     = int(p["OBV"]["obv_short"])
+            st.session_state["obv_long"]      = int(p["OBV"]["obv_long"])
             st.rerun()
 
         else:
@@ -1106,9 +1246,10 @@ if ticker:
 
         if chart_type == "Mum":
             # ── Sinyal bazlı mum renklendirme ─────────────────────
-            cyan_raw   = (df["ST_Direction"] == 1) & (df["Sig_OBV"] == 1) & (df["RSI"] < 70)
+            _rsi_mid    = (rsi_lower + rsi_upper) / 2
+            cyan_raw   = (df["ST_Direction"] == 1) & (df["Sig_OBV"] == 1) & (df["RSI"] < rsi_upper)
             cyan_mask  = cyan_raw & ~cyan_raw.shift(1).fillna(False)
-            yellow_mask = (~cyan_mask) & (df["ADX"] < adx_threshold) & (df["RSI"] >= 45) & (df["RSI"] <= 55)
+            yellow_mask = (~cyan_mask) & (df["ADX"] < adx_threshold) & (df["RSI"] >= _rsi_mid - 5) & (df["RSI"] <= _rsi_mid + 5)
             red_mask   = (~cyan_mask) & (~yellow_mask) & (df["Close"] < df["Open"]) & (df["MACD"] < df["MACD_S"])
             green_mask = ~cyan_mask & ~yellow_mask & ~red_mask
 
@@ -1980,7 +2121,8 @@ if ticker:
         for algo_name, sig_col in algo_signal_map.items():
             if sig_col not in df.columns:
                 continue
-            stats = run_backtest(df[sig_col], close_arr, cost_pct)
+            stats = run_backtest(df[sig_col], close_arr, cost_pct,
+                                 bars_per_year=bars_per_year_from_interval(interval))
             algo_results.append({
                 "Algoritma":       algo_name,
                 "Trade":           stats["n"],
@@ -2017,7 +2159,7 @@ if ticker:
         # ============================================================
         st.write("---")
         st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
-        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe")
+        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe (yıllıklandırılmış, **out-of-sample**)")
 
         def opt_color(val):
             if isinstance(val, (int, float)):
@@ -2025,7 +2167,15 @@ if ticker:
                 if val < 0: return "color: #ff4b4b"
             return ""
 
-        score_col = "Ort. Test Sharpe"
+        def pval_color(val):
+            try:
+                v = float(val)
+            except (ValueError, TypeError):
+                return ""
+            if v < 0.05:  return "color: #00ff00; font-weight: bold"   # anlamlı
+            if v < 0.10:  return "color: #ffcc00"                       # sınırda
+            return "color: #aaaaaa"                                     # anlamsız
+
         opt_rows  = []
         for algo_name, grid in PARAM_GRIDS.items():
             p = opt_params.get(algo_name, {})
@@ -2034,19 +2184,26 @@ if ticker:
             param_str            = "  |  ".join(f"{k} = {v}" for k, v in p.items())
             row["Parametreler"]  = param_str
             row["Getiri (%)"]    = round(s.get("total_ret", 0), 2)
-            row["Sharpe"]        = round(s.get("sharpe",    0), 2)
+            row["Sharpe (OOS)"]  = round(s.get("sharpe",    0), 2)
             row["Trade"]         = s.get("n", 0)
             row["Win Rate (%)"]  = round(s.get("win_rate",  0), 1)
-            row[score_col]       = round(s.get("wf_avg_score", 0), 3)
+            sel = s.get("wf_selections", 0); wins = s.get("wf_windows", 0)
+            row["Seçim"]         = f"{sel}/{wins}" if wins else "—"
+            row["p-değeri"]      = s.get("p_value", float("nan"))
             opt_rows.append(row)
 
         opt_df     = pd.DataFrame(opt_rows)
-        color_cols = [c for c in ["Getiri (%)", "Sharpe", score_col] if c in opt_df.columns]
-        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe": "{:.2f}", "Win Rate (%)": "{:.1f}", score_col: "{:.3f}"}
+        color_cols = [c for c in ["Getiri (%)", "Sharpe (OOS)"] if c in opt_df.columns]
+        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe (OOS)": "{:.2f}",
+                      "Win Rate (%)": "{:.1f}", "p-değeri": "{:.3f}"}
         fmt        = {k: v for k, v in fmt.items() if k in opt_df.columns}
-        st.dataframe(
-            opt_df.style.format(fmt).map(opt_color, subset=color_cols),
-            use_container_width=True, hide_index=True)
+        styled = opt_df.style.format(fmt).map(opt_color, subset=color_cols)
+        if "p-değeri" in opt_df.columns:
+            styled = styled.map(pval_color, subset=["p-değeri"])
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.caption("💡 **p-değeri < 0.05** → sinyal istatistiksel olarak anlamlı (rastgele değil). "
+                   "**Seçim k/n** → kombonun n pencereden k tanesinde train-kazananı olduğu. "
+                   "Sharpe ve Getiri yalnız OOS test dilimlerinden hesaplanır.")
 
         # ============================================================
         # RAPOR BÖLÜMÜ

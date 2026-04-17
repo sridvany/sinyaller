@@ -910,11 +910,16 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     for (_, test_sig, test_price) in best_results:
         sr = _strategy_bar_returns(test_sig, test_price)
         if len(sr) > 0:
-            all_strat_ret.append(sr)
+            # NaN/inf değerleri temizle
+            sr = sr[np.isfinite(sr)]
+            if len(sr) > 0:
+                all_strat_ret.append(sr)
     if all_strat_ret:
         strat_ret_concat = np.concatenate(all_strat_ret)
         if len(strat_ret_concat) > 1 and strat_ret_concat.std() > 0:
             oos_sharpe = float(strat_ret_concat.mean() / strat_ret_concat.std() * np.sqrt(bars_per_year))
+            if not np.isfinite(oos_sharpe):
+                oos_sharpe = 0.0
         else:
             oos_sharpe = 0.0
     else:
@@ -1456,14 +1461,14 @@ if ticker:
 
             # Kalınlık: dokunuş sayısına göre (1=ince, 2=orta, 3+=kalın)
             width = 1 if t <= 1 else (2 if t == 2 else 3)
-            # Çizgi stili: 1 dokunuş kesikli, 2+ düz
-            dash  = "dot" if t <= 1 else ("dash" if t == 2 else "solid")
-            # Opaklık: güç arttıkça koyu; 0.25 tabandan 0.85 tavana
-            alpha = min(0.25 + 0.2 * t, 0.85)
+            # Çizgi stili: dash (PDF'te dot kaybolduğu için kullanmıyoruz)
+            dash  = "dash" if t <= 1 else ("dashdot" if t == 2 else "solid")
+            # Opaklık: 1 dokunuşta bile görünür taban (0.55) — PDF için sertleştirildi
+            alpha = min(0.55 + 0.15 * t, 0.95)
 
             if broken:
                 # Kırılmış seviye: gri, yarı saydam
-                color = f"rgba(140,140,140,{alpha*0.5:.2f})"
+                color = f"rgba(160,160,160,{alpha*0.6:.2f})"
             else:
                 color = (f"rgba(0,255,100,{alpha:.2f})" if is_support
                          else f"rgba(255,80,80,{alpha:.2f})")
@@ -2215,19 +2220,33 @@ if ticker:
         st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe (yıllıklandırılmış, **out-of-sample**)")
 
         def opt_color(val):
-            if isinstance(val, (int, float)):
-                if val > 0: return "color: #00ff00"
-                if val < 0: return "color: #ff4b4b"
-            return ""
+            try:
+                v = float(val)
+            except (ValueError, TypeError):
+                return ""
+            if not np.isfinite(v):   return "color: #888888"
+            if v > 0:  return "color: #00ff00"
+            if v < 0:  return "color: #ff4b4b"
+            return "color: #888888"  # sıfır için gri — koyu arka planda görünür
 
         def pval_color(val):
             try:
                 v = float(val)
             except (ValueError, TypeError):
                 return ""
+            if not np.isfinite(v): return "color: #888888"
             if v < 0.05:  return "color: #00ff00; font-weight: bold"   # anlamlı
             if v < 0.10:  return "color: #ffcc00"                       # sınırda
             return "color: #aaaaaa"                                     # anlamsız
+
+        def _safe_round(x, nd=2, default=0.0):
+            try:
+                v = float(x)
+                if not np.isfinite(v):
+                    return default
+                return round(v, nd)
+            except (ValueError, TypeError):
+                return default
 
         opt_rows  = []
         for algo_name, grid in PARAM_GRIDS.items():
@@ -2236,13 +2255,13 @@ if ticker:
             row = {"Algoritma": algo_name}
             param_str            = "  |  ".join(f"{k} = {v}" for k, v in p.items())
             row["Parametreler"]  = param_str
-            row["Getiri (%)"]    = round(s.get("total_ret", 0), 2)
-            row["Sharpe (OOS)"]  = round(s.get("sharpe",    0), 2)
-            row["Trade"]         = s.get("n", 0)
-            row["Win Rate (%)"]  = round(s.get("win_rate",  0), 1)
+            row["Getiri (%)"]    = _safe_round(s.get("total_ret", 0), 2)
+            row["Sharpe (OOS)"]  = _safe_round(s.get("sharpe",    0), 2)
+            row["Trade"]         = int(s.get("n", 0) or 0)
+            row["Win Rate (%)"]  = _safe_round(s.get("win_rate",  0), 1)
             sel = s.get("wf_selections", 0); wins = s.get("wf_windows", 0)
             row["Seçim"]         = f"{sel}/{wins}" if wins else "—"
-            row["p-değeri"]      = s.get("p_value", float("nan"))
+            row["p-değeri"]      = _safe_round(s.get("p_value", np.nan), 4, default=np.nan)
             opt_rows.append(row)
 
         opt_df     = pd.DataFrame(opt_rows)

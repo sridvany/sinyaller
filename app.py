@@ -381,12 +381,23 @@ def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.00
         avg_price  = float(np.mean(touches))
         last_touch = max(touch_bars)
 
-        # ── Break detection: son kapanış seviyeyi aştı mı? ──
+        # ── Break detection & role reversal ──
+        # Fiyat bir direnci kırıp yukarı geçerse o seviye artık "destek"
+        # Fiyat bir desteği kırıp aşağı inerse o seviye artık "direnç"
         last_close = float(close.iloc[-1])
+        tol_now = _tol_for(avg_price, n - 1)
         if typ == "R":
-            broken = last_close > avg_price * (1 + _tol_for(avg_price, n - 1))
+            if last_close > avg_price * (1 + tol_now):
+                typ = "S"           # direnç kırıldı, destek oldu
+                broken = False      # yeni rolüyle aktif
+            else:
+                broken = False
         else:  # "S"
-            broken = last_close < avg_price * (1 - _tol_for(avg_price, n - 1))
+            if last_close < avg_price * (1 - tol_now):
+                typ = "R"           # destek kırıldı, direnç oldu
+                broken = False
+            else:
+                broken = False
 
         # ── Recency: son dokunuşun yakınlığı (0-1, yeni olan yüksek) ──
         recency = last_touch / max(n - 1, 1)
@@ -404,7 +415,7 @@ def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.00
         })
 
     merged = [m for m in merged if m["touches"] >= min_touches]
-    merged = sorted(merged, key=lambda x: -x["strength"])[:20]
+    merged = sorted(merged, key=lambda x: -x["strength"])[:10]
     return merged
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1062,7 +1073,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
+        OPT_KEY = f"opt_v3_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}
@@ -1461,10 +1472,10 @@ if ticker:
 
             # Kalınlık: dokunuş sayısına göre (1=ince, 2=orta, 3+=kalın)
             width = 1 if t <= 1 else (2 if t == 2 else 3)
-            # Çizgi stili: dash (PDF'te dot kaybolduğu için kullanmıyoruz)
+            # Çizgi stili
             dash  = "dash" if t <= 1 else ("dashdot" if t == 2 else "solid")
-            # Opaklık: 1 dokunuşta bile görünür taban (0.55) — PDF için sertleştirildi
-            alpha = min(0.55 + 0.15 * t, 0.95)
+            # Opaklık: 0.40 tabandan 0.80 tavana — görünür ama bunaltıcı değil
+            alpha = min(0.40 + 0.15 * t, 0.80)
 
             if broken:
                 # Kırılmış seviye: gri, yarı saydam

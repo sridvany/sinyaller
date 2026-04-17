@@ -143,12 +143,14 @@ with st.sidebar:
     # ── Destek/Direnç ve Trend Çizgisi Ayarları ───────────────
     st.write("---")
     st.subheader("📊 Destek / Direnç Ayarları")
-    swing_window  = st.slider("S/R Pivot Pencere:",    5,  20, 10,
+    swing_window  = st.slider("S/R Pivot Pencere:",    3,  20, 10,
         help="Tepe/dip tespiti için her yönde bakılacak bar sayısı")
-    swing_touches = st.slider("Min. Dokunuş Sayısı:", 2,   5,  2,
-        help="Bir seviyenin geçerli sayılması için minimum dokunuş")
-    swing_tol     = st.slider("Tolerans (%):",        0.1, 1.0, 0.3, step=0.1,
-        help="İki seviyenin aynı sayılması için maksimum fiyat farkı") / 100
+    swing_touches = st.slider("Min. Dokunuş Sayısı:", 1,   5,  1,
+        help="1 = tek pivotlu seviyeler de gösterilir (daha fazla çizgi, zayıf güç)")
+    swing_atr_k   = st.slider("ATR Tolerans Çarpanı:", 0.2, 2.0, 0.5, step=0.1,
+        help="Seviye birleştirme toleransı = bu değer × ATR / fiyat. "
+             "Volatil enstrümanlarda yükselt, sakin enstrümanlarda düşür.")
+    swing_tol     = 0.003  # fallback (ATR yoksa kullanılır)
 
     st.write("---")
     st.subheader("📐 Trend Çizgisi Ayarları")
@@ -336,10 +338,13 @@ def calc_vwap_daily(high, low, close, volume):
 
 
 # ── YENİ: Swing Destek/Direnç ─────────────────────────────────────────────────
-def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.003):
+def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.003,
+                      atr_series=None, atr_k=0.5):
     """
     Swing High/Low bazlı otomatik destek/direnç tespiti.
-    Yakın seviyeler birleştirilir, dokunuş sayısına göre güç atanır.
+    - atr_series verilirse tolerans = atr_k * ATR / fiyat (dinamik, volatiliteye uyumlu)
+    - Aksi halde sabit 'tolerance' yüzdesi kullanılır (geriye uyumluluk)
+    - Her seviyenin 'broken' alanı vardır: son kapanış seviyeyi kırmışsa True
     """
     n      = len(close)
     levels = []
@@ -350,31 +355,56 @@ def find_swing_levels(high, low, close, window=10, min_touches=2, tolerance=0.00
         if low.iloc[i] == low.iloc[i - window: i + window + 1].min():
             levels.append(("S", float(low.iloc[i]), i))
 
+    # Dinamik tolerans: her pivot için kendi ATR'sine göre yüzde tolerans
+    def _tol_for(price, bar_idx):
+        if atr_series is not None and bar_idx < len(atr_series):
+            atr_val = float(atr_series.iloc[bar_idx]) if hasattr(atr_series, "iloc") else float(atr_series[bar_idx])
+            if not np.isnan(atr_val) and price > 0:
+                return max(atr_k * atr_val / price, 0.0005)  # minimum %0.05 taban
+        return tolerance
+
     merged = []
     used   = set()
     for idx, (typ, price, bar) in enumerate(levels):
         if idx in used:
             continue
+        tol         = _tol_for(price, bar)
         touches     = [price]
         touch_bars  = [bar]
         for jdx, (typ2, price2, bar2) in enumerate(levels):
             if jdx != idx and jdx not in used:
-                if abs(price2 - price) / price < tolerance:
+                if abs(price2 - price) / price < tol:
                     touches.append(price2)
                     touch_bars.append(bar2)
                     used.add(jdx)
         used.add(idx)
         avg_price  = float(np.mean(touches))
         last_touch = max(touch_bars)
+
+        # ── Break detection: son kapanış seviyeyi aştı mı? ──
+        last_close = float(close.iloc[-1])
+        if typ == "R":
+            broken = last_close > avg_price * (1 + _tol_for(avg_price, n - 1))
+        else:  # "S"
+            broken = last_close < avg_price * (1 - _tol_for(avg_price, n - 1))
+
+        # ── Recency: son dokunuşun yakınlığı (0-1, yeni olan yüksek) ──
+        recency = last_touch / max(n - 1, 1)
+
+        # ── Güç skoru: dokunuş sayısı × recency ağırlığı ──
+        strength = len(touches) * (0.5 + 0.5 * recency)
+
         merged.append({
             "type":       typ,
             "price":      avg_price,
             "touches":    len(touches),
             "last_touch": last_touch,
+            "broken":     broken,
+            "strength":   strength,
         })
 
     merged = [m for m in merged if m["touches"] >= min_touches]
-    merged = sorted(merged, key=lambda x: -x["touches"])[:15]
+    merged = sorted(merged, key=lambda x: -x["strength"])[:20]
     return merged
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1011,6 +1041,8 @@ if ticker:
             window=swing_window,
             min_touches=swing_touches,
             tolerance=swing_tol,
+            atr_series=atr_series,
+            atr_k=swing_atr_k,
         )
 
         # ── Diyagonal Trend Çizgileri ──────────────────────────────
@@ -1416,15 +1448,31 @@ if ticker:
                 row=1, col=1,
             )
 
-        # ── Yatay S/R çizgileri (arka plan referans) ──────────────
+        # ── Yatay S/R çizgileri (güce göre kalınlık, break'te grileşme) ──
         for lvl in swing_levels:
             is_support = lvl["type"] == "S"
-            color      = "rgba(0,255,100,0.35)" if is_support else "rgba(255,80,80,0.35)"
+            t          = lvl["touches"]
+            broken     = lvl.get("broken", False)
+
+            # Kalınlık: dokunuş sayısına göre (1=ince, 2=orta, 3+=kalın)
+            width = 1 if t <= 1 else (2 if t == 2 else 3)
+            # Çizgi stili: 1 dokunuş kesikli, 2+ düz
+            dash  = "dot" if t <= 1 else ("dash" if t == 2 else "solid")
+            # Opaklık: güç arttıkça koyu; 0.25 tabandan 0.85 tavana
+            alpha = min(0.25 + 0.2 * t, 0.85)
+
+            if broken:
+                # Kırılmış seviye: gri, yarı saydam
+                color = f"rgba(140,140,140,{alpha*0.5:.2f})"
+            else:
+                color = (f"rgba(0,255,100,{alpha:.2f})" if is_support
+                         else f"rgba(255,80,80,{alpha:.2f})")
+
             fig.add_hline(
                 y=lvl["price"],
                 line_color=color,
-                line_width=1,
-                line_dash="dot",
+                line_width=width,
+                line_dash=dash,
                 row=1, col=1,
             )
 

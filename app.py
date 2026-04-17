@@ -791,7 +791,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     default = {k: v[0] for k, v in param_grid.items()}
 
     win_size = n // n_windows
-    if win_size < 60:
+    if win_size < 30:
         n_windows = 1
         win_size  = n
 
@@ -814,6 +814,11 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         train_arr = close_arr[ts:te]
         test_arr  = close_arr[te:es]
 
+        # Adaptif min_trades: pencere kısaysa alt sınır 2'ye iner,
+        # uzun pencerelerde kullanıcının ayarladığı tavan geçerli olur
+        train_bars = te - ts
+        eff_min_trades = max(2, min(min_trades, train_bars // 30))
+
         # TRAIN: her kombo için skor, en iyiyi bul
         sigs_cache = {}
         best_train_combo = None
@@ -827,7 +832,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
             sigs_cache[combo] = sig_vals
             train_sig = sig_vals[ts:te]
             train_stats = run_backtest(train_sig, train_arr, cost_pct, bars_per_year)
-            if train_stats["n"] < min_trades:
+            if train_stats["n"] < eff_min_trades:
                 continue
             sc = _score(train_stats, metric)
             if sc > best_train_score:

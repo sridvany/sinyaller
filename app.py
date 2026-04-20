@@ -471,6 +471,41 @@ def ai_cache_key(ticker, interval, total_score, close, provider, model, detail):
     return "ai_report_" + hashlib.md5(s.encode("utf-8")).hexdigest()[:16]
 
 
+def clean_half_sentence(text):
+    """Yanıt sonunda yarım kalmış cümleyi temizle.
+    Gemini Flash streaming bazen cümle ortasında kesiyor — bunu tespit edip
+    son tam cümleyi koru. (clean_text, was_cut) döner."""
+    if not text or len(text) < 30:
+        return text, False
+
+    stripped = text.rstrip()
+    if not stripped:
+        return text, False
+
+    # Zaten düzgün bir bitirici karakter ile bitiyor mu?
+    # (nokta, ünlem, soru, iki nokta, parantez, yıldız, backtick, emoji/özel)
+    safe_endings = ".!?:;)]}*`\"'›»"
+    if stripped[-1] in safe_endings:
+        return text, False
+
+    # Cümle sonlarını bul — SADECE "nokta/ünlem/soru + boşluk veya satır sonu"
+    # Bu decimal sayıları (örn. "78.4") yanlışlıkla cümle sonu saymaz.
+    import re
+    matches = list(re.finditer(r'[.!?](?=\s|$)', stripped))
+    if not matches:
+        return text, False
+
+    last_end = matches[-1].end()  # son cümle bitişinin konumu
+
+    # Son bitiş çok başlardaysa (metnin %40'ından az), olduğu gibi bırak —
+    # muhtemelen kısa bir özetti, müdahale etmeyelim
+    if last_end < len(stripped) * 0.4:
+        return text, False
+
+    cleaned = stripped[:last_end]
+    return cleaned, True
+
+
 # ============================================================
 # 2. YAN PANEL
 # ============================================================
@@ -3378,14 +3413,43 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
                 try:
                     _t0 = time.time()
-                    _full_text = st.write_stream(stream_llm(
+
+                    # Manuel streaming: placeholder'a canlı yaz, bitince temizle
+                    _placeholder = st.empty()
+                    _full_text = ""
+                    for _chunk in stream_llm(
                         ai_provider, ai_api_key, ai_model,
                         _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
-                    ))
+                    ):
+                        _full_text += _chunk
+                        _placeholder.markdown(_full_text + " ▌")
+
                     _dt = time.time() - _t0
-                    if _full_text:
-                        st.session_state[_cache_key] = _full_text
-                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_full_text.split())} kelime")
+
+                    # Debug/usage satırlarını gövdeden ayır (eğer Gemini eklediyse)
+                    _debug_tail = ""
+                    for _marker in ("\n\n📊", "\n\n---\n⚠️"):
+                        _pos = _full_text.find(_marker)
+                        if _pos != -1:
+                            _debug_tail = _full_text[_pos:] + _debug_tail
+                            _full_text  = _full_text[:_pos]
+                            break
+
+                    # Yarım cümle tespit + temizle (sadece gövde üzerinde)
+                    _cleaned, _was_cut = clean_half_sentence(_full_text)
+                    _final = _cleaned + _debug_tail
+                    if _was_cut:
+                        _final += (
+                            "\n\n---\n⚠️ *Model yanıtı yarıda bıraktı; son yarım cümle "
+                            "otomatik kaldırıldı. Daha tam bir yanıt için 🔄 Yeniden Üret "
+                            "tuşuna basabilirsiniz.*"
+                        )
+
+                    _placeholder.markdown(_final)
+
+                    if _final:
+                        st.session_state[_cache_key] = _final
+                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_final.split())} kelime")
                     else:
                         st.warning("⚠️ Boş yanıt alındı. Farklı bir model veya detay seviyesi deneyin.")
                 except RuntimeError as e:

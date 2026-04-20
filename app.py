@@ -1401,8 +1401,8 @@ def _strategy_bar_returns(sig_vals, close_arr):
 
 
 def permutation_pvalue(strat_ret, observed_sharpe, bars_per_year, n_perm=200, seed=42):
-    """Strateji getiri serisini karıştırarak gözlemlenen Sharpe'ın rastgele oluşma olasılığı.
-    Düşük p-değeri = sinyal istatistiksel olarak anlamlı."""
+    """(Geriye dönük uyumluluk için) Basit permutation test.
+    YENİ KODDA stationary_bootstrap_pvalue TERCİH EDİN."""
     strat_ret = np.asarray(strat_ret)
     if len(strat_ret) < 10 or strat_ret.std() == 0:
         return 1.0
@@ -1415,6 +1415,102 @@ def permutation_pvalue(strat_ret, observed_sharpe, bars_per_year, n_perm=200, se
         if s >= observed_sharpe:
             count_ge += 1
     return (count_ge + 1) / (n_perm + 1)
+
+
+def stationary_bootstrap_pvalue(strat_ret, observed_sharpe, bars_per_year,
+                                 n_boot=200, avg_block_len=10, seed=42):
+    """Politis & Romano (1994) Stationary Bootstrap.
+
+    Finansal getirilerin bağımsız olmadığı gerçeğini dikkate alır.
+    Blok uzunlukları geometrik dağılımdan seçilir (ortalama = avg_block_len).
+    Zaman serisi yapısı (volatility clustering, autocorrelation) korunur.
+
+    Basit permutation'a göre p-değeri genellikle daha yüksek (daha dürüst) çıkar.
+    """
+    strat_ret = np.asarray(strat_ret)
+    n = len(strat_ret)
+    if n < 20 or strat_ret.std() == 0:
+        return 1.0
+
+    p_geom = 1.0 / max(avg_block_len, 2)  # blok başlangıç olasılığı
+    rng = np.random.default_rng(seed)
+    count_ge = 0
+    valid_iters = 0
+
+    for _ in range(n_boot):
+        # Stationary bootstrap örneği oluştur
+        boot = np.empty(n, dtype=strat_ret.dtype)
+        idx = int(rng.integers(0, n))
+        for i in range(n):
+            boot[i] = strat_ret[idx]
+            # Yeni blok başlatma olasılığı
+            if rng.random() < p_geom:
+                idx = int(rng.integers(0, n))
+            else:
+                idx = (idx + 1) % n  # aynı bloğa devam
+
+        if boot.std() == 0:
+            continue
+        valid_iters += 1
+        # Null dağılım: sharpe'ı "getirileri merkezileştirilmiş" örnekle ölç
+        # (H0: gerçek Sharpe = 0 varsayımı altında)
+        centered = boot - boot.mean()
+        if centered.std() == 0:
+            continue
+        s_boot = float(centered.mean() / centered.std() * np.sqrt(bars_per_year))
+        if s_boot >= observed_sharpe:
+            count_ge += 1
+
+    if valid_iters == 0:
+        return 1.0
+    return (count_ge + 1) / (valid_iters + 1)
+
+
+def deflated_sharpe_ratio(observed_sharpe, n_trials, n_obs, skew=0.0, kurt=3.0):
+    """Bailey & López de Prado (2014) Deflated Sharpe Ratio.
+
+    Multiple testing ('data snooping') cezasını çıkarır.
+    n_trials: kaç parametre kombinasyonu denendiği (örn. grid size)
+    n_obs:    örneklem boyutu (bar sayısı)
+    skew:     getiri dağılımının çarpıklığı
+    kurt:     getiri dağılımının basıklığı (normal = 3)
+
+    DSR > 0 → Gerçekten rastgeleden iyi.
+    DSR 0   → Eşik: istatistiksel olarak anlamsız.
+    DSR < 0 → Bu Sharpe muhtemelen şans eseri.
+    """
+    from math import log, sqrt, pi, exp
+    if n_trials <= 1 or n_obs <= 1:
+        return observed_sharpe  # düzeltme gerekmiyor
+
+    # Euler-Mascheroni sabiti
+    emc = 0.5772156649
+    # Expected Max Sharpe under null (Bailey & López de Prado 2014, Eq. 6)
+    # E[max SR] ≈ sqrt(V[SR]) × ((1-γ)·Φ⁻¹(1-1/N) + γ·Φ⁻¹(1-1/(N·e)))
+    # V[SR_null] = 1/n_obs varsayımı (null altında)
+    from scipy.stats import norm
+    try:
+        z1 = norm.ppf(1.0 - 1.0 / n_trials)
+        z2 = norm.ppf(1.0 - 1.0 / (n_trials * exp(1)))
+        expected_max_sr = (1.0 - emc) * z1 + emc * z2
+    except Exception:
+        # scipy yoksa yaklaşık değer (N büyükse Gumbel'den)
+        expected_max_sr = sqrt(2.0 * log(n_trials))
+
+    # DSR: Probabilistic SR'nin deflate edilmiş hali
+    # σ(SR_hat) = sqrt((1 - skew·SR + (kurt-1)/4 · SR²) / (n_obs - 1))
+    sr = observed_sharpe
+    var_sr = (1.0 - skew * sr + (kurt - 1.0) / 4.0 * sr * sr) / max(n_obs - 1, 1)
+    if var_sr <= 0:
+        return sr - expected_max_sr
+    std_sr = sqrt(var_sr)
+    if std_sr == 0:
+        return sr - expected_max_sr
+
+    # DSR = (gözlemlenen SR - beklenen max SR) / std(SR)
+    # Yüksek pozitif = gerçek, 0 civarı = sınırda, negatif = şans
+    dsr = (sr - expected_max_sr) / std_sr
+    return dsr
 
 
 def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
@@ -1496,19 +1592,32 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     n       = len(close_arr)
     default = {k: v[0] for k, v in param_grid.items()}
 
-    win_size = n // n_windows
-    if win_size < 30:
-        n_windows = 1
-        win_size  = n
+    # ── EXPANDING WINDOW ──
+    # Rolling pencerelerin aksine, her adımda geçmiş birikir (gerçek trading gibi).
+    # Eğitim dilimi [0 → split_i], test dilimi [split_i → end_i].
+    # Adımlar: veriyi (n_windows + 1) eşit parçaya böl, her adımda bir ek test dilimi.
+    #   Adım 1: train=[0, 2/(n+1)), test=[2/(n+1), 3/(n+1))
+    #   Adım 2: train=[0, 3/(n+1)), test=[3/(n+1), 4/(n+1))
+    #   ...
+    #   Adım n: train=[0, (n+1)/(n+1)=end), — son adım test = son dilim
+    # Her test dilimi birbirinden bağımsız OOS, hiçbiri train'de görülmez.
+    n_steps = max(n_windows, 2)
+    step_size = n // (n_steps + 1)
+    if step_size < 15:
+        return default, None
 
     windows = []
-    for w in range(n_windows):
-        s     = w * win_size
-        e     = s + win_size if w < n_windows - 1 else n
-        split = s + int((e - s) * train_pct / 100)
-        if split - s < 20 or e - split < 10:
+    # İlk train minimum ~2 dilim olacak şekilde başla
+    min_train_start = 2 * step_size
+    for w in range(n_steps):
+        train_start = 0
+        train_end   = min_train_start + w * step_size
+        test_start  = train_end
+        test_end    = min(test_start + step_size, n) if w < n_steps - 1 else n
+        # Yetersiz veri kontrolü
+        if train_end - train_start < 20 or test_end - test_start < 10:
             continue
-        windows.append((s, split, e))
+        windows.append((train_start, train_end, test_end))
 
     if not windows:
         return default, None
@@ -1520,10 +1629,10 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         train_arr = close_arr[ts:te]
         test_arr  = close_arr[te:es]
 
-        # Adaptif min_trades: pencere kısaysa alt sınır 2'ye iner,
+        # Adaptif min_trades: pencere kısaysa alt sınır 3'e iner,
         # uzun pencerelerde kullanıcının ayarladığı tavan geçerli olur
         train_bars = te - ts
-        eff_min_trades = max(2, min(min_trades, train_bars // 30))
+        eff_min_trades = max(3, min(min_trades, train_bars // 30))
 
         # TRAIN: her kombo için skor, en iyiyi bul
         sigs_cache = {}
@@ -1616,10 +1725,37 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         "oos_only":      True,
     }
 
-    # ── Permutation significance test ──
+    # ── Stationary Bootstrap p-value (Politis & Romano 1994) ──
+    # Basit permutation yerine zaman serisi yapısını koruyan blok bootstrap.
     if run_permutation and len(strat_ret_concat) > 20:
-        p_value = permutation_pvalue(strat_ret_concat, oos_sharpe, bars_per_year, n_perm)
+        # Ortalama blok uzunluğu: veri uzunluğunun ~küp köküne yakın (yaygın pratik)
+        avg_block = max(5, int(len(strat_ret_concat) ** (1.0 / 3.0)))
+        p_value = stationary_bootstrap_pvalue(
+            strat_ret_concat, oos_sharpe, bars_per_year,
+            n_boot=n_perm, avg_block_len=avg_block
+        )
         best_s["p_value"] = round(p_value, 4)
+
+    # ── Deflated Sharpe Ratio (Bailey & López de Prado 2014) ──
+    # Multiple testing / data snooping cezası uygula.
+    n_trials_grid = len(combos)  # bu algoritma için denenen kombo sayısı
+    if n_trials_grid > 1 and len(strat_ret_concat) > 20:
+        try:
+            # Getiri dağılımının yüksek momentleri (varsa)
+            sk = float(((strat_ret_concat - strat_ret_concat.mean()) ** 3).mean() /
+                       (strat_ret_concat.std() ** 3)) if strat_ret_concat.std() > 0 else 0.0
+            kt = float(((strat_ret_concat - strat_ret_concat.mean()) ** 4).mean() /
+                       (strat_ret_concat.std() ** 4)) if strat_ret_concat.std() > 0 else 3.0
+            dsr = deflated_sharpe_ratio(
+                observed_sharpe=oos_sharpe,
+                n_trials=n_trials_grid,
+                n_obs=len(strat_ret_concat),
+                skew=sk, kurt=kt,
+            )
+            best_s["dsr"] = round(float(dsr), 4)
+            best_s["n_trials"] = n_trials_grid
+        except Exception:
+            best_s["dsr"] = None
 
     return best_p, best_s
 
@@ -3082,6 +3218,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             row["Parametreler"]  = param_str
             row["Getiri (%)"]    = _safe_round(s.get("total_ret", 0), 2)
             row["Sharpe (OOS)"]  = _safe_round(s.get("sharpe",    0), 2)
+            row["DSR"]           = _safe_round(s.get("dsr", np.nan), 2, default=np.nan)
             row["Trade"]         = int(s.get("n", 0) or 0)
             row["Win Rate (%)"]  = _safe_round(s.get("win_rate",  0), 1)
             sel = s.get("wf_selections", 0); wins = s.get("wf_windows", 0)
@@ -3090,17 +3227,22 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             opt_rows.append(row)
 
         opt_df     = pd.DataFrame(opt_rows)
-        color_cols = [c for c in ["Getiri (%)", "Sharpe (OOS)"] if c in opt_df.columns]
-        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe (OOS)": "{:.2f}",
+        color_cols = [c for c in ["Getiri (%)", "Sharpe (OOS)", "DSR"] if c in opt_df.columns]
+        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe (OOS)": "{:.2f}", "DSR": "{:.2f}",
                       "Win Rate (%)": "{:.1f}", "p-değeri": "{:.3f}"}
         fmt        = {k: v for k, v in fmt.items() if k in opt_df.columns}
-        styled = opt_df.style.format(fmt).map(opt_color, subset=color_cols)
+        styled = opt_df.style.format(fmt, na_rep="—").map(opt_color, subset=color_cols)
         if "p-değeri" in opt_df.columns:
             styled = styled.map(pval_color, subset=["p-değeri"])
         st.dataframe(styled, use_container_width=True, hide_index=True)
-        st.caption("💡 **p-değeri < 0.05** → sinyal istatistiksel olarak anlamlı (rastgele değil). "
-                   "**Seçim k/n** → kombonun n pencereden k tanesinde train-kazananı olduğu. "
-                   "Sharpe ve Getiri yalnız OOS test dilimlerinden hesaplanır.")
+        st.caption(
+            "💡 **Sharpe (OOS)**: Yalnız out-of-sample test dilimlerinden yıllıklandırılmış risk ayarlı getiri. "
+            "**DSR** (Deflated Sharpe Ratio — Bailey & López de Prado 2014): Multiple testing "
+            "cezası çıkarılmış. **DSR > 0** → gerçekten rastgeleden iyi; **DSR ≤ 0** → yüksek Sharpe "
+            "muhtemelen şans eseri. **p-değeri** (Stationary Bootstrap — Politis & Romano 1994): "
+            "< 0.05 → sinyal istatistiksel olarak anlamlı. **Seçim k/n** → kombonun n expanding "
+            "adımında k tanesinde train-kazananı olduğu."
+        )
 
         # ============================================================
         # RAPOR BÖLÜMÜ

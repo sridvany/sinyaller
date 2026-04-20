@@ -98,7 +98,7 @@ LLM_PROVIDERS = {
     },
 }
 
-AI_DETAIL_LEVELS = {"Kısa": 1200, "Orta": 3000, "Detaylı": 6000}
+AI_DETAIL_LEVELS = {"Kısa": 1500, "Orta": 4000, "Detaylı": 8000}
 
 
 def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
@@ -346,7 +346,14 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
         "profesyonel trader'ın veriye nasıl yaklaşacağını anlat. "
         "Türkçe yanıt ver, teknik jargon kullanabilirsin ama netlikten "
         "taviz verme. Yanıtını markdown formatında, başlıklar altında "
-        "organize et. Somut ve aksiyona dönüştürülebilir ol."
+        "organize et. Somut ve aksiyona dönüştürülebilir ol.\n\n"
+        "ÖNEMLİ FORMATLAMA KURALLARI:\n"
+        "- Her cümleyi tam olarak bitir, asla yarıda bırakma.\n"
+        "- Son başlığın son cümlesi de tam ve anlamlı olmalı.\n"
+        "- Eğer istenen tüm başlıkları cevaplayacak kadar yerin olmayacağını "
+        "düşünürsen, her başlığı biraz daha kısa tut ama tamamla — "
+        "hiçbir zaman ortada kesme.\n"
+        "- Yanıtı bitirirken noktayla bitir, üç nokta veya yarım cümle kullanma."
     )
 
     # RSI durumu

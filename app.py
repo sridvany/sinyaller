@@ -84,12 +84,6 @@ LLM_PROVIDERS = {
         "type":     "anthropic",
         "key_url":  "https://console.anthropic.com/settings/keys",
     },
-    "Google": {
-        "models":   ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
-        "type":     "gemini",
-        "key_url":  "https://aistudio.google.com/apikey",
-    },
     "DeepSeek": {
         "models":   ["deepseek-chat", "deepseek-reasoner"],
         "endpoint": "https://api.deepseek.com/v1/chat/completions",

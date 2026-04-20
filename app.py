@@ -502,6 +502,17 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
         "Türkçe yanıt ver, teknik jargon kullanabilirsin ama netlikten "
         "taviz verme. Yanıtını markdown formatında, başlıklar altında "
         "organize et. Somut ve aksiyona dönüştürülebilir ol.\n\n"
+        "ÖNEMLİ YORUMLAMA KURALLARI:\n"
+        "- **Skor bileşenlerindeki puanlar (örn. +0.7, -1, ×0.7) SKOR AĞIRLIKLARIDIR, "
+        "indikatör değeri DEĞİLDİR.** 'MACD Histogram İvmesi: -0.7' bileşeninde -0.7 "
+        "histogram değeri değil, bileşenin skora katkısıdır. İndikatörün gerçek sayısal "
+        "değeri için sana ayrıca verilen 'Anahtar İndikatör Değerleri' bölümüne bak.\n"
+        "- **Genel ADX/RSI/threshold değerleri için kullanıcının kendi ayarlarını kullan** "
+        "— jenerik '25', '30', '70' gibi sayılar varsayma; sana prompt'ta verilen "
+        "gerçek eşik değerlerini kullan.\n"
+        "- **Risk/Ödül (R/R) oranını mutlaka hesapla.** Stop-loss ve hedef seviye öner "
+        "dikten sonra: R/R = (hedef - giriş) / (giriş - stop). Eğer R/R < 2:1 ise bunu "
+        "'Risk/Ödül oranı düşük, pozisyonu yeniden değerlendirin' şeklinde AÇIKÇA BELİRT.\n\n"
         "ÖNEMLİ FORMATLAMA KURALLARI:\n"
         "- Her cümleyi tam olarak bitir, asla yarıda bırakma.\n"
         "- Son başlığın son cümlesi de tam ve anlamlı olmalı.\n"
@@ -555,7 +566,7 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
             "Toplamda 3-4 cümle, şu başlıklarda:\n"
             "1. **🎯 Durum**\n"
             "2. **⚠️ Uyarı**\n"
-            "3. **📍 Aksiyon**\n"
+            "3. **📍 Aksiyon** (stop ve hedef varsa R/R oranını parantez içinde belirt)\n"
         )
     elif detail == "Orta":
         output_req = (
@@ -564,7 +575,9 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
             "1. **🎯 Genel Değerlendirme** — skorun ne anlama geldiği (2-3 cümle)\n"
             "2. **⚠️ Ana Risk** — en kritik uyarı ve nedeni\n"
             "3. **📍 Giriş Senaryosu** — ne beklenmeli, hangi seviyeler aksiyon için uygun\n"
-            "4. **🛡️ Risk Yönetimi** — stop-loss ve hedef seviye önerileri (somut sayılarla)\n"
+            "4. **🛡️ Risk Yönetimi** — somut stop-loss ve hedef seviyeleri ver, "
+            "ardından **Risk/Ödül oranını hesapla**: R/R = (hedef - giriş) / (giriş - stop). "
+            "Oran 2:1'den düşükse 'R/R uygun değil' şeklinde açıkça uyar.\n"
             "5. **👁️ Takip Listesi** — dikkat edilmesi gereken 3-4 kritik sinyal\n"
         )
     else:  # Detaylı
@@ -572,10 +585,13 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
             "\n## İstenen Çıktı (DETAYLI)\n"
             "Şu 7 başlıkta derin analiz yap:\n"
             "1. **🎯 Genel Değerlendirme** — skoru ve rejimi derinlemesine açıkla\n"
-            "2. **📊 Bileşen Analizi** — her skor bileşeninin neden o değeri aldığını yorumla\n"
+            "2. **📊 Bileşen Analizi** — her skor bileşeninin neden o değeri aldığını yorumla "
+            "(unutma: puanlar indikatör değeri değil, skor ağırlığıdır)\n"
             "3. **⚠️ Risk Faktörleri** — tüm önemli uyarılar ve neden önemli oldukları\n"
             "4. **📍 Senaryolar** — Boğa / Ayı / Yatay senaryolar için ayrı planlar\n"
-            "5. **🛡️ Risk Yönetimi** — pozisyon boyutu, stop-loss, hedef (somut sayılarla)\n"
+            "5. **🛡️ Risk Yönetimi** — pozisyon boyutu, stop-loss, hedef (somut sayılarla) "
+            "ve **Risk/Ödül oranı hesabı**. R/R = (hedef - giriş) / (giriş - stop). "
+            "Oran uygun değilse (< 2:1) açıkça uyar.\n"
             "6. **📈 İhtimal Değerlendirmesi** — kısa ve orta vadeli muhtemel hareketler\n"
             "7. **👁️ Takip Listesi** — durumu değiştirebilecek kritik sinyaller\n"
         )
@@ -589,16 +605,21 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
 ## 🎯 KOMBİNE SKOR SONUCU
 - **Toplam Skor:** {total_score:+.2f} / ±11
 - **Karar:** {karar}
-- **Rejim:** {regime_label} (ADX: {adx:.1f}, eşik: {adx_threshold})
+- **Rejim:** {regime_label} (ADX: {adx:.1f}, kullanıcının eşik ayarı: **{adx_threshold}**)
 - **Rejim Notu:** {regime_desc}
 
 ## 📊 Skor Bileşen Dökümü
+⚠️ **Aşağıdaki 'Puan' değerleri SKOR AĞIRLIKLARIDIR, indikatör değerleri DEĞİLDİR.**
+Örneğin "Histogram İvmesi -0.7" → histogramın kendisi -0.7 değil, bileşenin puanıdır.
+Gerçek indikatör sayılarını aşağıdaki 'Anahtar İndikatör Değerleri' bölümünden oku.
+
 {comp_text}
 
-## 🔑 Anahtar İndikatör Değerleri
-- **RSI:** {rsi:.1f} — {rsi_state}
+## 🔑 Anahtar İndikatör Değerleri (GERÇEK SAYILAR)
+- **RSI:** {rsi:.1f} — {rsi_state} (kullanıcı eşikleri: alt={rsi_lo}, üst={rsi_up})
 - **Stoch RSI %K:** {stk:.1f}
-- **MACD:** {macd:+.4f} | **Signal:** {macd_sig:+.4f} | **Hist:** {macd - macd_sig:+.4f}
+- **MACD:** {macd:+.4f} | **Signal:** {macd_sig:+.4f} | **Histogram:** {macd - macd_sig:+.4f}
+- **ADX:** {adx:.1f} (kullanıcının trend eşik ayarı: **{adx_threshold}** — bu sayıyı kullan, 25/30 gibi varsayılanlar kullanma)
 - **EMA200:** {ema200:.2f} (fiyat {"üstünde" if close > ema200 else "altında"})
 - **SuperTrend:** {"AL ✅" if st_dir == 1 else "SAT ❌"}
 - **OBV:** {"Birikim ✅" if obv_sig == 1 else ("Dağıtım ❌" if obv_sig == -1 else "Nötr ⚪")}
@@ -613,6 +634,9 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
 {output_req}
 ### Kurallar
 - Yukarıda verilmeyen hiçbir sayıyı uydurma veya tahmin etme
+- Skor bileşen puanlarını (±0.7, ±1 vb.) indikatör değeri gibi yorumlama
+- ADX/RSI eşikleri için yukarıda verilen kullanıcı ayarlarını kullan (25, 30, 70 gibi genel sayılar varsayma)
+- Stop-loss ve hedef verdikten sonra Risk/Ödül oranını hesapla ve yorumla
 - "Yatırım tavsiyesi" ibaresi kullanma
 - Somut ve aksiyona dönüştürülebilir ol
 - Markdown formatında yaz (başlıklar, bold, listeler)

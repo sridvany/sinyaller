@@ -101,15 +101,41 @@ LLM_PROVIDERS = {
 AI_DETAIL_LEVELS = {"Kısa": 250, "Orta": 700, "Detaylı": 1800}
 
 
-def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens):
+def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
     """OpenAI-uyumlu streaming (OpenAI, DeepSeek, Groq)."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    # OpenAI'de gpt-5 / o-serisi modelleri 'max_tokens' yerine 'max_completion_tokens' ister
+    token_param = "max_tokens"
+    if provider_name == "OpenAI" and any(
+        model.startswith(p) for p in ("gpt-5", "o1", "o3", "o4")
+    ):
+        token_param = "max_completion_tokens"
+
     payload = {
         "model": model, "messages": messages, "stream": True,
-        "max_tokens": max_tokens, "temperature": 0.4,
+        token_param: max_tokens, "temperature": 0.4,
     }
-    with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=90) as r:
-        r.raise_for_status()
+    r = requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=90)
+    try:
+        if r.status_code != 200:
+            try:
+                err_body = r.text
+            except Exception:
+                err_body = "(yanıt okunamadı)"
+            err_msg = err_body[:500]
+            try:
+                err_json = json.loads(err_body)
+                if isinstance(err_json, dict) and "error" in err_json:
+                    err_detail = err_json["error"]
+                    if isinstance(err_detail, dict):
+                        err_msg = err_detail.get("message", err_msg)
+                    else:
+                        err_msg = str(err_detail)
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                pass
+            raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
+
         for raw in r.iter_lines():
             if not raw:
                 continue
@@ -127,6 +153,8 @@ def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens):
                     yield piece
             except (json.JSONDecodeError, KeyError, IndexError):
                 continue
+    finally:
+        r.close()
 
 
 def _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
@@ -142,9 +170,25 @@ def _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
         "messages": [{"role": "user", "content": user_prompt}],
         "stream": True, "temperature": 0.4,
     }
-    with requests.post("https://api.anthropic.com/v1/messages",
-                       headers=headers, json=payload, stream=True, timeout=90) as r:
-        r.raise_for_status()
+    r = requests.post("https://api.anthropic.com/v1/messages",
+                      headers=headers, json=payload, stream=True, timeout=90)
+    try:
+        if r.status_code != 200:
+            try:
+                err_body = r.text
+            except Exception:
+                err_body = "(yanıt okunamadı)"
+            err_msg = err_body[:500]
+            try:
+                err_json = json.loads(err_body)
+                if isinstance(err_json, dict) and "error" in err_json:
+                    err_detail = err_json["error"]
+                    if isinstance(err_detail, dict):
+                        err_msg = err_detail.get("message", err_msg)
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                pass
+            raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
+
         for raw in r.iter_lines():
             if not raw:
                 continue
@@ -160,6 +204,8 @@ def _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
                         yield delta["text"]
             except json.JSONDecodeError:
                 continue
+    finally:
+        r.close()
 
 
 def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
@@ -171,8 +217,24 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4},
     }
-    with requests.post(url, json=payload, stream=True, timeout=90) as r:
-        r.raise_for_status()
+    r = requests.post(url, json=payload, stream=True, timeout=90)
+    try:
+        if r.status_code != 200:
+            try:
+                err_body = r.text
+            except Exception:
+                err_body = "(yanıt okunamadı)"
+            err_msg = err_body[:500]
+            try:
+                err_json = json.loads(err_body)
+                if isinstance(err_json, dict) and "error" in err_json:
+                    err_detail = err_json["error"]
+                    if isinstance(err_detail, dict):
+                        err_msg = err_detail.get("message", err_msg)
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                pass
+            raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
+
         for raw in r.iter_lines():
             if not raw:
                 continue
@@ -188,6 +250,8 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
                             yield part["text"]
             except json.JSONDecodeError:
                 continue
+    finally:
+        r.close()
 
 
 def stream_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens):
@@ -198,7 +262,10 @@ def stream_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens)
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt},
         ]
-        yield from _stream_openai_compat(cfg["endpoint"], api_key, model, messages, max_tokens)
+        yield from _stream_openai_compat(
+            cfg["endpoint"], api_key, model, messages, max_tokens,
+            provider_name=provider,
+        )
     elif cfg["type"] == "anthropic":
         yield from _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens)
     elif cfg["type"] == "gemini":
@@ -3255,13 +3322,12 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                         st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_full_text.split())} kelime")
                     else:
                         st.warning("⚠️ Boş yanıt alındı. Farklı bir model veya detay seviyesi deneyin.")
-                except requests.exceptions.HTTPError as e:
-                    _msg = e.response.text[:400] if e.response is not None else str(e)
-                    st.error(f"❌ HTTP {e.response.status_code if e.response else '?'}: {_msg}")
+                except RuntimeError as e:
+                    st.error(f"❌ API Hatası: {str(e)}")
                 except requests.exceptions.Timeout:
                     st.error("❌ Zaman aşımı — sunucu yanıt vermiyor. Tekrar deneyin.")
-                except requests.exceptions.ConnectionError:
-                    st.error("❌ Bağlantı hatası — internet bağlantısını kontrol edin.")
+                except requests.exceptions.ConnectionError as e:
+                    st.error(f"❌ Bağlantı hatası: {str(e)[:300]}")
                 except Exception as e:
                     st.error(f"❌ {type(e).__name__}: {str(e)[:400]}")
 

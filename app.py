@@ -213,14 +213,24 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{model}:streamGenerateContent?alt=sse&key={api_key}")
 
-    gen_config = {
-        "maxOutputTokens": max_tokens,
-        "temperature":     0.4,
-    }
-    # 2.5 serisinde thinking/reasoning token'larını kapat — aksi halde
-    # model "düşünürken" max_tokens'ı doldurup cevap vermeden kesebiliyor
-    if model.startswith("gemini-2.5"):
-        gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+    # --- Thinking davranışı modele göre ayarlanır ---
+    # 2.5 Flash: thinking kapatılabilir → kullanıcının max_tokens'ı aynen kalır
+    # 2.5 Pro / 3.x: thinking KAPATILAMAZ, 8192'ye kadar token yer →
+    #                kullanıcının max_tokens'ına thinking buffer eklenmeli,
+    #                aksi halde cevaba yer kalmaz
+    gen_config = {"temperature": 0.4}
+
+    if model.startswith("gemini-2.5-flash") or model.startswith("gemini-2.5-flash-lite"):
+        # Flash'te thinking'i kapat → tüm bütçe cevaba gider
+        gen_config["thinkingConfig"]  = {"thinkingBudget": 0}
+        gen_config["maxOutputTokens"] = max_tokens
+    elif model.startswith("gemini-2.5-pro") or model.startswith("gemini-3"):
+        # Pro ve 3.x'te thinking zorunlu → thinking için 8192 ekstra ayır
+        # Böylece kullanıcının istediği `max_tokens` gerçekten cevaba gider
+        gen_config["maxOutputTokens"] = max_tokens + 8192
+    else:
+        # 2.0 ve diğerleri — thinking yok, normal davran
+        gen_config["maxOutputTokens"] = max_tokens
 
     payload = {
         "contents":          [{"role": "user", "parts": [{"text": user_prompt}]}],
@@ -246,6 +256,7 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
             raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
 
         finish_reason = None
+        usage_meta    = None
         for raw in r.iter_lines():
             if not raw:
                 continue
@@ -263,23 +274,41 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
                     fr = cand.get("finishReason")
                     if fr and fr != "STOP":
                         finish_reason = fr
+                # Son chunk'ta usage gelir
+                if "usageMetadata" in chunk:
+                    usage_meta = chunk["usageMetadata"]
             except json.JSONDecodeError:
                 continue
+
+        # --- Debug / Uyarı mesajları ---
+        debug_lines = []
+        if usage_meta:
+            prompt_t   = usage_meta.get("promptTokenCount", 0)
+            cand_t     = usage_meta.get("candidatesTokenCount", 0)
+            thought_t  = usage_meta.get("thoughtsTokenCount", 0)
+            total_t    = usage_meta.get("totalTokenCount", 0)
+            debug_lines.append(
+                f"📊 Token Kullanımı — Prompt: {prompt_t} · Cevap: {cand_t} · "
+                f"Thinking: {thought_t} · Toplam: {total_t}"
+            )
 
         if finish_reason == "MAX_TOKENS":
             pro_hint = ""
             if "pro" in model.lower():
                 pro_hint = (
-                    " **Not:** `gemini-2.5-pro` modelinde reasoning token kapatılamıyor ve "
-                    "`maxOutputTokens` bütçesini yiyor. `gemini-2.5-flash` modeline geçmeyi deneyin — "
-                    "hem hızlı, hem thinking kapalı."
+                    " **Not:** `gemini-2.5-pro` modelinde reasoning token kapatılamıyor. "
+                    "`gemini-2.5-flash` modeline geçmeyi deneyin."
                 )
             yield (
-                f"\n\n---\n⚠️ **Yanıt token limitine takıldı.** Detay seviyesini düşürün veya "
-                f"daha küçük bir model deneyin.{pro_hint}"
+                f"\n\n---\n⚠️ **Yanıt token limitine takıldı** (`MAX_TOKENS`).{pro_hint}"
             )
         elif finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
             yield f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{finish_reason}`)."
+        elif finish_reason:
+            yield f"\n\n---\n⚠️ **Yanıt şu sebeple kesildi:** `{finish_reason}`"
+
+        if debug_lines:
+            yield "\n\n" + "\n".join(debug_lines)
     finally:
         r.close()
 

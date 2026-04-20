@@ -98,7 +98,7 @@ LLM_PROVIDERS = {
     },
 }
 
-AI_DETAIL_LEVELS = {"Kısa": 250, "Orta": 700, "Detaylı": 1800}
+AI_DETAIL_LEVELS = {"Kısa": 600, "Orta": 1500, "Detaylı": 3500}
 
 
 def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
@@ -212,10 +212,20 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
     """Google Gemini streamGenerateContent (SSE)."""
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{model}:streamGenerateContent?alt=sse&key={api_key}")
+
+    gen_config = {
+        "maxOutputTokens": max_tokens,
+        "temperature":     0.4,
+    }
+    # 2.5 serisinde thinking/reasoning token'larını kapat — aksi halde
+    # model "düşünürken" max_tokens'ı doldurup cevap vermeden kesebiliyor
+    if model.startswith("gemini-2.5"):
+        gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+
     payload = {
-        "contents":         [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "contents":          [{"role": "user", "parts": [{"text": user_prompt}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4},
+        "generationConfig":  gen_config,
     }
     r = requests.post(url, json=payload, stream=True, timeout=90)
     try:
@@ -235,6 +245,7 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
                 pass
             raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
 
+        finish_reason = None
         for raw in r.iter_lines():
             if not raw:
                 continue
@@ -248,8 +259,19 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
                     for part in cand.get("content", {}).get("parts", []):
                         if "text" in part:
                             yield part["text"]
+                    fr = cand.get("finishReason")
+                    if fr and fr != "STOP":
+                        finish_reason = fr
             except json.JSONDecodeError:
                 continue
+
+        if finish_reason == "MAX_TOKENS":
+            yield (
+                "\n\n---\n⚠️ **Yanıt token limitine takıldı.** "
+                "Detay seviyesini düşürün veya `gemini-2.5-flash` gibi daha hızlı bir model deneyin."
+            )
+        elif finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
+            yield f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{finish_reason}`)."
     finally:
         r.close()
 

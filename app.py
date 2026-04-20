@@ -1740,22 +1740,36 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     # Multiple testing / data snooping cezası uygula.
     n_trials_grid = len(combos)  # bu algoritma için denenen kombo sayısı
     if n_trials_grid > 1 and len(strat_ret_concat) > 20:
+        # Skewness ve kurtosis güvenli hesap (sıfır std, NaN ve inf koruması)
         try:
-            # Getiri dağılımının yüksek momentleri (varsa)
-            sk = float(((strat_ret_concat - strat_ret_concat.mean()) ** 3).mean() /
-                       (strat_ret_concat.std() ** 3)) if strat_ret_concat.std() > 0 else 0.0
-            kt = float(((strat_ret_concat - strat_ret_concat.mean()) ** 4).mean() /
-                       (strat_ret_concat.std() ** 4)) if strat_ret_concat.std() > 0 else 3.0
-            dsr = deflated_sharpe_ratio(
+            std_ret = float(strat_ret_concat.std())
+            if std_ret > 1e-12:
+                demeaned = strat_ret_concat - strat_ret_concat.mean()
+                sk_raw = float((demeaned ** 3).mean() / (std_ret ** 3))
+                kt_raw = float((demeaned ** 4).mean() / (std_ret ** 4))
+                # Aşırı değerleri kırp (DSR formülü aşırı kurtosis'e karşı hassas)
+                sk = sk_raw if np.isfinite(sk_raw) else 0.0
+                kt = kt_raw if np.isfinite(kt_raw) and kt_raw > 0 else 3.0
+                # Güvenli sınırlar: makul finansal getiri dağılımı için
+                sk = max(-5.0, min(5.0, sk))
+                kt = max(1.0, min(30.0, kt))
+            else:
+                sk, kt = 0.0, 3.0
+
+            dsr_val = deflated_sharpe_ratio(
                 observed_sharpe=oos_sharpe,
                 n_trials=n_trials_grid,
                 n_obs=len(strat_ret_concat),
                 skew=sk, kurt=kt,
             )
-            best_s["dsr"] = round(float(dsr), 4)
-            best_s["n_trials"] = n_trials_grid
-        except Exception:
+            if np.isfinite(dsr_val):
+                best_s["dsr"] = round(float(dsr_val), 4)
+                best_s["n_trials"] = n_trials_grid
+            else:
+                best_s["dsr"] = None
+        except Exception as _dsr_err:
             best_s["dsr"] = None
+            best_s["dsr_error"] = str(_dsr_err)[:100]
 
     return best_p, best_s
 

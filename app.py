@@ -5,6 +5,10 @@ import numpy as np
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 from itertools import product as iter_product
+import requests
+import json
+import hashlib
+import time
 
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
@@ -56,6 +60,283 @@ _defaults = {
 for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+# ============================================================
+# 🤖 LLM PROVIDER KONFİGÜRASYONU VE AKIŞ FONKSİYONLARI
+# ============================================================
+LLM_PROVIDERS = {
+    "OpenAI": {
+        "models":   ["gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4o-mini"],
+        "endpoint": "https://api.openai.com/v1/chat/completions",
+        "type":     "openai",
+        "key_url":  "https://platform.openai.com/api-keys",
+    },
+    "Anthropic": {
+        "models":   ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-sonnet-4-6"],
+        "endpoint": "https://api.anthropic.com/v1/messages",
+        "type":     "anthropic",
+        "key_url":  "https://console.anthropic.com/settings/keys",
+    },
+    "Google": {
+        "models":   ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
+        "type":     "gemini",
+        "key_url":  "https://aistudio.google.com/apikey",
+    },
+    "DeepSeek": {
+        "models":   ["deepseek-chat", "deepseek-reasoner"],
+        "endpoint": "https://api.deepseek.com/v1/chat/completions",
+        "type":     "openai",
+        "key_url":  "https://platform.deepseek.com/api_keys",
+    },
+    "Groq": {
+        "models":   ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile",
+                     "mixtral-8x7b-32768", "llama-3.1-8b-instant"],
+        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+        "type":     "openai",
+        "key_url":  "https://console.groq.com/keys",
+    },
+}
+
+AI_DETAIL_LEVELS = {"Kısa": 250, "Orta": 700, "Detaylı": 1800}
+
+
+def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens):
+    """OpenAI-uyumlu streaming (OpenAI, DeepSeek, Groq)."""
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model, "messages": messages, "stream": True,
+        "max_tokens": max_tokens, "temperature": 0.4,
+    }
+    with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=90) as r:
+        r.raise_for_status()
+        for raw in r.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="ignore")
+            if not line.startswith("data: "):
+                continue
+            data = line[6:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+                delta = chunk["choices"][0].get("delta", {})
+                piece = delta.get("content")
+                if piece:
+                    yield piece
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+
+
+def _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
+    """Anthropic Messages API streaming."""
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model, "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_prompt}],
+        "stream": True, "temperature": 0.4,
+    }
+    with requests.post("https://api.anthropic.com/v1/messages",
+                       headers=headers, json=payload, stream=True, timeout=90) as r:
+        r.raise_for_status()
+        for raw in r.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="ignore")
+            if not line.startswith("data: "):
+                continue
+            data = line[6:].strip()
+            try:
+                chunk = json.loads(data)
+                if chunk.get("type") == "content_block_delta":
+                    delta = chunk.get("delta", {})
+                    if "text" in delta:
+                        yield delta["text"]
+            except json.JSONDecodeError:
+                continue
+
+
+def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
+    """Google Gemini streamGenerateContent (SSE)."""
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+           f"{model}:streamGenerateContent?alt=sse&key={api_key}")
+    payload = {
+        "contents":         [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4},
+    }
+    with requests.post(url, json=payload, stream=True, timeout=90) as r:
+        r.raise_for_status()
+        for raw in r.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="ignore")
+            if not line.startswith("data: "):
+                continue
+            data = line[6:].strip()
+            try:
+                chunk = json.loads(data)
+                for cand in chunk.get("candidates", []):
+                    for part in cand.get("content", {}).get("parts", []):
+                        if "text" in part:
+                            yield part["text"]
+            except json.JSONDecodeError:
+                continue
+
+
+def stream_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens):
+    """Birleşik streaming dispatcher."""
+    cfg = LLM_PROVIDERS[provider]
+    if cfg["type"] == "openai":
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ]
+        yield from _stream_openai_compat(cfg["endpoint"], api_key, model, messages, max_tokens)
+    elif cfg["type"] == "anthropic":
+        yield from _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens)
+    elif cfg["type"] == "gemini":
+        yield from _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens)
+    else:
+        raise ValueError(f"Bilinmeyen provider tipi: {cfg['type']}")
+
+
+def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
+                    regime_label, regime_desc, adx, adx_threshold,
+                    components, ema200, rsi, stk, macd, macd_sig,
+                    atr_high, swing_levels, fib_levels, st_dir,
+                    obv_sig, div_rsi, div_macd, rsi_lo, rsi_up):
+    """Yapılandırılmış system + user prompt üret."""
+    system = (
+        "Sen deneyimli bir kurumsal teknik analiz uzmanısın. "
+        "SADECE sana verilen sayısal verileri kullan — hiçbir sayıyı uydurma, "
+        "tahmin etme veya ek veri varsay. Yatırım tavsiyesi verme; bir "
+        "profesyonel trader'ın veriye nasıl yaklaşacağını anlat. "
+        "Türkçe yanıt ver, teknik jargon kullanabilirsin ama netlikten "
+        "taviz verme. Yanıtını markdown formatında, başlıklar altında "
+        "organize et. Somut ve aksiyona dönüştürülebilir ol."
+    )
+
+    # RSI durumu
+    if   rsi >= rsi_up: rsi_state = f"aşırı alım (>{rsi_up})"
+    elif rsi <= rsi_lo: rsi_state = f"aşırı satım (<{rsi_lo})"
+    else:               rsi_state = f"nötr bölge ({rsi_lo}-{rsi_up})"
+
+    # Divergence
+    div_parts = []
+    if div_rsi  == 1:  div_parts.append("RSI Bullish 🔺")
+    if div_rsi  == -1: div_parts.append("RSI Bearish 🔻")
+    if div_macd == 1:  div_parts.append("MACD Bullish 🔺")
+    if div_macd == -1: div_parts.append("MACD Bearish 🔻")
+    div_text = " / ".join(div_parts) if div_parts else "Yok"
+
+    # Destek / Direnç
+    sr_lines = []
+    if swing_levels:
+        below = sorted([s for s in swing_levels if s["price"] < close], key=lambda x: -x["price"])
+        above = sorted([s for s in swing_levels if s["price"] > close], key=lambda x: x["price"])
+        for i, b in enumerate(below[:2]):
+            pct = abs(b["price"] - close) / close * 100
+            sr_lines.append(f"Destek-{i+1}: {b['price']:.2f} (%{pct:.2f} altta, {b['touches']}x test)")
+        for i, a in enumerate(above[:2]):
+            pct = abs(a["price"] - close) / close * 100
+            sr_lines.append(f"Direnç-{i+1}: {a['price']:.2f} (%{pct:.2f} üstte, {a['touches']}x test)")
+    sr_text = ("\n  - " + "\n  - ".join(sr_lines)) if sr_lines else " Tespit edilmedi"
+
+    # Fibonacci (en yakın 3)
+    fib_text = "Hesaplanmadı"
+    if fib_levels:
+        sorted_fib = sorted(fib_levels.items(), key=lambda x: abs(x[1] - close))[:3]
+        fib_text = ", ".join(f"{k} = {v:.2f}" for k, v in sorted_fib)
+
+    # Skor bileşen dökümü
+    comp_text = "\n".join(
+        f"- **{row['Bileşen']}**: `{row['Puan']}` — {row['Değer']}" for row in components
+    )
+
+    # Çıktı şablonu (detay seviyesine göre)
+    if detail == "Kısa":
+        output_req = (
+            "\n## İstenen Çıktı (KISA)\n"
+            "Toplamda 3-4 cümle, şu başlıklarda:\n"
+            "1. **🎯 Durum**\n"
+            "2. **⚠️ Uyarı**\n"
+            "3. **📍 Aksiyon**\n"
+        )
+    elif detail == "Orta":
+        output_req = (
+            "\n## İstenen Çıktı (ORTA)\n"
+            "Şu 5 başlıkta orta uzunlukta yorum yap:\n"
+            "1. **🎯 Genel Değerlendirme** — skorun ne anlama geldiği (2-3 cümle)\n"
+            "2. **⚠️ Ana Risk** — en kritik uyarı ve nedeni\n"
+            "3. **📍 Giriş Senaryosu** — ne beklenmeli, hangi seviyeler aksiyon için uygun\n"
+            "4. **🛡️ Risk Yönetimi** — stop-loss ve hedef seviye önerileri (somut sayılarla)\n"
+            "5. **👁️ Takip Listesi** — dikkat edilmesi gereken 3-4 kritik sinyal\n"
+        )
+    else:  # Detaylı
+        output_req = (
+            "\n## İstenen Çıktı (DETAYLI)\n"
+            "Şu 7 başlıkta derin analiz yap:\n"
+            "1. **🎯 Genel Değerlendirme** — skoru ve rejimi derinlemesine açıkla\n"
+            "2. **📊 Bileşen Analizi** — her skor bileşeninin neden o değeri aldığını yorumla\n"
+            "3. **⚠️ Risk Faktörleri** — tüm önemli uyarılar ve neden önemli oldukları\n"
+            "4. **📍 Senaryolar** — Boğa / Ayı / Yatay senaryolar için ayrı planlar\n"
+            "5. **🛡️ Risk Yönetimi** — pozisyon boyutu, stop-loss, hedef (somut sayılarla)\n"
+            "6. **📈 İhtimal Değerlendirmesi** — kısa ve orta vadeli muhtemel hareketler\n"
+            "7. **👁️ Takip Listesi** — durumu değiştirebilecek kritik sinyaller\n"
+        )
+
+    user = f"""## Analiz Edilecek Veri
+
+**Enstrüman:** {ticker.upper()}
+**Fiyat:** {close:.4f}
+**Zaman Dilimi:** {interval}
+
+## 🎯 KOMBİNE SKOR SONUCU
+- **Toplam Skor:** {total_score:+.2f} / ±11
+- **Karar:** {karar}
+- **Rejim:** {regime_label} (ADX: {adx:.1f}, eşik: {adx_threshold})
+- **Rejim Notu:** {regime_desc}
+
+## 📊 Skor Bileşen Dökümü
+{comp_text}
+
+## 🔑 Anahtar İndikatör Değerleri
+- **RSI:** {rsi:.1f} — {rsi_state}
+- **Stoch RSI %K:** {stk:.1f}
+- **MACD:** {macd:+.4f} | **Signal:** {macd_sig:+.4f} | **Hist:** {macd - macd_sig:+.4f}
+- **EMA200:** {ema200:.2f} (fiyat {"üstünde" if close > ema200 else "altında"})
+- **SuperTrend:** {"AL ✅" if st_dir == 1 else "SAT ❌"}
+- **OBV:** {"Birikim ✅" if obv_sig == 1 else ("Dağıtım ❌" if obv_sig == -1 else "Nötr ⚪")}
+- **Divergence:** {div_text}
+- **Volatilite (ATR):** {"Yüksek ↑" if atr_high else "Düşük ↓"}
+
+## 📍 Seviyeler
+- **Destek / Direnç:**{sr_text}
+- **En Yakın Fibonacci:** {fib_text}
+
+---
+{output_req}
+### Kurallar
+- Yukarıda verilmeyen hiçbir sayıyı uydurma veya tahmin etme
+- "Yatırım tavsiyesi" ibaresi kullanma
+- Somut ve aksiyona dönüştürülebilir ol
+- Markdown formatında yaz (başlıklar, bold, listeler)
+"""
+    return system, user
+
+
+def ai_cache_key(ticker, interval, total_score, close, provider, model, detail):
+    """Analiz durumu için stabil cache anahtarı."""
+    s = f"{ticker}|{interval}|{round(total_score, 2)}|{round(close, 4)}|{provider}|{model}|{detail}"
+    return "ai_report_" + hashlib.md5(s.encode("utf-8")).hexdigest()[:16]
+
 
 # ============================================================
 # 2. YAN PANEL
@@ -180,6 +461,43 @@ with st.sidebar:
     st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
     st.info("İpucu: 1 dakikalık analizler için Periyot: 5d, Mum Aralığı: 1m seçiniz.")
+
+    # ──────────────────────────────────────────────────────────
+    # 🤖 AI RAPOR YORUMCUSU (LLM Provider Seçimi)
+    # ──────────────────────────────────────────────────────────
+    st.write("---")
+    st.subheader("🤖 AI Rapor Yorumcusu")
+
+    ai_provider = st.selectbox(
+        "Provider",
+        options=list(LLM_PROVIDERS.keys()),
+        index=0,
+        key="ai_provider_select",
+        help="Hangi LLM sağlayıcısını kullanmak istiyorsunuz?",
+    )
+    _prov_cfg = LLM_PROVIDERS[ai_provider]
+
+    ai_model = st.selectbox(
+        "Model",
+        options=_prov_cfg["models"],
+        index=0,
+        key=f"ai_model_{ai_provider}",
+    )
+
+    ai_api_key = st.text_input(
+        f"{ai_provider} API Key",
+        type="password",
+        key=f"ai_key_{ai_provider}",
+        help=f"API key almak için: {_prov_cfg['key_url']}",
+    )
+
+    ai_detail = st.select_slider(
+        "Detay Seviyesi",
+        options=list(AI_DETAIL_LEVELS.keys()),
+        value="Orta",
+        key="ai_detail_level",
+    )
+    st.caption(f"Max token: {AI_DETAIL_LEVELS[ai_detail]} · Sıcaklık: 0.4")
 
 
 # ============================================================
@@ -2869,6 +3187,90 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             ozet_parcalar.append("🔺 **Bullish divergence** mevcut — AL sinyalini güçlendiriyor.")
 
         st.markdown(" ".join(ozet_parcalar))
+
+        # ============================================================
+        # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
+        # ============================================================
+        st.write("---")
+        st.subheader("🤖 AI Rapor Yorumu")
+
+        if not ai_api_key:
+            st.info(
+                f"💡 **{ai_provider}** için sidebar'dan API key girerseniz AI yorumcu aktif olur. "
+                f"Key almak için: {_prov_cfg['key_url']}"
+            )
+        else:
+            st.caption(
+                f"Provider: **{ai_provider}** · Model: **{ai_model}** · "
+                f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
+            )
+
+            _cache_key = ai_cache_key(
+                ticker, interval, total_score, r_close,
+                ai_provider, ai_model, ai_detail
+            )
+            _cached = st.session_state.get(_cache_key)
+
+            _bc1, _bc2, _ = st.columns([1.2, 1.4, 3])
+            with _bc1:
+                _gen_btn = st.button(
+                    "📝 Yorum Al", type="primary",
+                    use_container_width=True, key="ai_gen_btn"
+                )
+            with _bc2:
+                _regen_btn = st.button(
+                    "🔄 Yeniden Üret",
+                    use_container_width=True,
+                    disabled=(_cached is None),
+                    key="ai_regen_btn",
+                )
+
+            if _gen_btn or _regen_btn:
+                if _regen_btn:
+                    st.session_state.pop(_cache_key, None)
+
+                _sys_p, _usr_p = build_ai_prompt(
+                    detail=ai_detail, ticker=ticker, close=r_close,
+                    interval=interval, total_score=total_score,
+                    karar=karar, regime_label=regime_label,
+                    regime_desc=regime_desc, adx=r_adx,
+                    adx_threshold=adx_threshold,
+                    components=final_rows, ema200=r_ema200,
+                    rsi=r_rsi, stk=r_stk, macd=r_macd, macd_sig=r_macds,
+                    atr_high=r_atr_hi, swing_levels=swing_levels,
+                    fib_levels=fib_levels, st_dir=r_std,
+                    obv_sig=r_obv_sig, div_rsi=r_div_rsi,
+                    div_macd=r_div_mac, rsi_lo=rsi_lower, rsi_up=rsi_upper,
+                )
+
+                try:
+                    _t0 = time.time()
+                    _full_text = st.write_stream(stream_llm(
+                        ai_provider, ai_api_key, ai_model,
+                        _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
+                    ))
+                    _dt = time.time() - _t0
+                    if _full_text:
+                        st.session_state[_cache_key] = _full_text
+                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_full_text.split())} kelime")
+                    else:
+                        st.warning("⚠️ Boş yanıt alındı. Farklı bir model veya detay seviyesi deneyin.")
+                except requests.exceptions.HTTPError as e:
+                    _msg = e.response.text[:400] if e.response is not None else str(e)
+                    st.error(f"❌ HTTP {e.response.status_code if e.response else '?'}: {_msg}")
+                except requests.exceptions.Timeout:
+                    st.error("❌ Zaman aşımı — sunucu yanıt vermiyor. Tekrar deneyin.")
+                except requests.exceptions.ConnectionError:
+                    st.error("❌ Bağlantı hatası — internet bağlantısını kontrol edin.")
+                except Exception as e:
+                    st.error(f"❌ {type(e).__name__}: {str(e)[:400]}")
+
+            elif _cached:
+                st.markdown(_cached)
+                st.caption(
+                    "💾 Cache'den gösteriliyor — fiyat/skor değişince anahtar değişir ve "
+                    "yeni yorum gerekir. Manuel yenileme için 🔄 tuşuna basın."
+                )
 
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")

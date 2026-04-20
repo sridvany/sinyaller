@@ -65,7 +65,6 @@ for k, v in _defaults.items():
 # 🤖 LLM PROVIDER KONFİGÜRASYONU VE AKIŞ FONKSİYONLARI
 # ============================================================
 LLM_PROVIDERS = {
-
         },
     "Google": {
         "models":   ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
@@ -73,8 +72,7 @@ LLM_PROVIDERS = {
         "type":     "gemini",
         "key_url":  "https://aistudio.google.com/apikey",
      },
-    
-    "OpenAI": {
+        "OpenAI": {
         "models":   ["gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4o-mini"],
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "type":     "openai",

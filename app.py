@@ -78,7 +78,7 @@ LLM_PROVIDERS = {
         "key_url":  "https://console.anthropic.com/settings/keys",
     },
     "Google": {
-        "models":   ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+        "models":   ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
         "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
         "type":     "gemini",
         "key_url":  "https://aistudio.google.com/apikey",
@@ -98,7 +98,7 @@ LLM_PROVIDERS = {
     },
 }
 
-AI_DETAIL_LEVELS = {"Kısa": 600, "Orta": 1500, "Detaylı": 3500}
+AI_DETAIL_LEVELS = {"Kısa": 1200, "Orta": 3000, "Detaylı": 6000}
 
 
 def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
@@ -257,7 +257,8 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
                 chunk = json.loads(data)
                 for cand in chunk.get("candidates", []):
                     for part in cand.get("content", {}).get("parts", []):
-                        if "text" in part:
+                        # Sadece cevap text'ini ver, "thought: true" parçalarını atla
+                        if "text" in part and not part.get("thought", False):
                             yield part["text"]
                     fr = cand.get("finishReason")
                     if fr and fr != "STOP":
@@ -266,9 +267,16 @@ def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
                 continue
 
         if finish_reason == "MAX_TOKENS":
+            pro_hint = ""
+            if "pro" in model.lower():
+                pro_hint = (
+                    " **Not:** `gemini-2.5-pro` modelinde reasoning token kapatılamıyor ve "
+                    "`maxOutputTokens` bütçesini yiyor. `gemini-2.5-flash` modeline geçmeyi deneyin — "
+                    "hem hızlı, hem thinking kapalı."
+                )
             yield (
-                "\n\n---\n⚠️ **Yanıt token limitine takıldı.** "
-                "Detay seviyesini düşürün veya `gemini-2.5-flash` gibi daha hızlı bir model deneyin."
+                f"\n\n---\n⚠️ **Yanıt token limitine takıldı.** Detay seviyesini düşürün veya "
+                f"daha küçük bir model deneyin.{pro_hint}"
             )
         elif finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
             yield f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{finish_reason}`)."

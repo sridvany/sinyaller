@@ -333,6 +333,161 @@ def stream_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens)
         raise ValueError(f"Bilinmeyen provider tipi: {cfg['type']}")
 
 
+# ============================================================
+# 🔄 NON-STREAMING (toplu yanıt) FONKSİYONLARI
+# Streaming'deki yarım-kesilme bug'larından etkilenmez.
+# ============================================================
+def _parse_http_error(response, default_msg):
+    """HTTP hata gövdesinden anlamlı mesaj çıkar."""
+    try:
+        body = response.text
+    except Exception:
+        return default_msg
+    msg = body[:500]
+    try:
+        err_json = json.loads(body)
+        if isinstance(err_json, dict) and "error" in err_json:
+            err_detail = err_json["error"]
+            if isinstance(err_detail, dict):
+                msg = err_detail.get("message", msg)
+            else:
+                msg = str(err_detail)
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        pass
+    return msg
+
+
+def _fetch_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
+    """OpenAI uyumlu non-streaming (OpenAI, DeepSeek, Groq)."""
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    token_param = "max_tokens"
+    if provider_name == "OpenAI" and any(
+        model.startswith(p) for p in ("gpt-5", "o1", "o3", "o4")
+    ):
+        token_param = "max_completion_tokens"
+    payload = {
+        "model": model, "messages": messages, "stream": False,
+        token_param: max_tokens, "temperature": 0.4,
+    }
+    r = requests.post(endpoint, headers=headers, json=payload, timeout=120)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
+    data = r.json()
+    try:
+        choice   = data["choices"][0]
+        text     = choice["message"].get("content", "") or ""
+        finish   = choice.get("finish_reason")
+    except (KeyError, IndexError):
+        raise RuntimeError("Beklenmeyen yanıt formatı")
+    usage = data.get("usage", {})
+    meta = {
+        "finish_reason":    finish,
+        "prompt_tokens":    usage.get("prompt_tokens",     0),
+        "output_tokens":    usage.get("completion_tokens", 0),
+        "thinking_tokens":  0,
+        "total_tokens":     usage.get("total_tokens",      0),
+    }
+    return text, meta
+
+
+def _fetch_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
+    """Anthropic Messages API non-streaming."""
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model, "max_tokens": max_tokens,
+        "system": system_prompt,
+        "messages": [{"role": "user", "content": user_prompt}],
+        "stream": False, "temperature": 0.4,
+    }
+    r = requests.post("https://api.anthropic.com/v1/messages",
+                      headers=headers, json=payload, timeout=120)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
+    data = r.json()
+    text = ""
+    for block in data.get("content", []):
+        if block.get("type") == "text":
+            text += block.get("text", "")
+    usage = data.get("usage", {})
+    meta = {
+        "finish_reason":    data.get("stop_reason"),
+        "prompt_tokens":    usage.get("input_tokens",  0),
+        "output_tokens":    usage.get("output_tokens", 0),
+        "thinking_tokens":  0,
+        "total_tokens":     usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+    }
+    return text, meta
+
+
+def _fetch_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
+    """Google Gemini generateContent non-streaming."""
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+           f"{model}:generateContent?key={api_key}")
+
+    gen_config = {"temperature": 0.4}
+    if model.startswith("gemini-2.5-flash") or model.startswith("gemini-2.5-flash-lite"):
+        gen_config["thinkingConfig"]  = {"thinkingBudget": 0}
+        gen_config["maxOutputTokens"] = max_tokens
+    elif model.startswith("gemini-2.5-pro") or model.startswith("gemini-3"):
+        # Pro ve 3.x'te thinking zorunlu → thinking için ekstra 8192 buffer
+        gen_config["maxOutputTokens"] = max_tokens + 8192
+    else:
+        gen_config["maxOutputTokens"] = max_tokens
+
+    payload = {
+        "contents":          [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "generationConfig":  gen_config,
+    }
+    r = requests.post(url, json=payload, timeout=120)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
+    data = r.json()
+
+    text   = ""
+    finish = None
+    for cand in data.get("candidates", []):
+        for part in cand.get("content", {}).get("parts", []):
+            if "text" in part and not part.get("thought", False):
+                text += part["text"]
+        if cand.get("finishReason"):
+            finish = cand["finishReason"]
+
+    usage = data.get("usageMetadata", {})
+    meta = {
+        "finish_reason":    finish,
+        "prompt_tokens":    usage.get("promptTokenCount",    0),
+        "output_tokens":    usage.get("candidatesTokenCount", 0),
+        "thinking_tokens":  usage.get("thoughtsTokenCount",   0),
+        "total_tokens":     usage.get("totalTokenCount",      0),
+    }
+    return text, meta
+
+
+def fetch_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens):
+    """Non-streaming birleşik dispatcher. (text, meta_dict) döner."""
+    cfg = LLM_PROVIDERS[provider]
+    if cfg["type"] == "openai":
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ]
+        return _fetch_openai_compat(
+            cfg["endpoint"], api_key, model, messages, max_tokens,
+            provider_name=provider,
+        )
+    elif cfg["type"] == "anthropic":
+        return _fetch_anthropic(api_key, model, system_prompt, user_prompt, max_tokens)
+    elif cfg["type"] == "gemini":
+        return _fetch_gemini(api_key, model, system_prompt, user_prompt, max_tokens)
+    else:
+        raise ValueError(f"Bilinmeyen provider tipi: {cfg['type']}")
+
+
 def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
                     regime_label, regime_desc, adx, adx_threshold,
                     components, ema200, rsi, stk, macd, macd_sig,
@@ -3414,42 +3569,55 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 try:
                     _t0 = time.time()
 
-                    # Manuel streaming: placeholder'a canlı yaz, bitince temizle
-                    _placeholder = st.empty()
-                    _full_text = ""
-                    for _chunk in stream_llm(
-                        ai_provider, ai_api_key, ai_model,
-                        _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
-                    ):
-                        _full_text += _chunk
-                        _placeholder.markdown(_full_text + " ▌")
+                    with st.spinner(f"🤖 {ai_provider} · {ai_model} yanıt üretiyor..."):
+                        _full_text, _meta = fetch_llm(
+                            ai_provider, ai_api_key, ai_model,
+                            _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
+                        )
 
                     _dt = time.time() - _t0
 
-                    # Debug/usage satırlarını gövdeden ayır (eğer Gemini eklediyse)
-                    _debug_tail = ""
-                    for _marker in ("\n\n📊", "\n\n---\n⚠️"):
-                        _pos = _full_text.find(_marker)
-                        if _pos != -1:
-                            _debug_tail = _full_text[_pos:] + _debug_tail
-                            _full_text  = _full_text[:_pos]
-                            break
-
-                    # Yarım cümle tespit + temizle (sadece gövde üzerinde)
+                    # Yarım cümle güvenlik ağı (safety net)
                     _cleaned, _was_cut = clean_half_sentence(_full_text)
-                    _final = _cleaned + _debug_tail
-                    if _was_cut:
+                    _final = _cleaned
+
+                    # Kesilme uyarıları
+                    _finish = (_meta or {}).get("finish_reason", "")
+                    _finish_lower = str(_finish).lower() if _finish else ""
+                    if _finish_lower in ("max_tokens", "length"):
+                        pro_hint = ""
+                        if ai_provider == "Google" and "pro" in ai_model.lower():
+                            pro_hint = (
+                                " **Not:** `gemini-2.5-pro` modelinde reasoning kapatılamıyor. "
+                                "`gemini-2.5-flash`'a geçmeyi deneyin."
+                            )
                         _final += (
-                            "\n\n---\n⚠️ *Model yanıtı yarıda bıraktı; son yarım cümle "
-                            "otomatik kaldırıldı. Daha tam bir yanıt için 🔄 Yeniden Üret "
-                            "tuşuna basabilirsiniz.*"
+                            f"\n\n---\n⚠️ **Yanıt token limitine takıldı** "
+                            f"(`{_finish}`). Detay seviyesini yükseltin.{pro_hint}"
+                        )
+                    elif _finish_lower in ("safety", "recitation", "blocklist", "content_filter"):
+                        _final += f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{_finish}`)."
+                    elif _was_cut:
+                        _final += (
+                            "\n\n---\n⚠️ *Model yanıtı yarıda bıraktı; son yarım cümle otomatik kaldırıldı. "
+                            "Yeniden üretmek için 🔄 tuşuna basabilirsiniz.*"
                         )
 
-                    _placeholder.markdown(_final)
+                    # Token kullanım satırı
+                    if _meta:
+                        _prompt_t   = _meta.get("prompt_tokens",   0)
+                        _output_t   = _meta.get("output_tokens",   0)
+                        _thought_t  = _meta.get("thinking_tokens", 0)
+                        _total_t    = _meta.get("total_tokens",    0) or (_prompt_t + _output_t + _thought_t)
+                        _final += (
+                            f"\n\n📊 Token Kullanımı — Prompt: {_prompt_t} · "
+                            f"Cevap: {_output_t} · Thinking: {_thought_t} · Toplam: {_total_t}"
+                        )
 
-                    if _final:
+                    if _cleaned:
+                        st.markdown(_final)
                         st.session_state[_cache_key] = _final
-                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_final.split())} kelime")
+                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_cleaned.split())} kelime")
                     else:
                         st.warning("⚠️ Boş yanıt alındı. Farklı bir model veya detay seviyesi deneyin.")
                 except RuntimeError as e:

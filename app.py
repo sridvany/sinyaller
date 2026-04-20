@@ -1888,7 +1888,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_v4_dsr_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
+        OPT_KEY = f"opt_v5_dsrdebug_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}
@@ -3249,6 +3249,26 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         if "p-değeri" in opt_df.columns:
             styled = styled.map(pval_color, subset=["p-değeri"])
         st.dataframe(styled, use_container_width=True, hide_index=True)
+
+        # DEBUG: DSR neden None/NaN? Hata mesajlarını göster
+        _dsr_errors = []
+        _dsr_missing = []
+        for algo_name in PARAM_GRIDS.keys():
+            s = opt_stats.get(algo_name, {})
+            if "dsr_error" in s:
+                _dsr_errors.append(f"- **{algo_name}**: `{s['dsr_error']}`")
+            elif "dsr" not in s:
+                # Hiç DSR alanı yok → hesaplanmamış bile
+                n_trials = len([k for k in s.keys()])
+                _dsr_missing.append(f"- **{algo_name}** — strat_ret_concat uzunluğu yetersiz veya n_trials=1")
+        if _dsr_errors:
+            with st.expander("🐛 DSR Hata Detayları"):
+                st.markdown("\n".join(_dsr_errors))
+        if _dsr_missing:
+            with st.expander("⚠️ DSR Hesaplanmayan Algoritmalar"):
+                st.markdown("\n".join(_dsr_missing))
+                st.caption("Sebep: OOS getiri serisi 20 bardan az VEYA grid'de tek parametre kombinasyonu var.")
+
         st.caption(
             "💡 **Sharpe (OOS)**: Yalnız out-of-sample test dilimlerinden yıllıklandırılmış risk ayarlı getiri. "
             "**DSR** (Deflated Sharpe Ratio — Bailey & López de Prado 2014): Multiple testing "

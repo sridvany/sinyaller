@@ -1888,7 +1888,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_v3_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
+        OPT_KEY = f"opt_v4_dsr_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}

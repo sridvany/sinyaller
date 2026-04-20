@@ -65,14 +65,13 @@ for k, v in _defaults.items():
 # 🤖 LLM PROVIDER KONFİGÜRASYONU VE AKIŞ FONKSİYONLARI
 # ============================================================
 LLM_PROVIDERS = {
-        },
     "Google": {
         "models":   ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
         "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
         "type":     "gemini",
         "key_url":  "https://aistudio.google.com/apikey",
-     },
-        "OpenAI": {
+    },
+    "OpenAI": {
         "models":   ["gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4o-mini"],
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "type":     "openai",
@@ -691,12 +690,12 @@ def clean_half_sentence(text):
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "gc=f")
+    ticker = st.text_input("Ticker Sembolü:", "aapl")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
-        index=5,
+        index=4,
     )
 
     if period in ["1d", "5d"]:

@@ -1311,11 +1311,21 @@ def sig_adx_fn(high, low, close, atr_high, adx_period, adx_threshold=25):
 
 
 def sig_stochrsi(close, rsi_series, srsi_period, sd_period, sl, su):
+    """Stoch RSI — bölge + %K/%D kesişim teyitli sinyal.
+    - Aşırı satım (K < sl) VE yukarı dönüş (K > D) → AL (+1)
+    - Aşırı alım  (K > su) VE aşağı dönüş (K < D) → SAT (-1)
+    - Aksi halde nötr (0)
+    Sadece bölgede olmak yetmez — K/D kesişimi dönüş teyidi şarttır.
+    """
     rmin = rsi_series.rolling(srsi_period, min_periods=srsi_period).min()
     rmax = rsi_series.rolling(srsi_period, min_periods=srsi_period).max()
     k    = ((rsi_series - rmin) / (rmax - rmin).replace(0, np.nan) * 100).fillna(50).clip(0, 100)
     d    = k.rolling(sd_period).mean()
-    sig  = np.where(k < sl, 1, np.where(k > su, -1, 0))
+
+    # Kesişim teyitli sinyal
+    bull = (k < sl) & (k > d)   # Aşırı satımda yukarı dönüş
+    bear = (k > su) & (k < d)   # Aşırı alımda aşağı dönüş
+    sig  = np.where(bull, 1, np.where(bear, -1, 0))
     return pd.Series(sig, index=close.index), k, d
 
 
@@ -3070,7 +3080,25 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         lo = safe_scalar(last["Sig_OBV"])
         if lo != 0 and not np.isnan(lo):
-            res.append(["AL" if lo > 0 else "SAT", f"OBV ({obv_short}/{obv_long})", "Hacim trendi."])
+            # Son bar OBV SMA değerleri
+            obv_s_last = safe_scalar(obv_sma_short.iloc[-1]) if len(obv_sma_short) else np.nan
+            obv_l_last = safe_scalar(obv_sma_long.iloc[-1])  if len(obv_sma_long)  else np.nan
+
+            if not (np.isnan(obv_s_last) or np.isnan(obv_l_last)):
+                diff     = obv_s_last - obv_l_last
+                # Sayıyı okunabilir formata çevir (milyon/milyar)
+                def _fmt_vol(v):
+                    av = abs(v)
+                    if av >= 1e9:  return f"{v/1e9:+.2f}B"
+                    if av >= 1e6:  return f"{v/1e6:+.2f}M"
+                    if av >= 1e3:  return f"{v/1e3:+.2f}K"
+                    return f"{v:+.2f}"
+                relation = "Kısa SMA > Uzun SMA" if diff > 0 else "Kısa SMA < Uzun SMA"
+                status   = "Birikim ✅" if lo > 0 else "Dağıtım ❌"
+                obv_desc = f"{relation} | Fark: {_fmt_vol(diff)} ({status})"
+            else:
+                obv_desc = "Birikim ✅" if lo > 0 else "Dağıtım ❌"
+            res.append(["AL" if lo > 0 else "SAT", f"OBV ({obv_short}/{obv_long})", obv_desc])
         else:
             res.append(["N/A", f"OBV ({obv_short}/{obv_long})", "Yetersiz veri."])
 
@@ -3110,9 +3138,41 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             res.append(["N/A", "VWAP", "Günlük+ periyotta devre dışı."])
 
         lsk = float(df["StochRSI_K"].iloc[-1])
+        lsd = float(df["StochRSI_D"].iloc[-1]) if "StochRSI_D" in df.columns else np.nan
+        lss = safe_scalar(last["Sig_StochRSI"])
         if not np.isnan(lsk):
-            dec = "AL" if lsk < stoch_lower else ("SAT" if lsk > stoch_upper else "TUT")
-            res.append([dec, f"Stoch RSI ({stoch_rsi_period})", f"%K: {lsk:.1f}"])
+            # Bölge tespiti
+            if   lsk < stoch_lower:  bolge = f"Aşırı Satım 🟢 (<{stoch_lower})"
+            elif lsk > stoch_upper:  bolge = f"Aşırı Alım 🔴 (>{stoch_upper})"
+            else:                    bolge = f"Nötr ⚪ ({stoch_lower}-{stoch_upper})"
+
+            # K/D ilişkisi
+            if not np.isnan(lsd):
+                if lsk > lsd:   kd_rel = f"K > D ↑ (K:{lsk:.1f} / D:{lsd:.1f})"
+                elif lsk < lsd: kd_rel = f"K < D ↓ (K:{lsk:.1f} / D:{lsd:.1f})"
+                else:           kd_rel = f"K = D (K:{lsk:.1f} / D:{lsd:.1f})"
+            else:
+                kd_rel = f"%K: {lsk:.1f}"
+
+            # Teyit durumu: sinyal sadece bölge + K/D uyumluysa oluşur
+            if lss == 1:
+                teyit = "✅ AL teyidi (aşırı satım + yukarı dönüş)"
+                dec = "AL"
+            elif lss == -1:
+                teyit = "✅ SAT teyidi (aşırı alım + aşağı dönüş)"
+                dec = "SAT"
+            else:
+                # Bölgede ama kesişim teyidi yok
+                if lsk < stoch_lower and not np.isnan(lsd) and lsk < lsd:
+                    teyit = "⏸ Aşırı satımda ama K < D (dönüş teyidi bekle)"
+                elif lsk > stoch_upper and not np.isnan(lsd) and lsk > lsd:
+                    teyit = "⏸ Aşırı alımda ama K > D (dönüş teyidi bekle)"
+                else:
+                    teyit = "Nötr bölgede"
+                dec = "TUT"
+
+            stoch_desc = f"{bolge} | {kd_rel} | {teyit}"
+            res.append([dec, f"Stoch RSI ({stoch_rsi_period})", stoch_desc])
         else:
             res.append(["N/A", "Stoch RSI", "Yetersiz veri."])
 

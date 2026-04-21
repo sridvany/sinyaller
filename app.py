@@ -739,7 +739,6 @@ with st.sidebar:
 
     ai_api_key = st.text_input(
         f"{ai_provider} API Key",
-        value=("AIzaSyCctdPnlMgy9j3ri5zh6WTtY7kcuAwbyFE" if ai_provider == "Google" else ""),
         type="password",
         key=f"ai_key_{ai_provider}",
         help=f"API key almak için: {_prov_cfg['key_url']}",
@@ -3236,24 +3235,138 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         lk = safe_scalar(last["KAMA"])
         if not np.isnan(lk):
+            # 1) Fiyat-KAMA ilişkisi + yüzde uzaklık
+            dist_pct_k = (last_close - lk) / lk * 100
+            if last_close > lk:
+                rel_k = f"Fiyat {last_close:.2f} > KAMA {lk:.2f} (+%{dist_pct_k:.2f})"
+            elif last_close < lk:
+                rel_k = f"Fiyat {last_close:.2f} < KAMA {lk:.2f} ({dist_pct_k:+.2f}%)"
+            else:
+                rel_k = f"Fiyat = KAMA ({lk:.2f})"
+
+            # 2) Efficiency Ratio (ER) — piyasanın trend gücü
+            # ER = |fiyat[t] - fiyat[t-N]| / son N bar'ın toplam mutlak değişimi
+            if len(close) >= kama_period + 1:
+                c_arr = close.values.astype(float)
+                direction  = abs(c_arr[-1] - c_arr[-kama_period - 1])
+                volatility = float(np.sum(np.abs(np.diff(c_arr[-kama_period - 1:]))))
+                er = 0.0 if volatility == 0 else direction / volatility
+                if er > 0.5:
+                    er_desc = f"ER: {er:.2f} (güçlü trend 🔥)"
+                elif er > 0.2:
+                    er_desc = f"ER: {er:.2f} (orta momentum)"
+                else:
+                    er_desc = f"ER: {er:.2f} (yatay/gürültü ⚠️)"
+            else:
+                er_desc = ""
+
+            kama_desc = rel_k
+            if er_desc:
+                kama_desc += f" | {er_desc}"
+
             res.append([trend_dec("AL" if last_close > lk else "SAT", last_ath),
-                        f"KAMA ({kama_period},{kama_fast},{kama_slow})", f"KAMA: {lk:.2f}"])
+                        f"KAMA ({kama_period},{kama_fast},{kama_slow})", kama_desc])
         else:
             res.append(["N/A", "KAMA", "Yetersiz veri."])
 
         lst  = safe_scalar(last["SuperTrend"])
         lstd = safe_scalar(last["ST_Direction"])
-        if not np.isnan(lst):
+        if not np.isnan(lst) and not np.isnan(lstd):
+            # 1) Yön
+            yon = "YUKARI ↑" if lstd == 1 else "AŞAĞI ↓"
+
+            # 2) Çizgi seviyesi ve fiyata uzaklık
+            if last_close > 0:
+                dist_pct = abs(lst - last_close) / last_close * 100
+                if lstd == 1:
+                    # Trend yukarı → çizgi altta (destek)
+                    uzak_str = f"fiyatın %{dist_pct:.2f} altında (destek)"
+                else:
+                    # Trend aşağı → çizgi üstte (direnç)
+                    uzak_str = f"fiyatın %{dist_pct:.2f} üstünde (direnç)"
+                # Flip yakınlığı uyarısı
+                if dist_pct < 1.0:
+                    uzak_str += " ⚠️ flip yakın"
+            else:
+                uzak_str = ""
+
+            # 3) Güncel ATR (volatilite bağlamı)
+            r_atr_st = safe_scalar(last["ATR"])
+            atr_str  = f"ATR: {r_atr_st:.2f}" if not np.isnan(r_atr_st) else ""
+
+            # 4) Flip'ten bu yana bar sayısı (sinyal olgunluğu)
+            st_dir_series = df["ST_Direction"].values
+            bars_since_flip = 0
+            for i in range(len(st_dir_series) - 1, 0, -1):
+                if st_dir_series[i] != st_dir_series[i-1]:
+                    break
+                bars_since_flip += 1
+            if bars_since_flip == 0:
+                flip_str = "🆕 Yeni flip!"
+            elif bars_since_flip < 3:
+                flip_str = f"Flip'ten {bars_since_flip} bar (yeni sinyal)"
+            else:
+                flip_str = f"Flip'ten {bars_since_flip} bar"
+
+            # Birleştir
+            parts = [f"Yön: {yon}", f"Çizgi: {lst:.2f} ({uzak_str})"]
+            if atr_str:   parts.append(atr_str)
+            parts.append(flip_str)
+            st_desc = " | ".join(parts)
+
             res.append([trend_dec("AL" if lstd == 1 else "SAT", last_ath),
-                        f"SuperTrend ({p_st['st_period']}, x{p_st['st_multiplier']})", f"Seviye: {lst:.2f}"])
+                        f"SuperTrend ({p_st['st_period']}, x{p_st['st_multiplier']})", st_desc])
         else:
             res.append(["N/A", "SuperTrend", "Yetersiz veri."])
 
         llrc = safe_scalar(last["Sig_LRC"])
         llm  = safe_scalar(last["LRC_Mid"])
-        if not np.isnan(llm):
+        llu  = safe_scalar(last["LRC_Upper"])
+        lll  = safe_scalar(last["LRC_Lower"])
+        if not np.isnan(llm) and not np.isnan(llu) and not np.isnan(lll):
+            # 1) Kanal içi pozisyon
+            if last_close > llu:
+                pos_lrc = f"Fiyat {last_close:.2f} ÜST kanal üstünde ({llu:.2f}) ❌ aşırı alım"
+            elif last_close < lll:
+                pos_lrc = f"Fiyat {last_close:.2f} ALT kanal altında ({lll:.2f}) ✅ aşırı satım"
+            else:
+                # Kanal içinde — orta çizgiye yakınlık
+                if last_close > llm:
+                    pct_mid = (last_close - llm) / llm * 100
+                    pos_lrc = f"Fiyat {last_close:.2f} kanal içinde (orta üstü, +%{pct_mid:.2f})"
+                else:
+                    pct_mid = (llm - last_close) / llm * 100
+                    pos_lrc = f"Fiyat {last_close:.2f} kanal içinde (orta altı, -%{pct_mid:.2f})"
+
+            # 2) Slope yönü (regresyon eğimi — trend matematik ölçüsü)
+            lrc_period = p_lrc["lrc_period"]
+            if len(close) >= lrc_period:
+                y_slope = close.values[-lrc_period:].astype(float)
+                x_slope = np.arange(lrc_period)
+                slope, _ = np.polyfit(x_slope, y_slope, 1)
+                # Slope'u bar başına % değişime çevir (daha anlamlı)
+                slope_pct = slope / llm * 100 if llm > 0 else 0.0
+                if slope > 0:
+                    slope_desc = f"Slope: +{slope:.3f} ↗ (yükselen, bar başı +%{slope_pct:.3f})"
+                elif slope < 0:
+                    slope_desc = f"Slope: {slope:.3f} ↘ (alçalan, bar başı %{slope_pct:.3f})"
+                else:
+                    slope_desc = "Slope: 0 → (yatay)"
+            else:
+                slope_desc = ""
+
+            # 3) Bant genişliği (volatilite göstergesi)
+            bant_width = llu - lll
+            bant_desc  = f"Bant: ±{bant_width/2:.1f}"
+
+            # Birleştir
+            parts = [pos_lrc]
+            if slope_desc: parts.append(slope_desc)
+            parts.append(bant_desc)
+            lrc_desc = " | ".join(parts)
+
             dec = "AL" if llrc == 1 else ("SAT" if llrc == -1 else "TUT")
-            res.append([dec, f"LR Channel (σ={p_lrc['lrc_std_mult']})", f"Orta: {llm:.2f}"])
+            res.append([dec, f"LR Channel (σ={p_lrc['lrc_std_mult']})", lrc_desc])
         else:
             res.append(["N/A", "LR Channel", "Yetersiz veri."])
 
@@ -3586,7 +3699,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 "Ort. Kazanç (%)": round(stats["avg_win"],  2),
                 "Ort. Kayıp (%)":  round(stats["avg_loss"], 2),
                 "Max DD (%)":      round(stats["max_dd"],   2),
-                "Profit Factor":   round(stats["pf"], 2) if stats["pf"] != float("inf") else "∞",
+                # Profit Factor geçici olarak kaldırıldı (pyarrow sorunu)
             })
 
         if algo_results:
@@ -3604,8 +3717,10 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                     if val > 0: return "color: #00ff00"
                     if val < 0: return "color: #ff4b4b"
                 return ""
-            st.dataframe(algo_df.style.map(ret_color, subset=["Getiri (%)"]),
-                         use_container_width=True, hide_index=True)
+            st.dataframe(
+                algo_df.style.map(ret_color, subset=["Getiri (%)"]),
+                use_container_width=True, hide_index=True
+            )
         else:
             st.info("Algoritma performansı hesaplanamadı.")
 

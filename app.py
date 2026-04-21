@@ -739,6 +739,7 @@ with st.sidebar:
 
     ai_api_key = st.text_input(
         f"{ai_provider} API Key",
+        value=("AIzaSyCctdPnlMgy9j3ri5zh6WTtY7kcuAwbyFE" if ai_provider == "Google" else ""),
         type="password",
         key=f"ai_key_{ai_provider}",
         help=f"API key almak için: {_prov_cfg['key_url']}",
@@ -2992,6 +2993,29 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         r_atr_hi   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
         r_ema200   = safe_scalar(last["EMA200"])
 
+        # ── ADAPTİF ADX EŞİĞİ ──────────────────────────────────────
+        # Volatiliteye göre ADX eşiğini otomatik ayarla.
+        # Yüksek volatilitede (gürültülü) trend için daha yüksek eşik iste;
+        # düşük volatilitede ise daha düşük eşik yeterli.
+        # Kullanıcının manuel eşiği baz alınır, üzerine volatilite düzeltmesi uygulanır.
+        r_atr      = safe_scalar(last["ATR"])
+        r_atr_ma   = safe_scalar(atr_ma.iloc[-1]) if len(atr_ma) else np.nan
+        if not (np.isnan(r_atr) or np.isnan(r_atr_ma)) and r_atr_ma > 0:
+            atr_ratio = r_atr / r_atr_ma
+        else:
+            atr_ratio = 1.0
+
+        # Volatilite düzeltmesi: ATR oranı ±%20'yi aşarsa ±5 puan oynat
+        if atr_ratio > 1.2:
+            adx_threshold_adaptive = min(adx_threshold + 5, 40)
+            adx_regime_note = f"Yüksek vol. (ATR×{atr_ratio:.2f}) → eşik +5"
+        elif atr_ratio < 0.8:
+            adx_threshold_adaptive = max(adx_threshold - 5, 15)
+            adx_regime_note = f"Düşük vol. (ATR×{atr_ratio:.2f}) → eşik -5"
+        else:
+            adx_threshold_adaptive = adx_threshold
+            adx_regime_note = f"Normal vol. (ATR×{atr_ratio:.2f}) → eşik değişmedi"
+
         if fib_levels:
             r_fib_closest = min(fib_levels.items(), key=lambda x: abs(x[1] - r_close))
         else:
@@ -3028,8 +3052,12 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         lm  = safe_scalar(last["MACD"])
         lms = safe_scalar(last["MACD_S"])
         if not (np.isnan(lm) or np.isnan(lms)):
+            macd_hist = lm - lms
+            hist_color = "🟢 Yeşil" if macd_hist > 0 else ("🔴 Kırmızı" if macd_hist < 0 else "⚪ Sıfır")
+            relation   = "MACD > Signal" if lm > lms else ("MACD < Signal" if lm < lms else "MACD = Signal")
+            macd_desc  = f"{relation} | Histogram: {macd_hist:+.4f} ({hist_color})"
             res.append([trend_dec("AL" if lm > lms else "SAT", last_ath),
-                        f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{macd_signal})", "Momentum."])
+                        f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{macd_signal})", macd_desc])
         else:
             res.append(["N/A", "MACD", "Yetersiz veri."])
 
@@ -3050,11 +3078,23 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         lpd  = safe_scalar(last["PLUS_DI"])
         lmd2 = safe_scalar(last["MINUS_DI"])
         if not np.isnan(la):
-            if la > p_adx["adx_threshold"]:
-                res.append([trend_dec("AL" if lpd > lmd2 else "SAT", last_ath),
-                             "ADX", f"ADX: {la:.1f} (Güçlü, eşik={p_adx['adx_threshold']})"])
+            # Adaptif eşiği kullan (volatiliteye göre düzeltilmiş)
+            adx_eff_thresh = adx_threshold_adaptive
+            # DI+/DI- farkı trend yönünün gücünü gösterir
+            if not (np.isnan(lpd) or np.isnan(lmd2)):
+                di_diff  = lpd - lmd2
+                di_info  = f"| +DI: {lpd:.1f} / -DI: {lmd2:.1f} ({'↑' if di_diff > 0 else '↓'} fark: {abs(di_diff):.1f})"
             else:
-                res.append(["TUT", "ADX", f"ADX: {la:.1f} (Zayıf, eşik={p_adx['adx_threshold']})"])
+                di_info = ""
+            strength = "Güçlü" if la > adx_eff_thresh else "Zayıf"
+            thresh_info = f"eşik: {adx_eff_thresh}"
+            if adx_eff_thresh != adx_threshold:
+                thresh_info += f" (kullanıcı: {adx_threshold}, adaptif: {adx_eff_thresh})"
+            macd_desc = f"ADX: {la:.1f} ({strength}, {thresh_info}) {di_info}"
+            if la > adx_eff_thresh:
+                res.append([trend_dec("AL" if lpd > lmd2 else "SAT", last_ath), "ADX", macd_desc])
+            else:
+                res.append(["TUT", "ADX", macd_desc])
         else:
             res.append(["N/A", "ADX", "Yetersiz veri."])
 
@@ -3315,19 +3355,20 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         score_rows.append(("Seviye Yakınlığı", l_desc, l_pts, "neutral"))
 
         # --- ADX REJİM ÇARPANI (rejim bilinçli ağırlıklandırma) ---
+        # Volatiliteye göre düzeltilmiş adaptif eşik kullanılır
         if not np.isnan(r_adx):
-            if r_adx > adx_threshold:
+            if r_adx > adx_threshold_adaptive:
                 macd_mult    = 1.3
                 regime_label = "Trend Rejim"
-                regime_desc  = f"ADX {r_adx:.1f} > {adx_threshold} — trend piyasa. MACD bileşenleri güçlendirildi (×1.3)."
-            elif r_adx < max(adx_threshold - 5, 15):
+                regime_desc  = f"ADX {r_adx:.1f} > {adx_threshold_adaptive} — trend piyasa. MACD bileşenleri güçlendirildi (×1.3). [{adx_regime_note}]"
+            elif r_adx < max(adx_threshold_adaptive - 5, 15):
                 macd_mult    = 0.7
                 regime_label = "Yatay Rejim"
-                regime_desc  = f"ADX {r_adx:.1f} düşük — yatay piyasa. MACD bileşenleri zayıflatıldı (×0.7)."
+                regime_desc  = f"ADX {r_adx:.1f} düşük — yatay piyasa. MACD bileşenleri zayıflatıldı (×0.7). [{adx_regime_note}]"
             else:
                 macd_mult    = 1.0
                 regime_label = "Geçiş"
-                regime_desc  = f"ADX {r_adx:.1f} — geçiş bölgesi, çarpan uygulanmadı."
+                regime_desc  = f"ADX {r_adx:.1f} — geçiş bölgesi, çarpan uygulanmadı. [{adx_regime_note}]"
         else:
             macd_mult    = 1.0
             regime_label = "N/A"
@@ -3551,17 +3592,19 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                       else ("SAT" if (r_close < r_kama and r_std == -1 and r_close < r_ema200) else "NÖTR"),
         })
 
-        # ADIM 2 — Trend Gücü
+        # ADIM 2 — Trend Gücü (adaptif eşikle)
         if not np.isnan(r_adx):
             adx_str  = f"ADX: {r_adx:.1f}"
-            adx_sig  = "GÜÇLÜ TREND ✅" if r_adx > adx_threshold else "ZAYIF / YATAY ⚠️"
-            adx_hint = "Trend sinyallerine güven" if r_adx > adx_threshold else "Mean-reversion sinyallerine ağırlık ver"
+            is_strong = r_adx > adx_threshold_adaptive
+            adx_sig  = "GÜÇLÜ TREND ✅" if is_strong else "ZAYIF / YATAY ⚠️"
+            adx_hint = "Trend sinyallerine güven" if is_strong else "Mean-reversion sinyallerine ağırlık ver"
+            eff_str  = f"adaptif eşik: {adx_threshold_adaptive}" if adx_threshold_adaptive != adx_threshold else f"eşik: {adx_threshold}"
             steps.append({
                 "Adım": "2 — Trend Gücü",
                 "Gösterge": "ADX",
-                "Değer": f"{adx_str} (eşik: {adx_threshold})",
+                "Değer": f"{adx_str} ({eff_str})",
                 "Yorum": f"{adx_sig} — {adx_hint}",
-                "Sinyal": "GÜÇLÜ" if r_adx > adx_threshold else "ZAYIF",
+                "Sinyal": "GÜÇLÜ" if is_strong else "ZAYIF",
             })
         else:
             steps.append({"Adım": "2 — Trend Gücü", "Gösterge": "ADX",
@@ -3675,7 +3718,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         st.subheader("📝 Özet")
         ozet_parcalar = []
 
-        if r_adx > adx_threshold:
+        if r_adx > adx_threshold_adaptive:
             ozet_parcalar.append(f"ADX {r_adx:.1f} ile **güçlü bir trend** mevcut.")
         else:
             ozet_parcalar.append(f"ADX {r_adx:.1f} — piyasa **yatay seyirde**, mean-reversion sinyalleri daha geçerli.")
@@ -3772,7 +3815,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                     interval=interval, total_score=total_score,
                     karar=karar, regime_label=regime_label,
                     regime_desc=regime_desc, adx=r_adx,
-                    adx_threshold=adx_threshold,
+                    adx_threshold=adx_threshold_adaptive,
                     components=final_rows, ema200=r_ema200,
                     rsi=r_rsi, stk=r_stk, macd=r_macd, macd_sig=r_macds,
                     atr_high=r_atr_hi, swing_levels=swing_levels,

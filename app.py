@@ -488,54 +488,40 @@ def fetch_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens):
         raise ValueError(f"Bilinmeyen provider tipi: {cfg['type']}")
 
 
-def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
-                    regime_label, regime_desc, adx, adx_threshold,
-                    components, ema200, rsi, stk, macd, macd_sig,
-                    atr_high, swing_levels, fib_levels, st_dir,
-                    obv_sig, div_rsi, div_macd, rsi_lo, rsi_up):
-    """Yapılandırılmış system + user prompt üret."""
+def build_ai_prompt(*, detail, ticker, close, interval,
+                    res_rows, swing_levels, fib_levels):
+    """Yapılandırılmış system + user prompt üret.
+    Sadece Algoritmik Detaylar tablosu + Seviye bilgileri kullanılır.
+    """
     system = (
         "Sen deneyimli bir kurumsal teknik analiz uzmanısın. "
-        "SADECE sana verilen sayısal verileri kullan — hiçbir sayıyı uydurma, "
-        "tahmin etme veya ek veri varsay. Yatırım tavsiyesi verme; bir "
-        "profesyonel trader'ın veriye nasıl yaklaşacağını anlat. "
-        "Türkçe yanıt ver, teknik jargon kullanabilirsin ama netlikten "
-        "taviz verme. Yanıtını markdown formatında, başlıklar altında "
-        "organize et. Somut ve aksiyona dönüştürülebilir ol.\n\n"
-        "ÖNEMLİ YORUMLAMA KURALLARI:\n"
-        "- **Skor bileşenlerindeki puanlar (örn. +0.7, -1, ×0.7) SKOR AĞIRLIKLARIDIR, "
-        "indikatör değeri DEĞİLDİR.** 'MACD Histogram İvmesi: -0.7' bileşeninde -0.7 "
-        "histogram değeri değil, bileşenin skora katkısıdır. İndikatörün gerçek sayısal "
-        "değeri için sana ayrıca verilen 'Anahtar İndikatör Değerleri' bölümüne bak.\n"
-        "- **Genel ADX/RSI/threshold değerleri için kullanıcının kendi ayarlarını kullan** "
-        "— jenerik '25', '30', '70' gibi sayılar varsayma; sana prompt'ta verilen "
-        "gerçek eşik değerlerini kullan.\n"
-        "- **Risk/Ödül (R/R) oranını mutlaka hesapla.** Stop-loss ve hedef seviye öner "
-        "dikten sonra: R/R = (hedef - giriş) / (giriş - stop). Eğer R/R < 2:1 ise bunu "
-        "'Risk/Ödül oranı düşük, pozisyonu yeniden değerlendirin' şeklinde AÇIKÇA BELİRT.\n\n"
-        "ÖNEMLİ FORMATLAMA KURALLARI:\n"
-        "- Her cümleyi tam olarak bitir, asla yarıda bırakma.\n"
-        "- Son başlığın son cümlesi de tam ve anlamlı olmalı.\n"
-        "- Eğer istenen tüm başlıkları cevaplayacak kadar yerin olmayacağını "
-        "düşünürsen, her başlığı biraz daha kısa tut ama tamamla — "
-        "hiçbir zaman ortada kesme.\n"
-        "- Yanıtı bitirirken noktayla bitir, üç nokta veya yarım cümle kullanma."
+        "SADECE sana verilen 'Algoritmik Detaylar' tablosundaki bilgileri kullan. "
+        "Hiçbir sayıyı uydurma, tahmin etme veya ek veri varsay. "
+        "Tablodaki her indikatörün 'Durum/Sebep' sütununu dikkatle oku — "
+        "içinde zengin bilgi var (değerler, ilişkiler, yönler, uyarılar).\n\n"
+        "DİL VE ÜSLUP:\n"
+        "- Türkçe yanıt ver, teknik jargon kullanabilirsin ama netlikten taviz verme\n"
+        "- Markdown formatında, başlıklar altında organize et\n"
+        "- Somut ve aksiyona dönüştürülebilir ol\n"
+        "- 'Yatırım tavsiyesi' ibaresi kullanma\n\n"
+        "KISA VADELİ BEKLENTİ KURALLARI:\n"
+        "- Gelecek yönünü KEHANET olarak değil, 'göstergelerin ima ettiği eğilim' olarak sun\n"
+        "- 'Muhtemelen', 'eğilim gösteriyor', 'olasılıkla' gibi ihtimal dili kullan\n"
+        "- Güven seviyesini göstergelerin UYUMUNA göre belirle:\n"
+        "  • 15+ gösterge aynı yönde → Yüksek güven\n"
+        "  • 10-14 gösterge aynı yönde → Orta güven\n"
+        "  • Dağınık / çelişkili → Düşük güven\n"
+        "- Yön için somut TETİKLEYİCİ seviyeler ver (hangi fiyat kırılırsa ne olur)\n\n"
+        "RİSK/ÖDÜL KURALI:\n"
+        "- Stop-loss ve hedef verdikten sonra R/R = (hedef-giriş)/(giriş-stop) hesapla\n"
+        "- R/R < 2:1 ise 'R/R uygun değil, pozisyonu yeniden değerlendirin' şeklinde AÇIKÇA uyar\n\n"
+        "FORMATLAMA KURALLARI:\n"
+        "- Her cümleyi tam bitir, asla yarıda bırakma\n"
+        "- Her başlığı mutlaka tamamla\n"
+        "- Son cümle noktayla bitmeli"
     )
 
-    # RSI durumu
-    if   rsi >= rsi_up: rsi_state = f"aşırı alım (>{rsi_up})"
-    elif rsi <= rsi_lo: rsi_state = f"aşırı satım (<{rsi_lo})"
-    else:               rsi_state = f"nötr bölge ({rsi_lo}-{rsi_up})"
-
-    # Divergence
-    div_parts = []
-    if div_rsi  == 1:  div_parts.append("RSI Bullish 🔺")
-    if div_rsi  == -1: div_parts.append("RSI Bearish 🔻")
-    if div_macd == 1:  div_parts.append("MACD Bullish 🔺")
-    if div_macd == -1: div_parts.append("MACD Bearish 🔻")
-    div_text = " / ".join(div_parts) if div_parts else "Yok"
-
-    # Destek / Direnç
+    # Destek / Direnç seviyeleri
     sr_lines = []
     if swing_levels:
         below = sorted([s for s in swing_levels if s["price"] < close], key=lambda x: -x["price"])
@@ -548,52 +534,82 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
             sr_lines.append(f"Direnç-{i+1}: {a['price']:.2f} (%{pct:.2f} üstte, {a['touches']}x test)")
     sr_text = ("\n  - " + "\n  - ".join(sr_lines)) if sr_lines else " Tespit edilmedi"
 
-    # Fibonacci (en yakın 3)
+    # Fibonacci seviyeleri (en yakın 3)
     fib_text = "Hesaplanmadı"
     if fib_levels:
-        sorted_fib = sorted(fib_levels.items(), key=lambda x: abs(x[1] - close))[:3]
+        sorted_fib = sorted(fib_levels.items(), key=lambda x: abs(x[1] - close))[:5]
         fib_text = ", ".join(f"{k} = {v:.2f}" for k, v in sorted_fib)
 
-    # Skor bileşen dökümü
-    comp_text = "\n".join(
-        f"- **{row['Bileşen']}**: `{row['Puan']}` — {row['Değer']}" for row in components
+    # Algoritmik Detaylar tablosu (res_rows = [[karar, algoritma, durum], ...])
+    detay_lines = []
+    for row in res_rows:
+        if len(row) >= 3:
+            karar_c, algo_c, durum_c = row[0], row[1], row[2]
+            detay_lines.append(f"| {karar_c} | **{algo_c}** | {durum_c} |")
+    detay_table = (
+        "| Karar | Algoritma | Durum / Sebep |\n"
+        "|---|---|---|\n"
+        + "\n".join(detay_lines)
     )
 
-    # Çıktı şablonu (detay seviyesine göre)
+    # Çıktı şablonu
     if detail == "Kısa":
         output_req = (
             "\n## İstenen Çıktı (KISA)\n"
-            "Toplamda 3-4 cümle, şu başlıklarda:\n"
-            "1. **🎯 Durum**\n"
-            "2. **⚠️ Uyarı**\n"
-            "3. **📍 Aksiyon** (stop ve hedef varsa R/R oranını parantez içinde belirt)\n"
+            "Şu başlıklarda kısa yorum yap:\n"
+            "1. **🎯 Durum** — genel resim (2-3 cümle)\n"
+            "2. **⚠️ Uyarı** — en kritik risk\n"
+            "3. **📍 Aksiyon** — ne yapmalı (R/R ile)\n"
+            "4. **🔮 Kısa Vadeli Beklenti** — muhtemel yön + tetikleyici seviye\n"
         )
     elif detail == "Orta":
         output_req = (
             "\n## İstenen Çıktı (ORTA)\n"
-            "Şu 5 başlıkta orta uzunlukta yorum yap:\n"
-            "1. **🎯 Genel Değerlendirme** — skorun ne anlama geldiği (2-3 cümle)\n"
-            "2. **⚠️ Ana Risk** — en kritik uyarı ve nedeni\n"
-            "3. **📍 Giriş Senaryosu** — ne beklenmeli, hangi seviyeler aksiyon için uygun\n"
-            "4. **🛡️ Risk Yönetimi** — somut stop-loss ve hedef seviyeleri ver, "
-            "ardından **Risk/Ödül oranını hesapla**: R/R = (hedef - giriş) / (giriş - stop). "
-            "Oran 2:1'den düşükse 'R/R uygun değil' şeklinde açıkça uyar.\n"
-            "5. **👁️ Takip Listesi** — dikkat edilmesi gereken 3-4 kritik sinyal\n"
+            "Şu başlıklarda orta uzunlukta yorum yap:\n"
+            "1. **🎯 Genel Değerlendirme** — tablonun verdiği resim (3-4 cümle)\n"
+            "2. **📊 Öne Çıkan Göstergeler** — tabloda en önemli 4-5 satır yorumu\n"
+            "3. **⚠️ Ana Risk** — en kritik uyarı\n"
+            "4. **📍 Giriş Senaryosu** — hangi seviyeler aksiyon için uygun\n"
+            "5. **🛡️ Risk Yönetimi** — stop, hedef, R/R hesabı\n"
+            "6. **🔮 Kısa Vadeli Beklenti** — muhtemel yön (olasılıklı) + tetikleyici seviyeler\n"
+            "7. **👁️ Takip Listesi** — 3-4 kritik sinyal\n"
         )
     else:  # Detaylı
         output_req = (
             "\n## İstenen Çıktı (DETAYLI)\n"
-            "Şu 7 başlıkta derin analiz yap:\n"
-            "1. **🎯 Genel Değerlendirme** — skoru ve rejimi derinlemesine açıkla\n"
-            "2. **📊 Bileşen Analizi** — her skor bileşeninin neden o değeri aldığını yorumla "
-            "(unutma: puanlar indikatör değeri değil, skor ağırlığıdır)\n"
-            "3. **⚠️ Risk Faktörleri** — tüm önemli uyarılar ve neden önemli oldukları\n"
-            "4. **📍 Senaryolar** — Boğa / Ayı / Yatay senaryolar için ayrı planlar\n"
-            "5. **🛡️ Risk Yönetimi** — pozisyon boyutu, stop-loss, hedef (somut sayılarla) "
-            "ve **Risk/Ödül oranı hesabı**. R/R = (hedef - giriş) / (giriş - stop). "
-            "Oran uygun değilse (< 2:1) açıkça uyar.\n"
-            "6. **📈 İhtimal Değerlendirmesi** — kısa ve orta vadeli muhtemel hareketler\n"
-            "7. **👁️ Takip Listesi** — durumu değiştirebilecek kritik sinyaller\n"
+            "Aşağıdaki başlıklarda GENİŞ ve DERİNLEMESİNE yorum yap. "
+            "Tablodaki HER indikatörü kategorisine göre grupla ve yorumla — "
+            "sadece değeri söyleme, ne anlama geldiğini açıkla.\n\n"
+            "1. **🎯 Genel Değerlendirme** — tablonun verdiği bütüncül resim (3-4 cümle)\n\n"
+            "2. **📊 İndikatör Bazlı Detaylı Analiz**\n"
+            "   Alt başlıklar altında her indikatörü yorumla:\n\n"
+            "   **🔹 Trend Göstergeleri** — SMA, EMA200, KAMA, SuperTrend, Ichimoku\n"
+            "   (KAMA için ER değerini, SuperTrend için flip yakınlığı ve bar sayısını, "
+            "   Ichimoku için bulut pozisyonu + rejim uyarısını dikkate al)\n\n"
+            "   **🔹 Momentum Göstergeleri** — RSI, Stoch RSI, MACD, WaveTrend\n"
+            "   (Stoch RSI için K/D ilişkisi ve teyit durumunu, MACD için histogram "
+            "   rengi/yönü/zero line'ı, WaveTrend için histogram rengini dikkate al)\n\n"
+            "   **🔹 Volatilite ve Kanallar** — Bollinger, ATR Filtre, LR Channel, Nadaraya-Watson\n"
+            "   (ATR için son 5 bar yönünü, LRC için slope yönü + bant genişliğini, "
+            "   NW için zarf pozisyonu + yönünü dikkate al)\n\n"
+            "   **🔹 Hacim ve Seviye** — OBV, Swing S/R, Fibonacci, VWAP\n"
+            "   (OBV için SMA farkı ve fark büyüklüğünü dikkate al)\n\n"
+            "   **🔹 Uyarı Sinyalleri** — ADX (+DI/-DI), Divergence (RSI + MACD), Mean Reversion\n\n"
+            "3. **⚠️ Ana Risk Faktörleri** — en kritik 2-3 uyarı ve nedenleri\n\n"
+            "4. **📍 Aksiyon Planı**\n"
+            "   - Önerilen giriş seviyesi\n"
+            "   - Stop-loss + hedef (somut sayılarla)\n"
+            "   - Risk/Ödül hesabı: R/R = (hedef - giriş) / (giriş - stop)\n"
+            "   - R/R < 2:1 ise AÇIKÇA uyar\n\n"
+            "5. **🔮 Kısa Vadeli Beklenti (1-5 bar)**\n"
+            "   - **Muhtemel Senaryo:** 🟢 Yükseliş eğilimi / 🔴 Düşüş eğilimi / ⚪ Yatay\n"
+            "   - **Güven Seviyesi:** Düşük / Orta / Yüksek (gösterge uyumuna göre)\n"
+            "   - **Olasılık tahmini:** yükseliş ~X% / düşüş ~Y% / yatay ~Z%\n"
+            "   - **Gerekçe:** hangi göstergeler ne diyor\n"
+            "   - **Tetikleyici seviyeler:**\n"
+            "     ✅ Yükselişi teyit edecek: [somut seviye]\n"
+            "     ❌ Düşüşe çevirecek: [somut seviye]\n\n"
+            "6. **👁️ Takip Listesi** — durumu değiştirebilecek 5-6 kritik sinyal\n"
         )
 
     user = f"""## Analiz Edilecek Veri
@@ -602,44 +618,23 @@ def build_ai_prompt(*, detail, ticker, close, interval, total_score, karar,
 **Fiyat:** {close:.4f}
 **Zaman Dilimi:** {interval}
 
-## 🎯 KOMBİNE SKOR SONUCU
-- **Toplam Skor:** {total_score:+.2f} / ±11
-- **Karar:** {karar}
-- **Rejim:** {regime_label} (ADX: {adx:.1f}, kullanıcının eşik ayarı: **{adx_threshold}**)
-- **Rejim Notu:** {regime_desc}
+## 📋 Algoritmik Detaylar Tablosu
 
-## 📊 Skor Bileşen Dökümü
-⚠️ **Aşağıdaki 'Puan' değerleri SKOR AĞIRLIKLARIDIR, indikatör değerleri DEĞİLDİR.**
-Örneğin "Histogram İvmesi -0.7" → histogramın kendisi -0.7 değil, bileşenin puanıdır.
-Gerçek indikatör sayılarını aşağıdaki 'Anahtar İndikatör Değerleri' bölümünden oku.
+{detay_table}
 
-{comp_text}
+## 📍 Seviye Bilgileri
 
-## 🔑 Anahtar İndikatör Değerleri (GERÇEK SAYILAR)
-- **RSI:** {rsi:.1f} — {rsi_state} (kullanıcı eşikleri: alt={rsi_lo}, üst={rsi_up})
-- **Stoch RSI %K:** {stk:.1f}
-- **MACD:** {macd:+.4f} | **Signal:** {macd_sig:+.4f} | **Histogram:** {macd - macd_sig:+.4f}
-- **ADX:** {adx:.1f} (kullanıcının trend eşik ayarı: **{adx_threshold}** — bu sayıyı kullan, 25/30 gibi varsayılanlar kullanma)
-- **EMA200:** {ema200:.2f} (fiyat {"üstünde" if close > ema200 else "altında"})
-- **SuperTrend:** {"AL ✅" if st_dir == 1 else "SAT ❌"}
-- **OBV:** {"Birikim ✅" if obv_sig == 1 else ("Dağıtım ❌" if obv_sig == -1 else "Nötr ⚪")}
-- **Divergence:** {div_text}
-- **Volatilite (ATR):** {"Yüksek ↑" if atr_high else "Düşük ↓"}
-
-## 📍 Seviyeler
 - **Destek / Direnç:**{sr_text}
-- **En Yakın Fibonacci:** {fib_text}
+- **En Yakın Fibonacci Seviyeleri:** {fib_text}
 
 ---
 {output_req}
-### Kurallar
-- Yukarıda verilmeyen hiçbir sayıyı uydurma veya tahmin etme
-- Skor bileşen puanlarını (±0.7, ±1 vb.) indikatör değeri gibi yorumlama
-- ADX/RSI eşikleri için yukarıda verilen kullanıcı ayarlarını kullan (25, 30, 70 gibi genel sayılar varsayma)
-- Stop-loss ve hedef verdikten sonra Risk/Ödül oranını hesapla ve yorumla
+### Önemli Kurallar
+- Yukarıdaki tabloda verilmeyen hiçbir sayıyı uydurma
+- Her indikatörün "Durum/Sebep" sütununu dikkatle oku (zengin bilgi içerir)
 - "Yatırım tavsiyesi" ibaresi kullanma
-- Somut ve aksiyona dönüştürülebilir ol
 - Markdown formatında yaz (başlıklar, bold, listeler)
+- Kısa Vadeli Beklenti'de kehanet dili değil, 'göstergelerin ima ettiği' dili kullan
 """
     return system, user
 
@@ -747,7 +742,7 @@ with st.sidebar:
     ai_detail = st.select_slider(
         "Detay Seviyesi",
         options=list(AI_DETAIL_LEVELS.keys()),
-        value="Orta",
+        value="Detaylı",
         key="ai_detail_level",
     )
     st.caption(f"Max token: {AI_DETAIL_LEVELS[ai_detail]} · Sıcaklık: 0.4")
@@ -4134,16 +4129,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
                 _sys_p, _usr_p = build_ai_prompt(
                     detail=ai_detail, ticker=ticker, close=r_close,
-                    interval=interval, total_score=total_score,
-                    karar=karar, regime_label=regime_label,
-                    regime_desc=regime_desc, adx=r_adx,
-                    adx_threshold=adx_threshold_adaptive,
-                    components=final_rows, ema200=r_ema200,
-                    rsi=r_rsi, stk=r_stk, macd=r_macd, macd_sig=r_macds,
-                    atr_high=r_atr_hi, swing_levels=swing_levels,
-                    fib_levels=fib_levels, st_dir=r_std,
-                    obv_sig=r_obv_sig, div_rsi=r_div_rsi,
-                    div_macd=r_div_mac, rsi_lo=rsi_lower, rsi_up=rsi_upper,
+                    interval=interval, res_rows=res,
+                    swing_levels=swing_levels, fib_levels=fib_levels,
                 )
 
                 try:

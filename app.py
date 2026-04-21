@@ -3461,13 +3461,38 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             res.append(["N/A", "Nadaraya-Watson", "Yetersiz veri."])
 
         lwt1    = safe_scalar(last["WT1"])
+        lwt2    = safe_scalar(last["WT2"])
         lwt_sig = safe_scalar(last["Sig_WaveTrend"])
         if not np.isnan(lwt1):
-            if lwt1 > wt_ob:   wt_zone = f"Aşırı Alım (WT1={lwt1:.1f})"
-            elif lwt1 < wt_os: wt_zone = f"Aşırı Satım (WT1={lwt1:.1f})"
-            else:               wt_zone = f"Nötr Bölge (WT1={lwt1:.1f})"
+            # 1) Bölge tespiti (eşik değerlerini de göster)
+            if lwt1 > wt_ob:
+                wt_zone = f"Aşırı Alım 🔴 (>{wt_ob})"
+            elif lwt1 < wt_os:
+                wt_zone = f"Aşırı Satım 🟢 (<{wt_os})"
+            else:
+                wt_zone = f"Nötr Bölge ({wt_os}/+{wt_ob})"
+
+            # 2) WT1 / WT2 değerleri + ilişki
+            if not np.isnan(lwt2):
+                if lwt1 > lwt2:
+                    kd_rel = f"WT1: {lwt1:.1f} > WT2: {lwt2:.1f} ↑"
+                elif lwt1 < lwt2:
+                    kd_rel = f"WT1: {lwt1:.1f} < WT2: {lwt2:.1f} ↓"
+                else:
+                    kd_rel = f"WT1 = WT2 ({lwt1:.1f})"
+
+                # 3) Histogram (WT1 - WT2) + renk
+                wt_hist = lwt1 - lwt2
+                hist_color = "🟢 Yeşil" if wt_hist > 0 else ("🔴 Kırmızı" if wt_hist < 0 else "⚪ Sıfır")
+                hist_str = f"Histogram: {wt_hist:+.2f} ({hist_color})"
+
+                parts = [kd_rel, wt_zone, hist_str]
+            else:
+                parts = [f"WT1: {lwt1:.1f}", wt_zone]
+
+            wt_desc = " | ".join(parts)
             wt_dec = "AL" if lwt_sig == 1 else ("SAT" if lwt_sig == -1 else "TUT")
-            res.append([wt_dec, f"WaveTrend ({p_wt['wt_n1']}/{p_wt['wt_n2']})", wt_zone])
+            res.append([wt_dec, f"WaveTrend ({p_wt['wt_n1']}/{p_wt['wt_n2']})", wt_desc])
         else:
             res.append(["N/A", "WaveTrend", "Yetersiz veri."])
 

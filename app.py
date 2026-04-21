@@ -714,6 +714,44 @@ with st.sidebar:
     st.write("---")
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
+    # ──────────────────────────────────────────────────────────
+    # 🤖 AI RAPOR YORUMCUSU (LLM Provider Seçimi)
+    # Sık kullanılan — Sabit Parametreler'in üstünde
+    # ──────────────────────────────────────────────────────────
+    st.write("---")
+    st.subheader("🤖 AI Rapor Yorumcusu")
+
+    ai_provider = st.selectbox(
+        "Provider",
+        options=list(LLM_PROVIDERS.keys()),
+        index=0,
+        key="ai_provider_select",
+        help="Hangi LLM sağlayıcısını kullanmak istiyorsunuz?",
+    )
+    _prov_cfg = LLM_PROVIDERS[ai_provider]
+
+    ai_model = st.selectbox(
+        "Model",
+        options=_prov_cfg["models"],
+        index=0,
+        key=f"ai_model_{ai_provider}",
+    )
+
+    ai_api_key = st.text_input(
+        f"{ai_provider} API Key",
+        type="password",
+        key=f"ai_key_{ai_provider}",
+        help=f"API key almak için: {_prov_cfg['key_url']}",
+    )
+
+    ai_detail = st.select_slider(
+        "Detay Seviyesi",
+        options=list(AI_DETAIL_LEVELS.keys()),
+        value="Orta",
+        key="ai_detail_level",
+    )
+    st.caption(f"Max token: {AI_DETAIL_LEVELS[ai_detail]} · Sıcaklık: 0.4")
+
     st.write("---")
     st.subheader("Sabit Parametreler")
     ss = st.session_state
@@ -808,43 +846,6 @@ with st.sidebar:
     st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
     st.info("İpucu: 1 dakikalık analizler için Periyot: 5d, Mum Aralığı: 1m seçiniz.")
-
-    # ──────────────────────────────────────────────────────────
-    # 🤖 AI RAPOR YORUMCUSU (LLM Provider Seçimi)
-    # ──────────────────────────────────────────────────────────
-    st.write("---")
-    st.subheader("🤖 AI Rapor Yorumcusu")
-
-    ai_provider = st.selectbox(
-        "Provider",
-        options=list(LLM_PROVIDERS.keys()),
-        index=0,
-        key="ai_provider_select",
-        help="Hangi LLM sağlayıcısını kullanmak istiyorsunuz?",
-    )
-    _prov_cfg = LLM_PROVIDERS[ai_provider]
-
-    ai_model = st.selectbox(
-        "Model",
-        options=_prov_cfg["models"],
-        index=0,
-        key=f"ai_model_{ai_provider}",
-    )
-
-    ai_api_key = st.text_input(
-        f"{ai_provider} API Key",
-        type="password",
-        key=f"ai_key_{ai_provider}",
-        help=f"API key almak için: {_prov_cfg['key_url']}",
-    )
-
-    ai_detail = st.select_slider(
-        "Detay Seviyesi",
-        options=list(AI_DETAIL_LEVELS.keys()),
-        value="Orta",
-        key="ai_detail_level",
-    )
-    st.caption(f"Max token: {AI_DETAIL_LEVELS[ai_detail]} · Sıcaklık: 0.4")
 
 
 # ============================================================
@@ -1466,6 +1467,45 @@ def stationary_bootstrap_pvalue(strat_ret, observed_sharpe, bars_per_year,
     return (count_ge + 1) / (valid_iters + 1)
 
 
+def _norm_ppf(p):
+    """Inverse of the standard normal CDF (scipy bağımsız).
+    Peter Acklam's algorithm (1/2003), stdlib-only, ~1e-9 doğruluk.
+    Girdi: 0 < p < 1. Çıktı: Φ⁻¹(p).
+    """
+    from math import sqrt, log
+    if p <= 0.0 or p >= 1.0:
+        # Aşırı uçlar için yaklaşım (pratik kullanımda olmaz ama güvenli)
+        if p <= 0.0: return -float("inf")
+        if p >= 1.0: return  float("inf")
+
+    # Katsayılar (Acklam 2003)
+    a = [-3.969683028665376e+01,  2.209460984245205e+02, -2.759285104469687e+02,
+          1.383577518672690e+02, -3.066479806614716e+01,  2.506628277459239e+00]
+    b = [-5.447609879822406e+01,  1.615858368580409e+02, -1.556989798598866e+02,
+          6.680131188771972e+01, -1.328068155288572e+01]
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+         -2.549732539343734e+00,  4.374664141464968e+00,  2.938163982698783e+00]
+    d = [ 7.784695709041462e-03,  3.224671290700398e-01,  2.445134137142996e+00,
+          3.754408661907416e+00]
+
+    p_low  = 0.02425
+    p_high = 1.0 - p_low
+
+    if p < p_low:
+        q = sqrt(-2.0 * log(p))
+        return (((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5]) / \
+               ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.0)
+    elif p <= p_high:
+        q = p - 0.5
+        r = q * q
+        return (((((a[0]*r + a[1])*r + a[2])*r + a[3])*r + a[4])*r + a[5]) * q / \
+               (((((b[0]*r + b[1])*r + b[2])*r + b[3])*r + b[4])*r + 1.0)
+    else:
+        q = sqrt(-2.0 * log(1.0 - p))
+        return -(((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5]) / \
+                ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.0)
+
+
 def deflated_sharpe_ratio(observed_sharpe, n_trials, n_obs, skew=0.0, kurt=3.0):
     """Bailey & López de Prado (2014) Deflated Sharpe Ratio.
 
@@ -1479,7 +1519,7 @@ def deflated_sharpe_ratio(observed_sharpe, n_trials, n_obs, skew=0.0, kurt=3.0):
     DSR 0   → Eşik: istatistiksel olarak anlamsız.
     DSR < 0 → Bu Sharpe muhtemelen şans eseri.
     """
-    from math import log, sqrt, pi, exp
+    from math import log, sqrt, exp
     if n_trials <= 1 or n_obs <= 1:
         return observed_sharpe  # düzeltme gerekmiyor
 
@@ -1487,15 +1527,13 @@ def deflated_sharpe_ratio(observed_sharpe, n_trials, n_obs, skew=0.0, kurt=3.0):
     emc = 0.5772156649
     # Expected Max Sharpe under null (Bailey & López de Prado 2014, Eq. 6)
     # E[max SR] ≈ sqrt(V[SR]) × ((1-γ)·Φ⁻¹(1-1/N) + γ·Φ⁻¹(1-1/(N·e)))
-    # V[SR_null] = 1/n_obs varsayımı (null altında)
-    from scipy.stats import norm
     try:
-        z1 = norm.ppf(1.0 - 1.0 / n_trials)
-        z2 = norm.ppf(1.0 - 1.0 / (n_trials * exp(1)))
+        z1 = _norm_ppf(1.0 - 1.0 / n_trials)
+        z2 = _norm_ppf(1.0 - 1.0 / (n_trials * exp(1)))
         expected_max_sr = (1.0 - emc) * z1 + emc * z2
     except Exception:
-        # scipy yoksa yaklaşık değer (N büyükse Gumbel'den)
-        expected_max_sr = sqrt(2.0 * log(n_trials))
+        # Fallback: N büyükse Gumbel'den yaklaşık
+        expected_max_sr = sqrt(2.0 * log(max(n_trials, 2)))
 
     # DSR: Probabilistic SR'nin deflate edilmiş hali
     # σ(SR_hat) = sqrt((1 - skew·SR + (kurt-1)/4 · SR²) / (n_obs - 1))
@@ -1888,7 +1926,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_v5_dsrdebug_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
+        OPT_KEY = f"opt_v6_dsr_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}
@@ -2925,6 +2963,40 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         last       = df.iloc[-1]
         last_close = safe_scalar(last["Close"])
         last_ath   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
+
+        # ── Son bar indikatör değerleri (hem Kombine Skor hem Teknik Rapor kullanır) ──
+        r_close    = safe_scalar(last["Close"])
+        r_kama     = safe_scalar(last["KAMA"])
+        r_adx      = safe_scalar(last["ADX"])
+        r_pdi      = safe_scalar(last["PLUS_DI"])
+        r_mdi      = safe_scalar(last["MINUS_DI"])
+        r_macd     = safe_scalar(last["MACD"])
+        r_macds    = safe_scalar(last["MACD_S"])
+        r_rsi      = safe_scalar(last["RSI"])
+        r_stk      = safe_scalar(last["StochRSI_K"])
+        r_std      = safe_scalar(last["ST_Direction"])
+        r_lrc_sig  = safe_scalar(last["Sig_LRC"])
+        r_lrc_mid  = safe_scalar(last["LRC_Mid"])
+        r_lrc_up   = safe_scalar(last["LRC_Upper"])
+        r_lrc_lo   = safe_scalar(last["LRC_Lower"])
+        r_nw       = safe_scalar(last["NW_Line"])
+        r_nw_up    = safe_scalar(last["NW_Upper"])
+        r_nw_lo    = safe_scalar(last["NW_Lower"])
+        r_vwap     = safe_scalar(last["VWAP"])     if is_intraday else np.nan
+        r_vwap_sig = safe_scalar(last["Sig_VWAP"]) if is_intraday else 0
+        r_obv_sig  = safe_scalar(last["Sig_OBV"])
+        r_div_rsi  = safe_scalar(last["Div_RSI"])
+        r_div_mac  = safe_scalar(last["Div_MACD"])
+        r_ichi     = safe_scalar(last["Sig_Ichimoku"])
+        r_wt1      = safe_scalar(last["WT1"])
+        r_atr_hi   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
+        r_ema200   = safe_scalar(last["EMA200"])
+
+        if fib_levels:
+            r_fib_closest = min(fib_levels.items(), key=lambda x: abs(x[1] - r_close))
+        else:
+            r_fib_closest = ("N/A", r_close)
+
         res        = []
 
         def trend_dec(raw_dec, atr_ok):
@@ -3102,355 +3174,9 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             res.append(["BİLGİ", f"Fibonacci ({fib_lookback} bar)",
                         f"En yakın seviye: {closest_lvl[0]} ({closest_lvl[1]:.2f}) | Swing: {fib_low:.2f} — {fib_high:.2f}"])
 
-        valid_sigs = [x for x in res if x[0] in ("AL", "SAT")]
-        al_count   = sum(1 for x in valid_sigs if x[0] == "AL")
-        sat_count  = sum(1 for x in valid_sigs if x[0] == "SAT")
-
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2 = st.columns(2)
         c1.metric("Anlık Fiyat",  f"{last_close:.2f}")
-        c2.metric("AL Sinyali",   f"{al_count}")
-        c3.metric("SAT Sinyali",  f"{sat_count}")
-        c4.metric("Zaman Dilimi", f"{interval}")
-
-        st.subheader("🔍 Algoritmik Detaylar")
-        res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])
-
-        def color_map(val):
-            if val == "AL":    return "color: #00ff00; font-weight: bold"
-            if val == "SAT":   return "color: #ff4b4b; font-weight: bold"
-            if val == "N/A":   return "color: #ffaa00; font-weight: bold"
-            if val == "BİLGİ": return "color: #00bfff; font-weight: bold"
-            if "düşük vol." in str(val): return "color: #808495; font-style: italic"
-            return "color: #808495; font-weight: bold"
-
-        st.table(res_df.style.map(color_map, subset=["Karar"]))
-
-        # ============================================================
-        # BİREYSEL BACKTEST TABLOSU
-        # ============================================================
-        st.write("---")
-        st.header("📊 Bireysel Algoritma Backtesti (Güncel Parametrelerle)")
-        st.caption("⚠️ Geçmiş performans gelecekteki sonuçların garantisi değildir.")
-
-        algo_signal_map = {
-            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                                    "Sig_SMA",
-            f"RSI (p={p_rsi['rsi_period']} [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}])":  "Sig_RSI",
-            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":                "Sig_BB",
-            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})": "Sig_MACD",
-            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":                  "Sig_Z",
-            "OBV":                                                                           "Sig_OBV",
-            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":              "Sig_ADX",
-            "Stoch RSI":                                                                     "Sig_StochRSI",
-            "Ichimoku":                                                                      "Sig_Ichimoku",
-            "KAMA":                                                                          "Sig_KAMA",
-            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":               "Sig_SuperTrend",
-            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":           "Sig_LRC",
-            f"WaveTrend ({p_wt['wt_n1']}/{p_wt['wt_n2']})":                               "Sig_WaveTrend",
-        }
-        if is_intraday:
-            algo_signal_map["VWAP"] = "Sig_VWAP"
-
-        algo_results = []
-        for algo_name, sig_col in algo_signal_map.items():
-            if sig_col not in df.columns:
-                continue
-            stats = run_backtest(df[sig_col], close_arr, cost_pct,
-                                 bars_per_year=bars_per_year_from_interval(interval))
-            algo_results.append({
-                "Algoritma":       algo_name,
-                "Trade":           stats["n"],
-                "Getiri (%)":      round(stats["total_ret"], 2),
-                "Win Rate (%)":    round(stats["win_rate"],  1),
-                "Ort. Kazanç (%)": round(stats["avg_win"],  2),
-                "Ort. Kayıp (%)":  round(stats["avg_loss"], 2),
-                "Max DD (%)":      round(stats["max_dd"],   2),
-                "Profit Factor":   round(stats["pf"], 2) if stats["pf"] != float("inf") else "∞",
-            })
-
-        if algo_results:
-            algo_df = pd.DataFrame(algo_results)
-            active  = algo_df[algo_df["Trade"] > 0].copy()
-            if not active.empty:
-                best = active.loc[active["Getiri (%)"].idxmax()]
-                st.success(
-                    f"🥇 En iyi: **{best['Algoritma']}** — "
-                    f"Getiri: %{best['Getiri (%)']}, "
-                    f"Win Rate: %{best['Win Rate (%)']}, "
-                    f"{int(best['Trade'])} trade")
-            def ret_color(val):
-                if isinstance(val, (int, float)):
-                    if val > 0: return "color: #00ff00"
-                    if val < 0: return "color: #ff4b4b"
-                return ""
-            st.dataframe(algo_df.style.map(ret_color, subset=["Getiri (%)"]),
-                         use_container_width=True, hide_index=True)
-        else:
-            st.info("Algoritma performansı hesaplanamadı.")
-
-        # ============================================================
-        # OPTİMİZASYON ÖZET TABLOSU
-        # ============================================================
-        st.write("---")
-        st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
-        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe (yıllıklandırılmış, **out-of-sample**)")
-
-        def opt_color(val):
-            try:
-                v = float(val)
-            except (ValueError, TypeError):
-                return ""
-            if not np.isfinite(v):   return "color: #888888"
-            if v > 0:  return "color: #00ff00"
-            if v < 0:  return "color: #ff4b4b"
-            return "color: #888888"  # sıfır için gri — koyu arka planda görünür
-
-        def pval_color(val):
-            try:
-                v = float(val)
-            except (ValueError, TypeError):
-                return ""
-            if not np.isfinite(v): return "color: #888888"
-            if v < 0.05:  return "color: #00ff00; font-weight: bold"   # anlamlı
-            if v < 0.10:  return "color: #ffcc00"                       # sınırda
-            return "color: #aaaaaa"                                     # anlamsız
-
-        def _safe_round(x, nd=2, default=0.0):
-            try:
-                v = float(x)
-                if not np.isfinite(v):
-                    return default
-                return round(v, nd)
-            except (ValueError, TypeError):
-                return default
-
-        opt_rows  = []
-        for algo_name, grid in PARAM_GRIDS.items():
-            p = opt_params.get(algo_name, {})
-            s = opt_stats.get(algo_name, {})
-            row = {"Algoritma": algo_name}
-            param_str            = "  |  ".join(f"{k} = {v}" for k, v in p.items())
-            row["Parametreler"]  = param_str
-            row["Getiri (%)"]    = _safe_round(s.get("total_ret", 0), 2)
-            row["Sharpe (OOS)"]  = _safe_round(s.get("sharpe",    0), 2)
-            row["DSR"]           = _safe_round(s.get("dsr", np.nan), 2, default=np.nan)
-            row["Trade"]         = int(s.get("n", 0) or 0)
-            row["Win Rate (%)"]  = _safe_round(s.get("win_rate",  0), 1)
-            sel = s.get("wf_selections", 0); wins = s.get("wf_windows", 0)
-            row["Seçim"]         = f"{sel}/{wins}" if wins else "—"
-            row["p-değeri"]      = _safe_round(s.get("p_value", np.nan), 4, default=np.nan)
-            opt_rows.append(row)
-
-        opt_df     = pd.DataFrame(opt_rows)
-        color_cols = [c for c in ["Getiri (%)", "Sharpe (OOS)", "DSR"] if c in opt_df.columns]
-        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe (OOS)": "{:.2f}", "DSR": "{:.2f}",
-                      "Win Rate (%)": "{:.1f}", "p-değeri": "{:.3f}"}
-        fmt        = {k: v for k, v in fmt.items() if k in opt_df.columns}
-        styled = opt_df.style.format(fmt, na_rep="—").map(opt_color, subset=color_cols)
-        if "p-değeri" in opt_df.columns:
-            styled = styled.map(pval_color, subset=["p-değeri"])
-        st.dataframe(styled, use_container_width=True, hide_index=True)
-
-        # DEBUG: DSR neden None/NaN? Hata mesajlarını göster
-        _dsr_errors = []
-        _dsr_missing = []
-        for algo_name in PARAM_GRIDS.keys():
-            s = opt_stats.get(algo_name, {})
-            if "dsr_error" in s:
-                _dsr_errors.append(f"- **{algo_name}**: `{s['dsr_error']}`")
-            elif "dsr" not in s:
-                # Hiç DSR alanı yok → hesaplanmamış bile
-                n_trials = len([k for k in s.keys()])
-                _dsr_missing.append(f"- **{algo_name}** — strat_ret_concat uzunluğu yetersiz veya n_trials=1")
-        if _dsr_errors:
-            with st.expander("🐛 DSR Hata Detayları"):
-                st.markdown("\n".join(_dsr_errors))
-        if _dsr_missing:
-            with st.expander("⚠️ DSR Hesaplanmayan Algoritmalar"):
-                st.markdown("\n".join(_dsr_missing))
-                st.caption("Sebep: OOS getiri serisi 20 bardan az VEYA grid'de tek parametre kombinasyonu var.")
-
-        st.caption(
-            "💡 **Sharpe (OOS)**: Yalnız out-of-sample test dilimlerinden yıllıklandırılmış risk ayarlı getiri. "
-            "**DSR** (Deflated Sharpe Ratio — Bailey & López de Prado 2014): Multiple testing "
-            "cezası çıkarılmış. **DSR > 0** → gerçekten rastgeleden iyi; **DSR ≤ 0** → yüksek Sharpe "
-            "muhtemelen şans eseri. **p-değeri** (Stationary Bootstrap — Politis & Romano 1994): "
-            "< 0.05 → sinyal istatistiksel olarak anlamlı. **Seçim k/n** → kombonun n expanding "
-            "adımında k tanesinde train-kazananı olduğu."
-        )
-
-        # ============================================================
-        # RAPOR BÖLÜMÜ
-        # ============================================================
-        st.write("---")
-        st.header("📋 Teknik Analiz Raporu")
-        st.caption("Kural tabanlı otomatik analiz. Yatırım tavsiyesi içermez.")
-
-        r_close    = safe_scalar(last["Close"])
-        r_kama     = safe_scalar(last["KAMA"])
-        r_adx      = safe_scalar(last["ADX"])
-        r_pdi      = safe_scalar(last["PLUS_DI"])
-        r_mdi      = safe_scalar(last["MINUS_DI"])
-        r_macd     = safe_scalar(last["MACD"])
-        r_macds    = safe_scalar(last["MACD_S"])
-        r_rsi      = safe_scalar(last["RSI"])
-        r_stk      = safe_scalar(last["StochRSI_K"])
-        r_std      = safe_scalar(last["ST_Direction"])
-        r_lrc_sig  = safe_scalar(last["Sig_LRC"])
-        r_lrc_mid  = safe_scalar(last["LRC_Mid"])
-        r_lrc_up   = safe_scalar(last["LRC_Upper"])
-        r_lrc_lo   = safe_scalar(last["LRC_Lower"])
-        r_nw       = safe_scalar(last["NW_Line"])
-        r_nw_up    = safe_scalar(last["NW_Upper"])
-        r_nw_lo    = safe_scalar(last["NW_Lower"])
-        r_vwap     = safe_scalar(last["VWAP"])     if is_intraday else np.nan
-        r_vwap_sig = safe_scalar(last["Sig_VWAP"]) if is_intraday else 0
-        r_obv_sig  = safe_scalar(last["Sig_OBV"])
-        r_div_rsi  = safe_scalar(last["Div_RSI"])
-        r_div_mac  = safe_scalar(last["Div_MACD"])
-        r_ichi     = safe_scalar(last["Sig_Ichimoku"])
-        r_wt1      = safe_scalar(last["WT1"])
-        r_atr_hi   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False
-        r_ema200   = safe_scalar(last["EMA200"])
-
-        if fib_levels:
-            r_fib_closest = min(fib_levels.items(), key=lambda x: abs(x[1] - r_close))
-        else:
-            r_fib_closest = ("N/A", r_close)
-
-        steps = []
-
-        # ADIM 1 — Büyük Resim (EMA200 eklendi)
-        kama_pos  = "ÜSTÜNDE ✅" if r_close > r_kama else "ALTINDA ❌"
-        st_signal = "AL ✅" if r_std == 1 else "SAT ❌"
-        poc_dist  = abs(r_close - poc_price) / r_close * 100
-        ema200_pos = "üstünde ✅" if r_close > r_ema200 else "altında ❌"
-        steps.append({
-            "Adım": "1 — Büyük Resim",
-            "Gösterge": "Fiyat / KAMA / EMA200 / SuperTrend / POC",
-            "Değer": f"Fiyat: {r_close:.2f} | KAMA: {r_kama:.2f} | EMA200: {r_ema200:.2f} | POC: {poc_price:.2f} (%{poc_dist:.1f} uzakta)",
-            "Yorum": f"Fiyat KAMA'nın {kama_pos} | EMA200 {ema200_pos} | SuperTrend: {st_signal} | En yakın Fib: {r_fib_closest[0]} ({r_fib_closest[1]:.2f})",
-            "Sinyal": "AL" if (r_close > r_kama and r_std == 1 and r_close > r_ema200)
-                      else ("SAT" if (r_close < r_kama and r_std == -1 and r_close < r_ema200) else "NÖTR"),
-        })
-
-        # ADIM 2 — Trend Gücü
-        if not np.isnan(r_adx):
-            adx_str  = f"ADX: {r_adx:.1f}"
-            adx_sig  = "GÜÇLÜ TREND ✅" if r_adx > adx_threshold else "ZAYIF / YATAY ⚠️"
-            adx_hint = "Trend sinyallerine güven" if r_adx > adx_threshold else "Mean-reversion sinyallerine ağırlık ver"
-            steps.append({
-                "Adım": "2 — Trend Gücü",
-                "Gösterge": "ADX",
-                "Değer": f"{adx_str} (eşik: {adx_threshold})",
-                "Yorum": f"{adx_sig} — {adx_hint}",
-                "Sinyal": "GÜÇLÜ" if r_adx > adx_threshold else "ZAYIF",
-            })
-        else:
-            steps.append({"Adım": "2 — Trend Gücü", "Gösterge": "ADX",
-                          "Değer": "N/A", "Yorum": "Yetersiz veri", "Sinyal": "N/A"})
-
-        # ADIM 3 — Trend Yönü
-        macd_pos  = r_macd > r_macds
-        ichi_bull = r_ichi == 1
-        ichi_bear = r_ichi == -1
-        macd_str  = "Pozitif ✅" if macd_pos else "Negatif ❌"
-        ichi_str  = "Boğa ✅" if ichi_bull else ("Ayı ❌" if ichi_bear else "Nötr ⚠️")
-        trend_sig = "AL" if (macd_pos and ichi_bull) else ("SAT" if (not macd_pos and ichi_bear) else "NÖTR")
-        steps.append({
-            "Adım": "3 — Trend Yönü",
-            "Gösterge": "MACD + Ichimoku",
-            "Değer": f"MACD: {r_macd:.4f} | Sinyal: {r_macds:.4f}",
-            "Yorum": f"MACD: {macd_str} | Ichimoku: {ichi_str}",
-            "Sinyal": trend_sig,
-        })
-
-        # ADIM 4 — Giriş Noktası
-        rsi_os    = r_rsi < rsi_lower
-        rsi_ob    = r_rsi > rsi_upper
-        stk_os    = r_stk < stoch_lower
-        stk_ob    = r_stk > stoch_upper
-        rsi_str   = f"Aşırı Satım ✅ ({r_rsi:.1f})" if rsi_os else (f"Aşırı Alım ❌ ({r_rsi:.1f})" if rsi_ob else f"Nötr ({r_rsi:.1f})")
-        stk_str   = f"Aşırı Satım ✅ ({r_stk:.1f})" if stk_os else (f"Aşırı Alım ❌ ({r_stk:.1f})" if stk_ob else f"Nötr ({r_stk:.1f})")
-        entry_sig = "AL" if (rsi_os or stk_os) else ("SAT" if (rsi_ob or stk_ob) else "BEKLE")
-        steps.append({
-            "Adım": "4 — Giriş Noktası",
-            "Gösterge": "RSI + Stoch RSI",
-            "Değer": f"RSI: {r_rsi:.1f} | Stoch %K: {r_stk:.1f}",
-            "Yorum": f"RSI: {rsi_str} | Stoch RSI: {stk_str}",
-            "Sinyal": entry_sig,
-        })
-
-        # ADIM 5 — Seviye Teyidi (S/R eklendi)
-        lrc_str   = "Alt banda yakın ✅" if r_lrc_sig == 1 else ("Üst banda yakın ❌" if r_lrc_sig == -1 else "Kanal ortası ⚪")
-        nw_str    = ("Üst zarfın üstünde ❌" if r_close > r_nw_up
-                     else ("Alt zarfın altında ✅" if r_close < r_nw_lo else "Zarf içinde ⚪"))
-        sr_note   = ""
-        if swing_levels:
-            csr      = min(swing_levels, key=lambda x: abs(x["price"] - r_close))
-            sr_note  = f" | En yakın {'Destek ✅' if csr['type']=='S' else 'Direnç ❌'}: {csr['price']:.2f} ({csr['touches']}x)"
-        level_sig = "AL" if (r_lrc_sig == 1 or r_close < r_nw_lo) else ("SAT" if (r_lrc_sig == -1 or r_close > r_nw_up) else "NÖTR")
-        steps.append({
-            "Adım": "5 — Seviye Teyidi",
-            "Gösterge": "LR Channel + NW + S/R",
-            "Değer": f"LRC Alt: {r_lrc_lo:.2f} | LRC Üst: {r_lrc_up:.2f} | NW: {r_nw:.2f}",
-            "Yorum": f"LRC: {lrc_str} | NW: {nw_str}{sr_note}",
-            "Sinyal": level_sig,
-        })
-
-        # ADIM 5b — VWAP
-        if is_intraday and not np.isnan(r_vwap):
-            vwap_pos = r_close > r_vwap
-            vwap_str = f"Fiyat VWAP {'üstünde ✅' if vwap_pos else 'altında ❌'} | VWAP: {r_vwap:.2f}"
-            vwap_dec = "AL" if r_vwap_sig == 1 else ("SAT" if r_vwap_sig == -1 else "NÖTR")
-            steps.append({
-                "Adım": "5b — VWAP Seviyesi",
-                "Gösterge": "VWAP",
-                "Değer": f"VWAP: {r_vwap:.2f} | Bant: ±%{vwap_band_pct:.2f}",
-                "Yorum": vwap_str,
-                "Sinyal": vwap_dec,
-            })
-
-        # ADIM 6 — Hacim Onayı
-        obv_str = "Birikim ✅ (kısa SMA > uzun SMA)" if r_obv_sig == 1 else ("Dağıtım ❌ (kısa SMA < uzun SMA)" if r_obv_sig == -1 else "Nötr ⚪")
-        steps.append({
-            "Adım": "6 — Hacim Onayı",
-            "Gösterge": "OBV",
-            "Değer": f"Sinyal: {int(r_obv_sig)}",
-            "Yorum": obv_str,
-            "Sinyal": "AL" if r_obv_sig == 1 else ("SAT" if r_obv_sig == -1 else "NÖTR"),
-        })
-
-        # ADIM 7 — Uyarı / Divergence
-        div_rsi_str  = ("🔺 Bullish Divergence — güçlü dip sinyali" if r_div_rsi == 1
-                        else ("🔻 Bearish Divergence — zayıflama uyarısı" if r_div_rsi == -1 else "Yok ✅"))
-        div_macd_str = ("🔺 Bullish Divergence" if r_div_mac == 1
-                        else ("🔻 Bearish Divergence" if r_div_mac == -1 else "Yok ✅"))
-        div_risk  = (r_div_rsi == -1 or r_div_mac == -1)
-        div_boost = (r_div_rsi == 1  or r_div_mac == 1)
-        steps.append({
-            "Adım": "7 — Uyarı Kontrolü",
-            "Gösterge": "Divergence (RSI + MACD)",
-            "Değer": f"RSI Div: {int(r_div_rsi)} | MACD Div: {int(r_div_mac)}",
-            "Yorum": f"RSI: {div_rsi_str} | MACD: {div_macd_str}",
-            "Sinyal": "UYARI ❌" if div_risk else ("GÜÇLENDIRICI ✅" if div_boost else "TEMİZ ✅"),
-        })
-
-        report_df = pd.DataFrame(steps)
-
-        def report_color(val):
-            if "AL" in str(val) and "SAT" not in str(val): return "color: #00ff00; font-weight: bold"
-            if "SAT" in str(val):    return "color: #ff4b4b; font-weight: bold"
-            if "UYARI" in str(val):  return "color: #ff4b4b; font-weight: bold"
-            if "TEMİZ" in str(val) or "GÜÇLEND" in str(val): return "color: #00bfff; font-weight: bold"
-            if "NÖTR" in str(val) or "BEKLE" in str(val):    return "color: #aaaaaa"
-            if "ZAYIF" in str(val):  return "color: #ffaa00; font-weight: bold"
-            if "GÜÇLÜ" in str(val):  return "color: #00ff00; font-weight: bold"
-            return ""
-
-        st.dataframe(
-            report_df.style.map(report_color, subset=["Sinyal"]),
-            use_container_width=True, hide_index=True
-        )
+        c2.metric("Zaman Dilimi", f"{interval}")
 
         # ============================================================
         # 🎯 KOMBİNE SİNYAL SKORU
@@ -3655,6 +3381,295 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             score_df.style.map(score_color, subset=["Puan"]),
             use_container_width=True, hide_index=True
         )
+
+        st.subheader("🔍 Algoritmik Detaylar")
+        res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])
+
+        def color_map(val):
+            if val == "AL":    return "color: #00ff00; font-weight: bold"
+            if val == "SAT":   return "color: #ff4b4b; font-weight: bold"
+            if val == "N/A":   return "color: #ffaa00; font-weight: bold"
+            if val == "BİLGİ": return "color: #00bfff; font-weight: bold"
+            if "düşük vol." in str(val): return "color: #808495; font-style: italic"
+            return "color: #808495; font-weight: bold"
+
+        st.table(res_df.style.map(color_map, subset=["Karar"]))
+
+        # ============================================================
+        # BİREYSEL BACKTEST TABLOSU
+        # ============================================================
+        st.write("---")
+        st.header("📊 Bireysel Algoritma Backtesti (Güncel Parametrelerle)")
+        st.caption("⚠️ Geçmiş performans gelecekteki sonuçların garantisi değildir.")
+
+        algo_signal_map = {
+            f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})":                                    "Sig_SMA",
+            f"RSI (p={p_rsi['rsi_period']} [{p_rsi['rsi_lower']}/{p_rsi['rsi_upper']}])":  "Sig_RSI",
+            f"Bollinger Bands (p={p_bb['bb_period']}, σ={p_bb['bb_std']})":                "Sig_BB",
+            f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{p_macd['macd_signal']})": "Sig_MACD",
+            f"Mean Reversion (p={p_z['z_period']}, z={p_z['z_thresh']})":                  "Sig_Z",
+            "OBV":                                                                           "Sig_OBV",
+            f"ADX (p={p_adx['adx_period']}, eşik={p_adx['adx_threshold']})":              "Sig_ADX",
+            "Stoch RSI":                                                                     "Sig_StochRSI",
+            "Ichimoku":                                                                      "Sig_Ichimoku",
+            "KAMA":                                                                          "Sig_KAMA",
+            f"SuperTrend (p={p_st['st_period']}, x{p_st['st_multiplier']})":               "Sig_SuperTrend",
+            f"LR Channel (p={p_lrc['lrc_period']}, σ={p_lrc['lrc_std_mult']})":           "Sig_LRC",
+            f"WaveTrend ({p_wt['wt_n1']}/{p_wt['wt_n2']})":                               "Sig_WaveTrend",
+        }
+        if is_intraday:
+            algo_signal_map["VWAP"] = "Sig_VWAP"
+
+        algo_results = []
+        for algo_name, sig_col in algo_signal_map.items():
+            if sig_col not in df.columns:
+                continue
+            stats = run_backtest(df[sig_col], close_arr, cost_pct,
+                                 bars_per_year=bars_per_year_from_interval(interval))
+            algo_results.append({
+                "Algoritma":       algo_name,
+                "Trade":           stats["n"],
+                "Getiri (%)":      round(stats["total_ret"], 2),
+                "Win Rate (%)":    round(stats["win_rate"],  1),
+                "Ort. Kazanç (%)": round(stats["avg_win"],  2),
+                "Ort. Kayıp (%)":  round(stats["avg_loss"], 2),
+                "Max DD (%)":      round(stats["max_dd"],   2),
+                "Profit Factor":   round(stats["pf"], 2) if stats["pf"] != float("inf") else "∞",
+            })
+
+        if algo_results:
+            algo_df = pd.DataFrame(algo_results)
+            active  = algo_df[algo_df["Trade"] > 0].copy()
+            if not active.empty:
+                best = active.loc[active["Getiri (%)"].idxmax()]
+                st.success(
+                    f"🥇 En iyi: **{best['Algoritma']}** — "
+                    f"Getiri: %{best['Getiri (%)']}, "
+                    f"Win Rate: %{best['Win Rate (%)']}, "
+                    f"{int(best['Trade'])} trade")
+            def ret_color(val):
+                if isinstance(val, (int, float)):
+                    if val > 0: return "color: #00ff00"
+                    if val < 0: return "color: #ff4b4b"
+                return ""
+            st.dataframe(algo_df.style.map(ret_color, subset=["Getiri (%)"]),
+                         use_container_width=True, hide_index=True)
+        else:
+            st.info("Algoritma performansı hesaplanamadı.")
+
+        # ============================================================
+        # OPTİMİZASYON ÖZET TABLOSU
+        # ============================================================
+        st.write("---")
+        st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
+        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe (yıllıklandırılmış, **out-of-sample**)")
+
+        def opt_color(val):
+            try:
+                v = float(val)
+            except (ValueError, TypeError):
+                return ""
+            if not np.isfinite(v):   return "color: #888888"
+            if v > 0:  return "color: #00ff00"
+            if v < 0:  return "color: #ff4b4b"
+            return "color: #888888"  # sıfır için gri — koyu arka planda görünür
+
+        def pval_color(val):
+            try:
+                v = float(val)
+            except (ValueError, TypeError):
+                return ""
+            if not np.isfinite(v): return "color: #888888"
+            if v < 0.05:  return "color: #00ff00; font-weight: bold"   # anlamlı
+            if v < 0.10:  return "color: #ffcc00"                       # sınırda
+            return "color: #aaaaaa"                                     # anlamsız
+
+        def _safe_round(x, nd=2, default=0.0):
+            try:
+                v = float(x)
+                if not np.isfinite(v):
+                    return default
+                return round(v, nd)
+            except (ValueError, TypeError):
+                return default
+
+        opt_rows  = []
+        for algo_name, grid in PARAM_GRIDS.items():
+            p = opt_params.get(algo_name, {})
+            s = opt_stats.get(algo_name, {})
+            row = {"Algoritma": algo_name}
+            param_str            = "  |  ".join(f"{k} = {v}" for k, v in p.items())
+            row["Parametreler"]  = param_str
+            row["Getiri (%)"]    = _safe_round(s.get("total_ret", 0), 2)
+            row["Sharpe (OOS)"]  = _safe_round(s.get("sharpe",    0), 2)
+            row["DSR"]           = _safe_round(s.get("dsr", np.nan), 2, default=np.nan)
+            row["Trade"]         = int(s.get("n", 0) or 0)
+            row["Win Rate (%)"]  = _safe_round(s.get("win_rate",  0), 1)
+            sel = s.get("wf_selections", 0); wins = s.get("wf_windows", 0)
+            row["Seçim"]         = f"{sel}/{wins}" if wins else "—"
+            row["p-değeri"]      = _safe_round(s.get("p_value", np.nan), 4, default=np.nan)
+            opt_rows.append(row)
+
+        opt_df     = pd.DataFrame(opt_rows)
+        color_cols = [c for c in ["Getiri (%)", "Sharpe (OOS)", "DSR"] if c in opt_df.columns]
+        fmt        = {"Getiri (%)": "{:.2f}", "Sharpe (OOS)": "{:.2f}", "DSR": "{:.2f}",
+                      "Win Rate (%)": "{:.1f}", "p-değeri": "{:.3f}"}
+        fmt        = {k: v for k, v in fmt.items() if k in opt_df.columns}
+        styled = opt_df.style.format(fmt, na_rep="—").map(opt_color, subset=color_cols)
+        if "p-değeri" in opt_df.columns:
+            styled = styled.map(pval_color, subset=["p-değeri"])
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.caption(
+            "💡 **Sharpe (OOS)**: Yalnız out-of-sample test dilimlerinden yıllıklandırılmış risk ayarlı getiri. "
+            "**DSR** (Deflated Sharpe Ratio — Bailey & López de Prado 2014): Multiple testing "
+            "cezası çıkarılmış. **DSR > 0** → gerçekten rastgeleden iyi; **DSR ≤ 0** → yüksek Sharpe "
+            "muhtemelen şans eseri. **p-değeri** (Stationary Bootstrap — Politis & Romano 1994): "
+            "< 0.05 → sinyal istatistiksel olarak anlamlı. **Seçim k/n** → kombonun n expanding "
+            "adımında k tanesinde train-kazananı olduğu."
+        )
+
+        # ============================================================
+        # RAPOR BÖLÜMÜ
+        # ============================================================
+        st.write("---")
+        st.header("📋 Teknik Analiz Raporu")
+        st.caption("Kural tabanlı otomatik analiz. Yatırım tavsiyesi içermez.")
+
+        steps = []
+
+        # ADIM 1 — Büyük Resim (EMA200 eklendi)
+        kama_pos  = "ÜSTÜNDE ✅" if r_close > r_kama else "ALTINDA ❌"
+        st_signal = "AL ✅" if r_std == 1 else "SAT ❌"
+        poc_dist  = abs(r_close - poc_price) / r_close * 100
+        ema200_pos = "üstünde ✅" if r_close > r_ema200 else "altında ❌"
+        steps.append({
+            "Adım": "1 — Büyük Resim",
+            "Gösterge": "Fiyat / KAMA / EMA200 / SuperTrend / POC",
+            "Değer": f"Fiyat: {r_close:.2f} | KAMA: {r_kama:.2f} | EMA200: {r_ema200:.2f} | POC: {poc_price:.2f} (%{poc_dist:.1f} uzakta)",
+            "Yorum": f"Fiyat KAMA'nın {kama_pos} | EMA200 {ema200_pos} | SuperTrend: {st_signal} | En yakın Fib: {r_fib_closest[0]} ({r_fib_closest[1]:.2f})",
+            "Sinyal": "AL" if (r_close > r_kama and r_std == 1 and r_close > r_ema200)
+                      else ("SAT" if (r_close < r_kama and r_std == -1 and r_close < r_ema200) else "NÖTR"),
+        })
+
+        # ADIM 2 — Trend Gücü
+        if not np.isnan(r_adx):
+            adx_str  = f"ADX: {r_adx:.1f}"
+            adx_sig  = "GÜÇLÜ TREND ✅" if r_adx > adx_threshold else "ZAYIF / YATAY ⚠️"
+            adx_hint = "Trend sinyallerine güven" if r_adx > adx_threshold else "Mean-reversion sinyallerine ağırlık ver"
+            steps.append({
+                "Adım": "2 — Trend Gücü",
+                "Gösterge": "ADX",
+                "Değer": f"{adx_str} (eşik: {adx_threshold})",
+                "Yorum": f"{adx_sig} — {adx_hint}",
+                "Sinyal": "GÜÇLÜ" if r_adx > adx_threshold else "ZAYIF",
+            })
+        else:
+            steps.append({"Adım": "2 — Trend Gücü", "Gösterge": "ADX",
+                          "Değer": "N/A", "Yorum": "Yetersiz veri", "Sinyal": "N/A"})
+
+        # ADIM 3 — Trend Yönü
+        macd_pos  = r_macd > r_macds
+        ichi_bull = r_ichi == 1
+        ichi_bear = r_ichi == -1
+        macd_str  = "Pozitif ✅" if macd_pos else "Negatif ❌"
+        ichi_str  = "Boğa ✅" if ichi_bull else ("Ayı ❌" if ichi_bear else "Nötr ⚠️")
+        trend_sig = "AL" if (macd_pos and ichi_bull) else ("SAT" if (not macd_pos and ichi_bear) else "NÖTR")
+        steps.append({
+            "Adım": "3 — Trend Yönü",
+            "Gösterge": "MACD + Ichimoku",
+            "Değer": f"MACD: {r_macd:.4f} | Sinyal: {r_macds:.4f}",
+            "Yorum": f"MACD: {macd_str} | Ichimoku: {ichi_str}",
+            "Sinyal": trend_sig,
+        })
+
+        # ADIM 4 — Giriş Noktası
+        rsi_os    = r_rsi < rsi_lower
+        rsi_ob    = r_rsi > rsi_upper
+        stk_os    = r_stk < stoch_lower
+        stk_ob    = r_stk > stoch_upper
+        rsi_str   = f"Aşırı Satım ✅ ({r_rsi:.1f})" if rsi_os else (f"Aşırı Alım ❌ ({r_rsi:.1f})" if rsi_ob else f"Nötr ({r_rsi:.1f})")
+        stk_str   = f"Aşırı Satım ✅ ({r_stk:.1f})" if stk_os else (f"Aşırı Alım ❌ ({r_stk:.1f})" if stk_ob else f"Nötr ({r_stk:.1f})")
+        entry_sig = "AL" if (rsi_os or stk_os) else ("SAT" if (rsi_ob or stk_ob) else "BEKLE")
+        steps.append({
+            "Adım": "4 — Giriş Noktası",
+            "Gösterge": "RSI + Stoch RSI",
+            "Değer": f"RSI: {r_rsi:.1f} | Stoch %K: {r_stk:.1f}",
+            "Yorum": f"RSI: {rsi_str} | Stoch RSI: {stk_str}",
+            "Sinyal": entry_sig,
+        })
+
+        # ADIM 5 — Seviye Teyidi (S/R eklendi)
+        lrc_str   = "Alt banda yakın ✅" if r_lrc_sig == 1 else ("Üst banda yakın ❌" if r_lrc_sig == -1 else "Kanal ortası ⚪")
+        nw_str    = ("Üst zarfın üstünde ❌" if r_close > r_nw_up
+                     else ("Alt zarfın altında ✅" if r_close < r_nw_lo else "Zarf içinde ⚪"))
+        sr_note   = ""
+        if swing_levels:
+            csr      = min(swing_levels, key=lambda x: abs(x["price"] - r_close))
+            sr_note  = f" | En yakın {'Destek ✅' if csr['type']=='S' else 'Direnç ❌'}: {csr['price']:.2f} ({csr['touches']}x)"
+        level_sig = "AL" if (r_lrc_sig == 1 or r_close < r_nw_lo) else ("SAT" if (r_lrc_sig == -1 or r_close > r_nw_up) else "NÖTR")
+        steps.append({
+            "Adım": "5 — Seviye Teyidi",
+            "Gösterge": "LR Channel + NW + S/R",
+            "Değer": f"LRC Alt: {r_lrc_lo:.2f} | LRC Üst: {r_lrc_up:.2f} | NW: {r_nw:.2f}",
+            "Yorum": f"LRC: {lrc_str} | NW: {nw_str}{sr_note}",
+            "Sinyal": level_sig,
+        })
+
+        # ADIM 5b — VWAP
+        if is_intraday and not np.isnan(r_vwap):
+            vwap_pos = r_close > r_vwap
+            vwap_str = f"Fiyat VWAP {'üstünde ✅' if vwap_pos else 'altında ❌'} | VWAP: {r_vwap:.2f}"
+            vwap_dec = "AL" if r_vwap_sig == 1 else ("SAT" if r_vwap_sig == -1 else "NÖTR")
+            steps.append({
+                "Adım": "5b — VWAP Seviyesi",
+                "Gösterge": "VWAP",
+                "Değer": f"VWAP: {r_vwap:.2f} | Bant: ±%{vwap_band_pct:.2f}",
+                "Yorum": vwap_str,
+                "Sinyal": vwap_dec,
+            })
+
+        # ADIM 6 — Hacim Onayı
+        obv_str = "Birikim ✅ (kısa SMA > uzun SMA)" if r_obv_sig == 1 else ("Dağıtım ❌ (kısa SMA < uzun SMA)" if r_obv_sig == -1 else "Nötr ⚪")
+        steps.append({
+            "Adım": "6 — Hacim Onayı",
+            "Gösterge": "OBV",
+            "Değer": f"Sinyal: {int(r_obv_sig)}",
+            "Yorum": obv_str,
+            "Sinyal": "AL" if r_obv_sig == 1 else ("SAT" if r_obv_sig == -1 else "NÖTR"),
+        })
+
+        # ADIM 7 — Uyarı / Divergence
+        div_rsi_str  = ("🔺 Bullish Divergence — güçlü dip sinyali" if r_div_rsi == 1
+                        else ("🔻 Bearish Divergence — zayıflama uyarısı" if r_div_rsi == -1 else "Yok ✅"))
+        div_macd_str = ("🔺 Bullish Divergence" if r_div_mac == 1
+                        else ("🔻 Bearish Divergence" if r_div_mac == -1 else "Yok ✅"))
+        div_risk  = (r_div_rsi == -1 or r_div_mac == -1)
+        div_boost = (r_div_rsi == 1  or r_div_mac == 1)
+        steps.append({
+            "Adım": "7 — Uyarı Kontrolü",
+            "Gösterge": "Divergence (RSI + MACD)",
+            "Değer": f"RSI Div: {int(r_div_rsi)} | MACD Div: {int(r_div_mac)}",
+            "Yorum": f"RSI: {div_rsi_str} | MACD: {div_macd_str}",
+            "Sinyal": "UYARI ❌" if div_risk else ("GÜÇLENDIRICI ✅" if div_boost else "TEMİZ ✅"),
+        })
+
+        report_df = pd.DataFrame(steps)
+
+        def report_color(val):
+            if "AL" in str(val) and "SAT" not in str(val): return "color: #00ff00; font-weight: bold"
+            if "SAT" in str(val):    return "color: #ff4b4b; font-weight: bold"
+            if "UYARI" in str(val):  return "color: #ff4b4b; font-weight: bold"
+            if "TEMİZ" in str(val) or "GÜÇLEND" in str(val): return "color: #00bfff; font-weight: bold"
+            if "NÖTR" in str(val) or "BEKLE" in str(val):    return "color: #aaaaaa"
+            if "ZAYIF" in str(val):  return "color: #ffaa00; font-weight: bold"
+            if "GÜÇLÜ" in str(val):  return "color: #00ff00; font-weight: bold"
+            return ""
+
+        st.dataframe(
+            report_df.style.map(report_color, subset=["Sinyal"]),
+            use_container_width=True, hide_index=True
+        )
+
 
         st.write("---")
         st.subheader("📝 Özet")

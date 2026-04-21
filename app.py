@@ -3372,9 +3372,42 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         la2 = safe_scalar(last["ATR"])
         lam = safe_scalar(atr_ma.iloc[-1])
-        if not np.isnan(la2):
-            res.append(["BİLGİ", "ATR Filtre",
-                f"Volatilite: {'Yüksek ↑' if last_ath else 'Düşük ↓'} | ATR: {la2:.2f} | MA: {lam:.2f}"])
+        if not np.isnan(la2) and not np.isnan(lam):
+            # 1) Yüzde fark (MA'ya göre)
+            if lam > 0:
+                pct_diff = (la2 - lam) / lam * 100
+                if last_ath:
+                    pct_str = f"Yüksek ↑ (%{abs(pct_diff):.1f} üstü MA'dan)"
+                else:
+                    pct_str = f"Düşük ↓ (%{abs(pct_diff):.1f} altı MA'dan)"
+            else:
+                pct_str = "Yüksek ↑" if last_ath else "Düşük ↓"
+
+            # 2) Son 5 bar volatilite yönü (artıyor mu azalıyor mu)
+            atr_vals = atr_series.values
+            if len(atr_vals) >= 6:
+                recent       = atr_vals[-5:]
+                older        = atr_vals[-6:-1]
+                avg_recent   = float(np.nanmean(recent))
+                avg_older    = float(np.nanmean(older))
+                if np.isfinite(avg_recent) and np.isfinite(avg_older) and avg_older > 0:
+                    change_pct = (avg_recent - avg_older) / avg_older * 100
+                    if change_pct > 2:
+                        trend_str = "Son 5 bar: yükseliyor ↗ (patlama yakın olabilir)"
+                    elif change_pct < -2:
+                        trend_str = "Son 5 bar: düşüyor ↘ (sıkışma derinleşiyor)"
+                    else:
+                        trend_str = "Son 5 bar: stabil →"
+                else:
+                    trend_str = ""
+            else:
+                trend_str = ""
+
+            parts = [f"Volatilite: {pct_str}", f"ATR: {la2:.2f}", f"MA: {lam:.2f}"]
+            if trend_str:
+                parts.append(trend_str)
+            atr_desc = " | ".join(parts)
+            res.append(["BİLGİ", "ATR Filtre", atr_desc])
         else:
             res.append(["N/A", "ATR Filtre", "Yetersiz veri."])
 

@@ -3414,11 +3414,49 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         lnw = safe_scalar(last["NW_Line"])
         lnu = safe_scalar(last["NW_Upper"])
         lnl = safe_scalar(last["NW_Lower"])
-        if not np.isnan(lnw):
-            if last_close > lnu:   nw_note = "Üst zarfın üstünde (aşırı alım)"
-            elif last_close < lnl: nw_note = "Alt zarfın altında (aşırı satım)"
-            else:                  nw_note = f"Zarf içinde. NW: {lnw:.2f}"
-            res.append(["BİLGİ", "Nadaraya-Watson", nw_note])
+        if not np.isnan(lnw) and not np.isnan(lnu) and not np.isnan(lnl):
+            # 1) Fiyat-NW ilişkisi + yüzde uzaklık
+            if lnw > 0:
+                dist_pct_nw = (last_close - lnw) / lnw * 100
+                if last_close > lnw:
+                    rel_nw = f"Fiyat {last_close:.2f} > NW {lnw:.2f} (+%{dist_pct_nw:.2f})"
+                elif last_close < lnw:
+                    rel_nw = f"Fiyat {last_close:.2f} < NW {lnw:.2f} ({dist_pct_nw:+.2f}%)"
+                else:
+                    rel_nw = f"Fiyat = NW ({lnw:.2f})"
+            else:
+                rel_nw = f"NW: {lnw:.2f}"
+
+            # 2) Zarf pozisyonu
+            if last_close > lnu:
+                zarf_desc = f"ÜST zarf üstünde ({lnu:.2f}) ❌ aşırı alım"
+            elif last_close < lnl:
+                zarf_desc = f"ALT zarf altında ({lnl:.2f}) ✅ aşırı satım"
+            else:
+                zarf_desc = f"Zarf içinde (üst: {lnu:.2f} / alt: {lnl:.2f})"
+
+            # 3) NW çizgisinin yönü (son 3 bar bakış)
+            nw_series = df["NW_Line"].values
+            if len(nw_series) >= 4:
+                recent_nw = nw_series[-3:]
+                older_nw  = nw_series[-4:-1]
+                if np.all(np.isfinite(recent_nw)) and np.all(np.isfinite(older_nw)):
+                    if np.mean(recent_nw) > np.mean(older_nw):
+                        yon_nw = "NW yönü: yukarı ↗"
+                    elif np.mean(recent_nw) < np.mean(older_nw):
+                        yon_nw = "NW yönü: aşağı ↘"
+                    else:
+                        yon_nw = "NW yönü: yatay →"
+                else:
+                    yon_nw = ""
+            else:
+                yon_nw = ""
+
+            parts = [rel_nw, zarf_desc]
+            if yon_nw:
+                parts.append(yon_nw)
+            nw_desc = " | ".join(parts)
+            res.append(["BİLGİ", "Nadaraya-Watson", nw_desc])
         else:
             res.append(["N/A", "Nadaraya-Watson", "Yetersiz veri."])
 

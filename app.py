@@ -3176,12 +3176,63 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         else:
             res.append(["N/A", "Stoch RSI", "Yetersiz veri."])
 
+        # ───────── Ichimoku zenginleştirilmiş satır ─────────
         lis = safe_scalar(last["Sig_Ichimoku"])
-        if not last_ath and lis != 0:
-            res.append(["TUT (düşük vol.)", "Ichimoku", "ATR filtresi aktif."])
-        elif lis == 1:  res.append(["AL",  "Ichimoku", "Tenkan > Kijun, fiyat bulut üstünde."])
-        elif lis == -1: res.append(["SAT", "Ichimoku", "Tenkan < Kijun, fiyat bulut altında."])
-        else:           res.append(["TUT", "Ichimoku", "Karışık sinyal / bulut içinde."])
+        l_tenkan = safe_scalar(last["Tenkan"])
+        l_kijun  = safe_scalar(last["Kijun"])
+        l_seka   = safe_scalar(last["Senkou_A"])
+        l_sekb   = safe_scalar(last["Senkou_B"])
+
+        if any(np.isnan([l_tenkan, l_kijun, l_seka, l_sekb])):
+            # Senkou'lar 26 bar ileri kaydırıldığı için başlarda NaN olabilir
+            res.append(["N/A", "Ichimoku", "Yetersiz veri (Senkou henüz hesaplanmadı)."])
+        else:
+            # 1) Tenkan-Kijun ilişkisi
+            if l_tenkan > l_kijun:
+                tk_rel = f"T:{l_tenkan:.1f} > K:{l_kijun:.1f} ↑"
+            elif l_tenkan < l_kijun:
+                tk_rel = f"T:{l_tenkan:.1f} < K:{l_kijun:.1f} ↓"
+            else:
+                tk_rel = f"T:{l_tenkan:.1f} = K:{l_kijun:.1f}"
+
+            # 2) Fiyat - Bulut pozisyonu
+            cloud_top    = max(l_seka, l_sekb)
+            cloud_bottom = min(l_seka, l_sekb)
+            if last_close > cloud_top:
+                cloud_pos = "Bulut ÜSTÜNDE ✅"
+            elif last_close < cloud_bottom:
+                cloud_pos = "Bulut ALTINDA ❌"
+            else:
+                cloud_pos = "Bulut İÇİNDE ⚪"
+
+            # 3) Bulut rengi (Senkou A vs B)
+            cloud_color = "Yeşil 🟢" if l_seka > l_sekb else ("Kırmızı 🔴" if l_seka < l_sekb else "Eşit ⚪")
+
+            # 4) Rejim bazlı dinamik uyarı (ADX'e göre)
+            #    Adaptif eşik kullanıyoruz — tutarlılık için
+            if not np.isnan(la):
+                if la > adx_threshold_adaptive:
+                    regime_note = f"✅ Trend piyasa — sinyal güvenilir (ADX: {la:.1f})"
+                elif la < max(adx_threshold_adaptive - 5, 15):
+                    regime_note = f"⚠️ Yatay piyasada aldatıcı (ADX: {la:.1f})"
+                else:
+                    regime_note = f"⏸ Geçiş rejimi (ADX: {la:.1f})"
+            else:
+                regime_note = ""
+
+            # Karar + açıklama birleşimi
+            desc = f"{tk_rel} | {cloud_pos} | {cloud_color}"
+            if regime_note:
+                desc += f" | {regime_note}"
+
+            if not last_ath and lis != 0:
+                res.append(["TUT (düşük vol.)", "Ichimoku", desc + " | ATR filtresi aktif."])
+            elif lis == 1:
+                res.append(["AL",  "Ichimoku", desc])
+            elif lis == -1:
+                res.append(["SAT", "Ichimoku", desc])
+            else:
+                res.append(["TUT", "Ichimoku", desc])
 
         lk = safe_scalar(last["KAMA"])
         if not np.isnan(lk):

@@ -3103,6 +3103,47 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         def trend_dec(raw_dec, atr_ok):
             return raw_dec if atr_ok else "TUT (düşük vol.)"
 
+        # ── Hiyerarşi satırı: SMA/EMA/KAMA/Fiyat sıralaması ──
+        # Kullanıcıya "her şey nerede" tek bakışta göstersin (bullish/bearish hizalama)
+        hiyerarsi_items = []
+        lss_h = safe_scalar(last["SMA_SHORT"])
+        lsl_h = safe_scalar(last["SMA_LONG"])
+        lk_h  = safe_scalar(last["KAMA"])
+        le_h  = safe_scalar(last["EMA200"])
+        ls200 = safe_scalar(last["SMA200"]) if "SMA200" in df.columns else np.nan
+
+        if not np.isnan(lss_h): hiyerarsi_items.append((f"SMA{p_sma['sma_s']}",  lss_h))
+        hiyerarsi_items.append(("Fiyat", last_close))
+        if not np.isnan(lsl_h): hiyerarsi_items.append((f"SMA{p_sma['sma_l']}",  lsl_h))
+        if not np.isnan(lk_h):  hiyerarsi_items.append(("KAMA",                  lk_h))
+        if not np.isnan(ls200): hiyerarsi_items.append(("SMA200",                ls200))
+        if not np.isnan(le_h):  hiyerarsi_items.append(("EMA200",                le_h))
+
+        # Değere göre büyükten küçüğe sırala
+        hiyerarsi_items.sort(key=lambda x: x[1], reverse=True)
+        hiyerarsi_str = " > ".join(
+            f"**{name}** ({val:.2f})" if name == "Fiyat" else f"{name} ({val:.2f})"
+            for name, val in hiyerarsi_items
+        )
+
+        # Tüm ortalamalar fiyatın altında → bullish hizalama (trend yukarı)
+        # Tüm ortalamalar fiyatın üstünde → bearish hizalama (trend aşağı)
+        fiyat_idx = next((i for i, (n, _) in enumerate(hiyerarsi_items) if n == "Fiyat"), -1)
+        total     = len(hiyerarsi_items) - 1  # fiyat hariç
+        if fiyat_idx == 0:
+            hiz_desc = "🟢 Güçlü Bullish hizalama (fiyat tüm ortalamaların üstünde)"
+        elif fiyat_idx == len(hiyerarsi_items) - 1:
+            hiz_desc = "🔴 Güçlü Bearish hizalama (fiyat tüm ortalamaların altında)"
+        elif fiyat_idx <= total / 3:
+            hiz_desc = "🟢 Zayıf Bullish (fiyat ortalamaların büyük kısmının üstünde)"
+        elif fiyat_idx >= 2 * total / 3:
+            hiz_desc = "🔴 Zayıf Bearish (fiyat ortalamaların büyük kısmının altında)"
+        else:
+            hiz_desc = "⚪ Karışık / geçiş (fiyat ortalar arasında)"
+
+        res.append(["BİLGİ", "📊 Hiyerarşi", f"{hiyerarsi_str} | {hiz_desc}"])
+        # ──────────────────────────────────────────────────────────
+
         lss = safe_scalar(last["SMA_SHORT"])
         lsl = safe_scalar(last["SMA_LONG"])
         if not (np.isnan(lss) or np.isnan(lsl)):

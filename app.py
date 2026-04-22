@@ -2074,6 +2074,9 @@ if ticker:
         df["Sig_SMA"], df["SMA_SHORT"], df["SMA_LONG"] = sig_sma(
             close, atr_high, p_sma["sma_s"], p_sma["sma_l"])
 
+        # SMA 200 (EMA 200 ile karşılaştırma için — daha yavaş, daha stabil)
+        df["SMA200"] = close.rolling(200, min_periods=200).mean()
+
         df["Sig_RSI"], df["RSI"] = sig_rsi_fn(
             close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"])
         df["RSI_MA"] = df["RSI"].rolling(rsi_ma_period).mean()
@@ -2258,6 +2261,13 @@ if ticker:
             x=df.index, y=df["EMA200"],
             name="EMA 200",
             line=dict(color="yellow", width=2, dash="dot"),
+            visible="legendonly",
+        ), row=1, col=1)
+        # SMA 200 — daha stabil, EMA'ya göre yavaş, uzun vade referansı
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["SMA200"],
+            name="SMA 200",
+            line=dict(color="gold", width=2, dash="solid"),
             visible="legendonly",
         ), row=1, col=1)
         # ──────────────────────────────────────────────────────────

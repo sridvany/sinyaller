@@ -3822,68 +3822,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             "adımında k tanesinde train-kazananı olduğu."
         )
 
-        st.write("---")
-        st.subheader("📝 Özet")
-        ozet_parcalar = []
-
-        # ── Özet için türetilen değişkenler ──
-        macd_pos  = (not np.isnan(r_macd)) and (not np.isnan(r_macds)) and r_macd > r_macds
-        rsi_os    = (not np.isnan(r_rsi)) and r_rsi < rsi_lower
-        rsi_ob    = (not np.isnan(r_rsi)) and r_rsi > rsi_upper
-        div_risk  = (r_div_rsi == -1) or (r_div_mac == -1)
-        div_boost = (r_div_rsi == 1)  or (r_div_mac == 1)
-
-        if r_adx > adx_threshold_adaptive:
-            ozet_parcalar.append(f"ADX {r_adx:.1f} ile **güçlü bir trend** mevcut.")
-        else:
-            ozet_parcalar.append(f"ADX {r_adx:.1f} — piyasa **yatay seyirde**, mean-reversion sinyalleri daha geçerli.")
-
-        if not np.isnan(r_ema200):
-            if r_close > r_ema200:
-                ozet_parcalar.append(f"Fiyat EMA200 ({r_ema200:.2f}) üstünde — **uzun vadeli trend pozitif**.")
-            else:
-                ozet_parcalar.append(f"Fiyat EMA200 ({r_ema200:.2f}) altında — **uzun vadeli trend negatif**.")
-
-        if r_std == 1:
-            ozet_parcalar.append("SuperTrend **AL** konumunda, yükseliş trendi destekleniyor.")
-        else:
-            ozet_parcalar.append("SuperTrend **SAT** konumunda, düşüş baskısı var.")
-
-        if macd_pos:
-            ozet_parcalar.append("MACD pozitif — momentum yukarı yönlü.")
-        else:
-            ozet_parcalar.append("MACD negatif — momentum aşağı yönlü.")
-
-        if rsi_os:
-            ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı satım** bölgesinde — potansiyel giriş noktası.")
-        elif rsi_ob:
-            ozet_parcalar.append(f"RSI {r_rsi:.1f} ile **aşırı alım** bölgesinde — dikkatli olunmalı.")
-
-        if swing_levels:
-            csr = min(swing_levels, key=lambda x: abs(x["price"] - r_close))
-            dist = abs(csr["price"] - r_close) / r_close * 100
-            ozet_parcalar.append(
-                f"En yakın {'destek' if csr['type']=='S' else 'direnç'}: "
-                f"**{csr['price']:.2f}** (%{dist:.1f} uzakta, {csr['touches']}x test edilmiş).")
-
-        if is_intraday and not np.isnan(r_vwap):
-            if r_close > r_vwap:
-                ozet_parcalar.append(f"Fiyat VWAP ({r_vwap:.2f}) üstünde — intraday momentum pozitif.")
-            else:
-                ozet_parcalar.append(f"Fiyat VWAP ({r_vwap:.2f}) altında — intraday baskı var.")
-
-        if r_obv_sig == 1:
-            ozet_parcalar.append("OBV birikim sinyali veriyor — hacim fiyatı destekliyor.")
-        elif r_obv_sig == -1:
-            ozet_parcalar.append("OBV dağıtım sinyali veriyor — hacim zayıflıyor.")
-
-        if div_risk:
-            ozet_parcalar.append("⚠️ **Bearish divergence** tespit edildi — mevcut sinyaller zayıflayabilir.")
-        if div_boost:
-            ozet_parcalar.append("🔺 **Bullish divergence** mevcut — AL sinyalini güçlendiriyor.")
-
-        st.markdown(" ".join(ozet_parcalar))
-
         # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
         # ============================================================

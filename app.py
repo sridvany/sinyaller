@@ -2637,9 +2637,22 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         # ============================================================
         # ALT GRAFİKLER
         # ============================================================
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
-            "RSI", "MACD", "ADX", "OBV", "Stoch RSI", "Ichimoku", "SuperTrend",
-            "KAMA & LRC", "Nadaraya-Watson", "WaveTrend", "Divergence"])
+        tab_nw, tab_adx, tab_ichi, tab_kama, tab_st, tab_rsi, tab_macd, tab_obv, tab_stoch, tab_wt, tab_div = st.tabs([
+            "Nadaraya-Watson", "ADX", "Ichimoku", "KAMA & LRC", "SuperTrend",
+            "RSI", "MACD", "OBV", "Stoch RSI", "WaveTrend", "Divergence"])
+
+        # Eski tab1..tab11 değişken isimlerini koru (içerik bloklarını değiştirmemek için)
+        tab1  = tab_rsi
+        tab2  = tab_macd
+        tab3  = tab_adx
+        tab4  = tab_obv
+        tab5  = tab_stoch
+        tab6  = tab_ichi
+        tab7  = tab_st
+        tab8  = tab_kama
+        tab9  = tab_nw
+        tab10 = tab_wt
+        tab11 = tab_div
 
         with tab1:
             f = go.Figure()

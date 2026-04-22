@@ -3121,8 +3121,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         # Değere göre büyükten küçüğe sırala
         hiyerarsi_items.sort(key=lambda x: x[1], reverse=True)
-        hiyerarsi_str = " | ".join(
-            f"**{name}: {val:.0f}**" if name == "Fiyat" else f"{name}: {val:.0f}"
+        hiyerarsi_str = " > ".join(
+            f"**{name}** ({val:.2f})" if name == "Fiyat" else f"{name} ({val:.2f})"
             for name, val in hiyerarsi_items
         )
 

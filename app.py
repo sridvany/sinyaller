@@ -2800,11 +2800,41 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 low=df["Low"], close=df["Close"], name="Fiyat"))
             f.add_trace(go.Scatter(x=df.index, y=df["Tenkan"], name="Tenkan-sen", line=dict(color="cyan",  width=1)))
             f.add_trace(go.Scatter(x=df.index, y=df["Kijun"],  name="Kijun-sen",  line=dict(color="red",   width=1)))
+
+            # Senkou A ve B çizgileri (görsel referans)
             f.add_trace(go.Scatter(x=df.index, y=df["Senkou_A"], name="Senkou A",
-                line=dict(color="lime", width=0.5, dash="dot")))
+                line=dict(color="rgba(0,255,100,0.6)", width=0.5, dash="dot")))
             f.add_trace(go.Scatter(x=df.index, y=df["Senkou_B"], name="Senkou B",
-                line=dict(color="red", width=0.5, dash="dot"),
-                fill="tonexty", fillcolor="rgba(100,100,100,0.15)"))
+                line=dict(color="rgba(255,80,80,0.6)", width=0.5, dash="dot")))
+
+            # ── Koşullu renkli bulut (Kumo) ──
+            # Senkou A > Senkou B → YEŞİL (bullish)
+            # Senkou A < Senkou B → KIRMIZI (bearish)
+            # Plotly'de koşullu fill için her noktada "max" ve "min" çizip maskelemek gerekiyor
+            sa = df["Senkou_A"].values
+            sb = df["Senkou_B"].values
+            # Bullish maske (A > B)
+            sa_bull = np.where(sa >= sb, sa, np.nan)
+            sb_bull = np.where(sa >= sb, sb, np.nan)
+            # Bearish maske (A < B)
+            sa_bear = np.where(sa < sb,  sa, np.nan)
+            sb_bear = np.where(sa < sb,  sb, np.nan)
+
+            # Yeşil bulut (bullish)
+            f.add_trace(go.Scatter(x=df.index, y=sb_bull, name="Yeşil Bulut (A>B)",
+                line=dict(width=0), showlegend=False, hoverinfo="skip"))
+            f.add_trace(go.Scatter(x=df.index, y=sa_bull, name="Yeşil Bulut 🟢",
+                line=dict(width=0), fill="tonexty",
+                fillcolor="rgba(0,255,100,0.18)", hoverinfo="skip",
+                legendgroup="kumo_bull"))
+            # Kırmızı bulut (bearish)
+            f.add_trace(go.Scatter(x=df.index, y=sb_bear, name="Kırmızı Bulut (A<B)",
+                line=dict(width=0), showlegend=False, hoverinfo="skip"))
+            f.add_trace(go.Scatter(x=df.index, y=sa_bear, name="Kırmızı Bulut 🔴",
+                line=dict(width=0), fill="tonexty",
+                fillcolor="rgba(255,80,80,0.18)", hoverinfo="skip",
+                legendgroup="kumo_bear"))
+
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 Ichimoku Nasıl Okunur?"):

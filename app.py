@@ -2344,33 +2344,45 @@ if ticker:
                 row=1, col=1,
             )
 
-        # ── Yatay S/R çizgileri (güce göre kalınlık, break'te grileşme) ──
+        # ── Yatay S/R çizgileri (legend toggle destekli, güce göre kalınlık) ──
+        # Hepsi "Swing S/R" legend grubu altında — tek yerden aç/kapa
+        x_start = df.index[0]
+        x_end   = df.index[-1]
+        _swing_first = True
         for lvl in swing_levels:
             is_support = lvl["type"] == "S"
             t          = lvl["touches"]
             broken     = lvl.get("broken", False)
 
-            # Kalınlık: dokunuş sayısına göre (1=ince, 2=orta, 3+=kalın)
+            # Kalınlık: dokunuş sayısına göre
             width = 1 if t <= 1 else (2 if t == 2 else 3)
             # Çizgi stili
             dash  = "dash" if t <= 1 else ("dashdot" if t == 2 else "solid")
-            # Opaklık: 0.40 tabandan 0.80 tavana — görünür ama bunaltıcı değil
+            # Opaklık
             alpha = min(0.40 + 0.15 * t, 0.80)
 
             if broken:
-                # Kırılmış seviye: gri, yarı saydam
                 color = f"rgba(160,160,160,{alpha*0.6:.2f})"
+                status = " [kırık]"
             else:
                 color = (f"rgba(0,255,100,{alpha:.2f})" if is_support
                          else f"rgba(255,80,80,{alpha:.2f})")
+                status = ""
 
-            fig.add_hline(
-                y=lvl["price"],
-                line_color=color,
-                line_width=width,
-                line_dash=dash,
-                row=1, col=1,
-            )
+            sr_label = (f"{'🟢 Destek' if is_support else '🔴 Direnç'} "
+                        f"{lvl['price']:.2f} (x{t}){status}")
+
+            fig.add_trace(go.Scatter(
+                x=[x_start, x_end],
+                y=[lvl["price"], lvl["price"]],
+                mode="lines",
+                name=sr_label,
+                line=dict(color=color, width=width, dash=dash),
+                legendgroup="swing_sr",
+                legendgrouptitle_text="Swing S/R" if _swing_first else None,
+                hovertemplate=f"{sr_label}<extra></extra>",
+            ), row=1, col=1)
+            _swing_first = False
 
         # ── Diyagonal Trend Çizgileri (legend toggle destekli) ────
         for tl in trendlines:

@@ -24,6 +24,28 @@ st.markdown("""
     .block-container { padding-top: 1rem !important; }
     div[data-testid="stCaption"] { margin-top: -0.5rem; margin-bottom: -0.5rem; }
     h1 { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+
+    /* Plotly legend scrollbar — ince ve diskret */
+    .js-plotly-plot .scrollbox::-webkit-scrollbar,
+    .js-plotly-plot .legend ::-webkit-scrollbar {
+        width: 4px !important;
+        height: 4px !important;
+    }
+    .js-plotly-plot .scrollbox::-webkit-scrollbar-thumb,
+    .js-plotly-plot .legend ::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.2) !important;
+        border-radius: 2px !important;
+    }
+    .js-plotly-plot .scrollbox::-webkit-scrollbar-track,
+    .js-plotly-plot .legend ::-webkit-scrollbar-track {
+        background: transparent !important;
+    }
+    /* Firefox için */
+    .js-plotly-plot .scrollbox,
+    .js-plotly-plot .legend {
+        scrollbar-width: thin !important;
+        scrollbar-color: rgba(255,255,255,0.2) transparent !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 

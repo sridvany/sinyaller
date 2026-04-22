@@ -855,10 +855,8 @@ with st.sidebar:
     st.write("---")
     st.subheader("🔁 Walk-Forward Optimizasyon")
     n_windows = st.slider("Pencere Sayısı:", 2, 8, 3,
-        help="Veri kaç eşit parçaya bölünsün?")
-    train_pct = st.slider("Eğitim Oranı (%):", 50, 85, 70, step=5,
-        help="Her pencerenin %kaçı eğitim, kalanı test olsun?")
-    st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test")
+        help="Veri kaç eşit parçaya bölünsün? Train expanding olarak büyür.")
+    st.caption(f"{n_windows} pencere · expanding window (train büyür, test sabit boyut)")
 
     st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
@@ -1644,7 +1642,7 @@ def _score(stats, metric):
 
 
 def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
-                  n_windows=4, train_pct=70, metric="Sharpe", min_trades=5,
+                  n_windows=4, metric="Sharpe", min_trades=5,
                   bars_per_year=252, run_permutation=True, n_perm=200,
                   purge_bars=10, embargo_pct=0.01):
     """Gerçek walk-forward optimizasyon (Purging & Embargo destekli):
@@ -1980,7 +1978,7 @@ if ticker:
         # ============================================================
         # OPTİMİZASYON
         # ============================================================
-        OPT_KEY = f"opt_v6_dsr_{ticker}_{period}_{interval}_{n_windows}_{train_pct}"
+        OPT_KEY = f"opt_v6_dsr_{ticker}_{period}_{interval}_{n_windows}"
 
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}
@@ -2049,7 +2047,7 @@ if ticker:
 
                 best_p, best_s = optimize_algo(
                     grid, make_fn(), close_arr, cost_pct,
-                    n_windows=n_windows, train_pct=train_pct,
+                    n_windows=n_windows,
                     metric="Sharpe", min_trades=5,
                     bars_per_year=bars_per_year_from_interval(interval),
                     run_permutation=True, n_perm=200)
@@ -3712,7 +3710,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         # ============================================================
         st.write("---")
         st.subheader("🧬 Walk-Forward Optimizasyon Sonuçları")
-        st.caption(f"{n_windows} pencere · %{train_pct} eğitim / %{100-train_pct} test · kriter: Sharpe (yıllıklandırılmış, **out-of-sample**)")
+        st.caption(f"{n_windows} pencere · expanding window · kriter: Sharpe (yıllıklandırılmış, **out-of-sample**)")
 
         def opt_color(val):
             try:

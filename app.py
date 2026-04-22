@@ -3141,7 +3141,9 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         else:
             hiz_desc = "⚪ Karışık / geçiş (fiyat ortalar arasında)"
 
-        res.append(["BİLGİ", "📊 Hiyerarşi", f"{hiyerarsi_str} | {hiz_desc}"])
+        # Hiyerarşi tablo yerine başlık altında markdown olarak gösterilecek
+        _hiyerarsi_md = hiyerarsi_str
+        _hiz_desc_md  = hiz_desc
         # ──────────────────────────────────────────────────────────
 
         lss = safe_scalar(last["SMA_SHORT"])
@@ -3853,6 +3855,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         )
 
         st.subheader("🔍 Algoritmik Detaylar")
+        # Hiyerarşi — tablonun üstünde markdown olarak (bold çalışır, tek satır)
+        st.markdown(f"**📊 Hiyerarşi:** {_hiyerarsi_md}  \n{_hiz_desc_md}")
         res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])
 
         def color_map(val):

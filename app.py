@@ -1690,6 +1690,19 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     # Kombolara göre OOS sonuçları
     combo_oos = {combo: [] for combo in combos}  # (test_stats, test_sig_slice, test_price_slice)
 
+    # ── Sinyal cache (pencerelerden bağımsız, bir kez üretilir) ──
+    # signal_fn(p) tüm fiyat dizisi için üretilir ve pencereye göre slice'lanır.
+    # Bu yüzden aynı kombo için pencere başına yeniden hesaplamaya gerek yok.
+    sigs_cache = {}
+    for combo in combos:
+        p = dict(zip(keys, combo))
+        sig_full = signal_fn(p)
+        if sig_full is None:
+            continue
+        sigs_cache[combo] = np.asarray(
+            sig_full.values if hasattr(sig_full, "values") else sig_full
+        )
+
     for (ts, te, es) in windows:
         train_arr = close_arr[ts:te]
         test_arr  = close_arr[te:es]
@@ -1700,16 +1713,12 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         eff_min_trades = max(3, min(min_trades, train_bars // 30))
 
         # TRAIN: her kombo için skor, en iyiyi bul
-        sigs_cache = {}
         best_train_combo = None
         best_train_score = -np.inf
         for combo in combos:
-            p = dict(zip(keys, combo))
-            sig_full = signal_fn(p)
-            if sig_full is None:
+            sig_vals = sigs_cache.get(combo)
+            if sig_vals is None:
                 continue
-            sig_vals = np.asarray(sig_full.values if hasattr(sig_full, "values") else sig_full)
-            sigs_cache[combo] = sig_vals
             train_sig = sig_vals[ts:te]
             train_stats = run_backtest(train_sig, train_arr, cost_pct, bars_per_year)
             if train_stats["n"] < eff_min_trades:

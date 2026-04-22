@@ -1645,17 +1645,27 @@ def _score(stats, metric):
 
 def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
                   n_windows=4, train_pct=70, metric="Sharpe", min_trades=5,
-                  bars_per_year=252, run_permutation=True, n_perm=200):
-    """Gerçek walk-forward optimizasyon:
+                  bars_per_year=252, run_permutation=True, n_perm=200,
+                  purge_bars=10, embargo_pct=0.01):
+    """Gerçek walk-forward optimizasyon (Purging & Embargo destekli):
       1) Her pencerede TRAIN dilimi üzerinde en iyi kombo seçilir
       2) Kazanan kombo TEST diliminde dokunulmamış OOS skoru alır
       3) En çok seçilen (ve en yüksek OOS skora sahip) kombo sistem tarafından döndürülür
       4) Tüm OOS test dilimleri birleştirilip permutation test ile p-değeri hesaplanır
+
+    Purging & Embargo (López de Prado 2018):
+      - purge_bars: Train sonundan kesilen bar sayısı. Train'de başlayıp test'e
+        yayılabilecek trade'lerin label-leakage'ını engeller.
+      - embargo_pct: Test başından atlanan bar oranı (veri uzunluğunun yüzdesi).
+        Train sonundaki son trade'in test'in ilk barlarına sızmasını engeller.
     """
     keys    = list(param_grid.keys())
     combos  = list(iter_product(*param_grid.values()))
     n       = len(close_arr)
     default = {k: v[0] for k, v in param_grid.items()}
+
+    # Embargo bar sayısı: veri uzunluğunun yüzdesi (López de Prado formülü)
+    embargo_bars = max(0, int(n * embargo_pct))
 
     # ── EXPANDING WINDOW ──
     # Rolling pencerelerin aksine, her adımda geçmiş birikir (gerçek trading gibi).
@@ -1666,6 +1676,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     #   ...
     #   Adım n: train=[0, (n+1)/(n+1)=end), — son adım test = son dilim
     # Her test dilimi birbirinden bağımsız OOS, hiçbiri train'de görülmez.
+    # Ek olarak purge (train sonu) ve embargo (test başı) uygulanır.
     n_steps = max(n_windows, 2)
     step_size = n // (n_steps + 1)
     if step_size < 15:
@@ -1679,10 +1690,17 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         train_end   = min_train_start + w * step_size
         test_start  = train_end
         test_end    = min(test_start + step_size, n) if w < n_steps - 1 else n
-        # Yetersiz veri kontrolü
-        if train_end - train_start < 20 or test_end - test_start < 10:
+
+        # Purge: train sonundan purge_bars kes
+        train_end_purged = train_end - purge_bars
+        # Embargo: test başından embargo_bars atla
+        test_start_embargoed = test_start + embargo_bars
+
+        # Yetersiz veri kontrolü (purge/embargo sonrası)
+        if (train_end_purged - train_start < 20 or
+            test_end - test_start_embargoed < 10):
             continue
-        windows.append((train_start, train_end, test_end))
+        windows.append((train_start, train_end_purged, test_start_embargoed, test_end))
 
     if not windows:
         return default, None
@@ -1703,9 +1721,9 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
             sig_full.values if hasattr(sig_full, "values") else sig_full
         )
 
-    for (ts, te, es) in windows:
+    for (ts, te, ts_test, es) in windows:
         train_arr = close_arr[ts:te]
-        test_arr  = close_arr[te:es]
+        test_arr  = close_arr[ts_test:es]
 
         # Adaptif min_trades: pencere kısaysa alt sınır 3'e iner,
         # uzun pencerelerde kullanıcının ayarladığı tavan geçerli olur
@@ -1731,8 +1749,8 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         if best_train_combo is None:
             continue
 
-        # TEST: yalnız train-kazananını out-of-sample test et (dokunulmamış)
-        test_sig  = sigs_cache[best_train_combo][te:es]
+        # TEST: yalnız train-kazananını out-of-sample test et (dokunulmamış + embargoed)
+        test_sig  = sigs_cache[best_train_combo][ts_test:es]
         test_stats = run_backtest(test_sig, test_arr, cost_pct, bars_per_year)
         combo_oos[best_train_combo].append((test_stats, test_sig, test_arr))
 

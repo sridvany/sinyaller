@@ -3826,6 +3826,13 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         st.subheader("📝 Özet")
         ozet_parcalar = []
 
+        # ── Özet için türetilen değişkenler ──
+        macd_pos  = (not np.isnan(r_macd)) and (not np.isnan(r_macds)) and r_macd > r_macds
+        rsi_os    = (not np.isnan(r_rsi)) and r_rsi < rsi_lower
+        rsi_ob    = (not np.isnan(r_rsi)) and r_rsi > rsi_upper
+        div_risk  = (r_div_rsi == -1) or (r_div_mac == -1)
+        div_boost = (r_div_rsi == 1)  or (r_div_mac == 1)
+
         if r_adx > adx_threshold_adaptive:
             ozet_parcalar.append(f"ADX {r_adx:.1f} ile **güçlü bir trend** mevcut.")
         else:

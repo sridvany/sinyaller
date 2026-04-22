@@ -2248,10 +2248,10 @@ if ticker:
                 ), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
-            name=f"SMA {p_sma['sma_s']}", visible="legendonly",
+            name=f"SMA {p_sma['sma_s']}",
             line=dict(color="orange")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
-            name=f"SMA {p_sma['sma_l']}", visible="legendonly",
+            name=f"SMA {p_sma['sma_l']}",
             line=dict(color="cyan")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
             name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
@@ -2261,14 +2261,12 @@ if ticker:
             x=df.index, y=df["EMA200"],
             name="EMA 200",
             line=dict(color="yellow", width=2, dash="dot"),
-            visible="legendonly",
         ), row=1, col=1)
         # SMA 200 — daha stabil, EMA'ya göre yavaş, uzun vade referansı
         fig.add_trace(go.Scatter(
             x=df.index, y=df["SMA200"],
             name="SMA 200",
             line=dict(color="gold", width=2, dash="solid"),
-            visible="legendonly",
         ), row=1, col=1)
         # ──────────────────────────────────────────────────────────
 
@@ -2388,6 +2386,7 @@ if ticker:
                 mode="lines",
                 name=sr_label,
                 line=dict(color=color, width=width, dash=dash),
+                visible="legendonly",
                 legendgroup="swing_sr",
                 legendgrouptitle_text="Swing S/R" if _swing_first else None,
                 hovertemplate=f"{sr_label}<extra></extra>",

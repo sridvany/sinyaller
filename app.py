@@ -49,7 +49,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 BORSA TERMİNALİ")
+st.title("📈 PİYASA TERMİNALİ")
 st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
 
 # ============================================================

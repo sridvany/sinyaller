@@ -86,59 +86,30 @@ for k, v in _defaults.items():
 # ============================================================
 # 🤖 LLM PROVIDER KONFİGÜRASYONU VE AKIŞ FONKSİYONLARI
 # ============================================================
-LLM_PROVIDERS = {
-    "Google": {
-        "models":   ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
-        "type":     "gemini",
-        "key_url":  "https://aistudio.google.com/apikey",
-    },
-    "OpenAI": {
-        "models":   ["gpt-5", "gpt-5-mini", "gpt-4o", "gpt-4o-mini"],
-        "endpoint": "https://api.openai.com/v1/chat/completions",
-        "type":     "openai",
-        "key_url":  "https://platform.openai.com/api-keys",
-    },
-    "Anthropic": {
-        "models":   ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-sonnet-4-6"],
-        "endpoint": "https://api.anthropic.com/v1/messages",
-        "type":     "anthropic",
-        "key_url":  "https://console.anthropic.com/settings/keys",
-    },
-    "DeepSeek": {
-        "models":   ["deepseek-chat", "deepseek-reasoner"],
-        "endpoint": "https://api.deepseek.com/v1/chat/completions",
-        "type":     "openai",
-        "key_url":  "https://platform.deepseek.com/api_keys",
-    },
-    "Groq": {
-        "models":   ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile",
-                     "mixtral-8x7b-32768", "llama-3.1-8b-instant"],
-        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
-        "type":     "openai",
-        "key_url":  "https://console.groq.com/keys",
-    },
-}
+# NVIDIA NIM — OpenAI-compatible endpoint, DeepSeek-V4-Pro
+NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
+NVIDIA_MODEL    = "deepseek-ai/deepseek-v4-pro"
 
 AI_DETAIL_LEVELS = {"Kısa": 1500, "Orta": 4000, "Detaylı": 8000}
 
 
-def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
-    """OpenAI-uyumlu streaming (OpenAI, DeepSeek, Groq)."""
+def _get_nvidia_key():
+    """Streamlit secrets veya env'den NVIDIA API key oku."""
+    import os
+    try:
+        return st.secrets.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_API_KEY", "")
+    except Exception:
+        return os.environ.get("NVIDIA_API_KEY", "")
+
+
+def _stream_openai_compat(api_key, model, messages, max_tokens):
+    """NVIDIA NIM OpenAI-uyumlu streaming."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-
-    # OpenAI'de gpt-5 / o-serisi modelleri 'max_tokens' yerine 'max_completion_tokens' ister
-    token_param = "max_tokens"
-    if provider_name == "OpenAI" and any(
-        model.startswith(p) for p in ("gpt-5", "o1", "o3", "o4")
-    ):
-        token_param = "max_completion_tokens"
-
     payload = {
         "model": model, "messages": messages, "stream": True,
-        token_param: max_tokens, "temperature": 0.4,
+        "max_tokens": max_tokens, "temperature": 0.4,
     }
-    r = requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=90)
+    r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload, stream=True, timeout=90)
     try:
         if r.status_code != 200:
             try:
@@ -179,181 +150,6 @@ def _stream_openai_compat(endpoint, api_key, model, messages, max_tokens, provid
         r.close()
 
 
-def _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
-    """Anthropic Messages API streaming."""
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model, "max_tokens": max_tokens,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_prompt}],
-        "stream": True, "temperature": 0.4,
-    }
-    r = requests.post("https://api.anthropic.com/v1/messages",
-                      headers=headers, json=payload, stream=True, timeout=90)
-    try:
-        if r.status_code != 200:
-            try:
-                err_body = r.text
-            except Exception:
-                err_body = "(yanıt okunamadı)"
-            err_msg = err_body[:500]
-            try:
-                err_json = json.loads(err_body)
-                if isinstance(err_json, dict) and "error" in err_json:
-                    err_detail = err_json["error"]
-                    if isinstance(err_detail, dict):
-                        err_msg = err_detail.get("message", err_msg)
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                pass
-            raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
-
-        for raw in r.iter_lines():
-            if not raw:
-                continue
-            line = raw.decode("utf-8", errors="ignore")
-            if not line.startswith("data: "):
-                continue
-            data = line[6:].strip()
-            try:
-                chunk = json.loads(data)
-                if chunk.get("type") == "content_block_delta":
-                    delta = chunk.get("delta", {})
-                    if "text" in delta:
-                        yield delta["text"]
-            except json.JSONDecodeError:
-                continue
-    finally:
-        r.close()
-
-
-def _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
-    """Google Gemini streamGenerateContent (SSE)."""
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:streamGenerateContent?alt=sse&key={api_key}")
-
-    # --- Thinking davranışı modele göre ayarlanır ---
-    # 2.5 Flash: thinking kapatılabilir → kullanıcının max_tokens'ı aynen kalır
-    # 2.5 Pro / 3.x: thinking KAPATILAMAZ, 8192'ye kadar token yer →
-    #                kullanıcının max_tokens'ına thinking buffer eklenmeli,
-    #                aksi halde cevaba yer kalmaz
-    gen_config = {"temperature": 0.4}
-
-    if model.startswith("gemini-2.5-flash") or model.startswith("gemini-2.5-flash-lite"):
-        # Flash'te thinking'i kapat → tüm bütçe cevaba gider
-        gen_config["thinkingConfig"]  = {"thinkingBudget": 0}
-        gen_config["maxOutputTokens"] = max_tokens
-    elif model.startswith("gemini-2.5-pro") or model.startswith("gemini-3"):
-        # Pro ve 3.x'te thinking zorunlu → thinking için 8192 ekstra ayır
-        # Böylece kullanıcının istediği `max_tokens` gerçekten cevaba gider
-        gen_config["maxOutputTokens"] = max_tokens + 8192
-    else:
-        # 2.0 ve diğerleri — thinking yok, normal davran
-        gen_config["maxOutputTokens"] = max_tokens
-
-    payload = {
-        "contents":          [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "generationConfig":  gen_config,
-    }
-    r = requests.post(url, json=payload, stream=True, timeout=90)
-    try:
-        if r.status_code != 200:
-            try:
-                err_body = r.text
-            except Exception:
-                err_body = "(yanıt okunamadı)"
-            err_msg = err_body[:500]
-            try:
-                err_json = json.loads(err_body)
-                if isinstance(err_json, dict) and "error" in err_json:
-                    err_detail = err_json["error"]
-                    if isinstance(err_detail, dict):
-                        err_msg = err_detail.get("message", err_msg)
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                pass
-            raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
-
-        finish_reason = None
-        usage_meta    = None
-        for raw in r.iter_lines():
-            if not raw:
-                continue
-            line = raw.decode("utf-8", errors="ignore")
-            if not line.startswith("data: "):
-                continue
-            data = line[6:].strip()
-            try:
-                chunk = json.loads(data)
-                for cand in chunk.get("candidates", []):
-                    for part in cand.get("content", {}).get("parts", []):
-                        # Sadece cevap text'ini ver, "thought: true" parçalarını atla
-                        if "text" in part and not part.get("thought", False):
-                            yield part["text"]
-                    fr = cand.get("finishReason")
-                    if fr and fr != "STOP":
-                        finish_reason = fr
-                # Son chunk'ta usage gelir
-                if "usageMetadata" in chunk:
-                    usage_meta = chunk["usageMetadata"]
-            except json.JSONDecodeError:
-                continue
-
-        # --- Debug / Uyarı mesajları ---
-        debug_lines = []
-        if usage_meta:
-            prompt_t   = usage_meta.get("promptTokenCount", 0)
-            cand_t     = usage_meta.get("candidatesTokenCount", 0)
-            thought_t  = usage_meta.get("thoughtsTokenCount", 0)
-            total_t    = usage_meta.get("totalTokenCount", 0)
-            debug_lines.append(
-                f"📊 Token Kullanımı — Prompt: {prompt_t} · Cevap: {cand_t} · "
-                f"Thinking: {thought_t} · Toplam: {total_t}"
-            )
-
-        if finish_reason == "MAX_TOKENS":
-            pro_hint = ""
-            if "pro" in model.lower():
-                pro_hint = (
-                    " **Not:** `gemini-2.5-pro` modelinde reasoning token kapatılamıyor. "
-                    "`gemini-2.5-flash` modeline geçmeyi deneyin."
-                )
-            yield (
-                f"\n\n---\n⚠️ **Yanıt token limitine takıldı** (`MAX_TOKENS`).{pro_hint}"
-            )
-        elif finish_reason in ("SAFETY", "RECITATION", "BLOCKLIST"):
-            yield f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{finish_reason}`)."
-        elif finish_reason:
-            yield f"\n\n---\n⚠️ **Yanıt şu sebeple kesildi:** `{finish_reason}`"
-
-        if debug_lines:
-            yield "\n\n" + "\n".join(debug_lines)
-    finally:
-        r.close()
-
-
-def stream_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens):
-    """Birleşik streaming dispatcher."""
-    cfg = LLM_PROVIDERS[provider]
-    if cfg["type"] == "openai":
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt},
-        ]
-        yield from _stream_openai_compat(
-            cfg["endpoint"], api_key, model, messages, max_tokens,
-            provider_name=provider,
-        )
-    elif cfg["type"] == "anthropic":
-        yield from _stream_anthropic(api_key, model, system_prompt, user_prompt, max_tokens)
-    elif cfg["type"] == "gemini":
-        yield from _stream_gemini(api_key, model, system_prompt, user_prompt, max_tokens)
-    else:
-        raise ValueError(f"Bilinmeyen provider tipi: {cfg['type']}")
-
 
 # ============================================================
 # 🔄 NON-STREAMING (toplu yanıt) FONKSİYONLARI
@@ -379,19 +175,14 @@ def _parse_http_error(response, default_msg):
     return msg
 
 
-def _fetch_openai_compat(endpoint, api_key, model, messages, max_tokens, provider_name="OpenAI"):
-    """OpenAI uyumlu non-streaming (OpenAI, DeepSeek, Groq)."""
+def _fetch_openai_compat(api_key, model, messages, max_tokens):
+    """NVIDIA NIM OpenAI uyumlu non-streaming."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    token_param = "max_tokens"
-    if provider_name == "OpenAI" and any(
-        model.startswith(p) for p in ("gpt-5", "o1", "o3", "o4")
-    ):
-        token_param = "max_completion_tokens"
     payload = {
         "model": model, "messages": messages, "stream": False,
-        token_param: max_tokens, "temperature": 0.4,
+        "max_tokens": max_tokens, "temperature": 0.4,
     }
-    r = requests.post(endpoint, headers=headers, json=payload, timeout=120)
+    r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload, timeout=120)
     if r.status_code != 200:
         raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
     data = r.json()
@@ -412,102 +203,14 @@ def _fetch_openai_compat(endpoint, api_key, model, messages, max_tokens, provide
     return text, meta
 
 
-def _fetch_anthropic(api_key, model, system_prompt, user_prompt, max_tokens):
-    """Anthropic Messages API non-streaming."""
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model, "max_tokens": max_tokens,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_prompt}],
-        "stream": False, "temperature": 0.4,
-    }
-    r = requests.post("https://api.anthropic.com/v1/messages",
-                      headers=headers, json=payload, timeout=120)
-    if r.status_code != 200:
-        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
-    data = r.json()
-    text = ""
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            text += block.get("text", "")
-    usage = data.get("usage", {})
-    meta = {
-        "finish_reason":    data.get("stop_reason"),
-        "prompt_tokens":    usage.get("input_tokens",  0),
-        "output_tokens":    usage.get("output_tokens", 0),
-        "thinking_tokens":  0,
-        "total_tokens":     usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
-    }
-    return text, meta
 
-
-def _fetch_gemini(api_key, model, system_prompt, user_prompt, max_tokens):
-    """Google Gemini generateContent non-streaming."""
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:generateContent?key={api_key}")
-
-    gen_config = {"temperature": 0.4}
-    if model.startswith("gemini-2.5-flash") or model.startswith("gemini-2.5-flash-lite"):
-        gen_config["thinkingConfig"]  = {"thinkingBudget": 0}
-        gen_config["maxOutputTokens"] = max_tokens
-    elif model.startswith("gemini-2.5-pro") or model.startswith("gemini-3"):
-        # Pro ve 3.x'te thinking zorunlu → thinking için ekstra 8192 buffer
-        gen_config["maxOutputTokens"] = max_tokens + 8192
-    else:
-        gen_config["maxOutputTokens"] = max_tokens
-
-    payload = {
-        "contents":          [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "generationConfig":  gen_config,
-    }
-    r = requests.post(url, json=payload, timeout=120)
-    if r.status_code != 200:
-        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
-    data = r.json()
-
-    text   = ""
-    finish = None
-    for cand in data.get("candidates", []):
-        for part in cand.get("content", {}).get("parts", []):
-            if "text" in part and not part.get("thought", False):
-                text += part["text"]
-        if cand.get("finishReason"):
-            finish = cand["finishReason"]
-
-    usage = data.get("usageMetadata", {})
-    meta = {
-        "finish_reason":    finish,
-        "prompt_tokens":    usage.get("promptTokenCount",    0),
-        "output_tokens":    usage.get("candidatesTokenCount", 0),
-        "thinking_tokens":  usage.get("thoughtsTokenCount",   0),
-        "total_tokens":     usage.get("totalTokenCount",      0),
-    }
-    return text, meta
-
-
-def fetch_llm(provider, api_key, model, system_prompt, user_prompt, max_tokens):
-    """Non-streaming birleşik dispatcher. (text, meta_dict) döner."""
-    cfg = LLM_PROVIDERS[provider]
-    if cfg["type"] == "openai":
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_prompt},
-        ]
-        return _fetch_openai_compat(
-            cfg["endpoint"], api_key, model, messages, max_tokens,
-            provider_name=provider,
-        )
-    elif cfg["type"] == "anthropic":
-        return _fetch_anthropic(api_key, model, system_prompt, user_prompt, max_tokens)
-    elif cfg["type"] == "gemini":
-        return _fetch_gemini(api_key, model, system_prompt, user_prompt, max_tokens)
-    else:
-        raise ValueError(f"Bilinmeyen provider tipi: {cfg['type']}")
+def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
+    """NVIDIA NIM DeepSeek-V4-Pro non-streaming. (text, meta_dict) döner."""
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user",   "content": user_prompt},
+    ]
+    return _fetch_openai_compat(api_key, NVIDIA_MODEL, messages, max_tokens)
 
 
 def build_ai_prompt(*, detail, ticker, close, interval,
@@ -661,9 +364,9 @@ def build_ai_prompt(*, detail, ticker, close, interval,
     return system, user
 
 
-def ai_cache_key(ticker, interval, total_score, close, provider, model, detail):
+def ai_cache_key(ticker, interval, total_score, close, detail):
     """Analiz durumu için stabil cache anahtarı."""
-    s = f"{ticker}|{interval}|{round(total_score, 2)}|{round(close, 4)}|{provider}|{model}|{detail}"
+    s = f"{ticker}|{interval}|{round(total_score, 2)}|{round(close, 4)}|{detail}"
     return "ai_report_" + hashlib.md5(s.encode("utf-8")).hexdigest()[:16]
 
 
@@ -732,34 +435,17 @@ with st.sidebar:
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
     # ──────────────────────────────────────────────────────────
-    # 🤖 AI RAPOR YORUMCUSU (LLM Provider Seçimi)
-    # Sık kullanılan — Sabit Parametreler'in üstünde
+    # 🤖 AI RAPOR YORUMCUSU — NVIDIA NIM · DeepSeek-V4-Pro
+    # Key Streamlit Secrets'tan okunur, kullanıcıya gösterilmez
     # ──────────────────────────────────────────────────────────
     st.write("---")
     st.subheader("🤖 AI Rapor Yorumcusu")
 
-    ai_provider = st.selectbox(
-        "Provider",
-        options=list(LLM_PROVIDERS.keys()),
-        index=0,
-        key="ai_provider_select",
-        help="Hangi LLM sağlayıcısını kullanmak istiyorsunuz?",
-    )
-    _prov_cfg = LLM_PROVIDERS[ai_provider]
-
-    ai_model = st.selectbox(
-        "Model",
-        options=_prov_cfg["models"],
-        index=0,
-        key=f"ai_model_{ai_provider}",
-    )
-
-    ai_api_key = st.text_input(
-        f"{ai_provider} API Key",
-        type="password",
-        key=f"ai_key_{ai_provider}",
-        help=f"API key almak için: {_prov_cfg['key_url']}",
-    )
+    ai_api_key = _get_nvidia_key()
+    if ai_api_key:
+        st.caption(f"Model: **DeepSeek-V4-Pro** (NVIDIA NIM) · Key: ✅ bağlı")
+    else:
+        st.caption("Model: **DeepSeek-V4-Pro** (NVIDIA NIM) · Key: ❌ yok")
 
     ai_detail = st.select_slider(
         "Detay Seviyesi",
@@ -3784,18 +3470,18 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         if not ai_api_key:
             st.info(
-                f"💡 **{ai_provider}** için sidebar'dan API key girerseniz AI yorumcu aktif olur. "
-                f"Key almak için: {_prov_cfg['key_url']}"
+                "💡 **NVIDIA API key bulunamadı.** Streamlit Cloud → Settings → Secrets kısmına "
+                "`NVIDIA_API_KEY = \"nvapi-...\"` ekleyin. "
+                "Key almak için: https://build.nvidia.com/settings/api-keys"
             )
         else:
             st.caption(
-                f"Provider: **{ai_provider}** · Model: **{ai_model}** · "
+                f"Model: **DeepSeek-V4-Pro** (NVIDIA NIM) · "
                 f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
             )
 
             _cache_key = ai_cache_key(
-                ticker, interval, 0.0, r_close,
-                ai_provider, ai_model, ai_detail
+                ticker, interval, 0.0, r_close, ai_detail
             )
             _cached = st.session_state.get(_cache_key)
 
@@ -3826,10 +3512,10 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 try:
                     _t0 = time.time()
 
-                    with st.spinner(f"🤖 {ai_provider} · {ai_model} yanıt üretiyor..."):
+                    with st.spinner("🤖 DeepSeek-V4-Pro yanıt üretiyor..."):
                         _full_text, _meta = fetch_llm(
-                            ai_provider, ai_api_key, ai_model,
-                            _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
+                            ai_api_key, _sys_p, _usr_p,
+                            AI_DETAIL_LEVELS[ai_detail]
                         )
 
                     _dt = time.time() - _t0
@@ -3842,15 +3528,9 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                     _finish = (_meta or {}).get("finish_reason", "")
                     _finish_lower = str(_finish).lower() if _finish else ""
                     if _finish_lower in ("max_tokens", "length"):
-                        pro_hint = ""
-                        if ai_provider == "Google" and "pro" in ai_model.lower():
-                            pro_hint = (
-                                " **Not:** `gemini-2.5-pro` modelinde reasoning kapatılamıyor. "
-                                "`gemini-2.5-flash`'a geçmeyi deneyin."
-                            )
                         _final += (
                             f"\n\n---\n⚠️ **Yanıt token limitine takıldı** "
-                            f"(`{_finish}`). Detay seviyesini yükseltin.{pro_hint}"
+                            f"(`{_finish}`). Detay seviyesini yükseltin."
                         )
                     elif _finish_lower in ("safety", "recitation", "blocklist", "content_filter"):
                         _final += f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{_finish}`)."

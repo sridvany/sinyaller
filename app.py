@@ -65,7 +65,8 @@ if st.session_state.get("chat_open"):
 section[data-testid="stMain"] .block-container {
     padding-right: 410px !important;
 }
-[data-testid="stVerticalBlock"]:has([data-testid="stChatInput"]) {
+[data-testid="stVerticalBlock"]:has(> [data-testid="stChatInput"]),
+[data-testid="stVerticalBlock"]:has(> div > [data-testid="stChatInput"]) {
     position: fixed !important;
     right: 0 !important;
     top: 58px !important;
@@ -3981,123 +3982,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             "res":          res,
         }
 
-        # ============================================================
-        # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
-        # ============================================================
-        st.write("---")
-        st.subheader("🤖 AI Rapor Yorumu")
-
-        if not ai_api_key:
-            st.info(
-                f"💡 **{ai_provider}** için sidebar'dan API key girerseniz AI yorumcu aktif olur. "
-                f"Key almak için: {_prov_cfg['key_url']}"
-            )
-        else:
-            st.caption(
-                f"Provider: **{ai_provider}** · Model: **{ai_model}** · "
-                f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
-            )
-
-            _cache_key = ai_cache_key(
-                ticker, interval, 0.0, r_close,
-                ai_provider, ai_model, ai_detail
-            )
-            _cached = st.session_state.get(_cache_key)
-
-            _bc1, _bc2, _ = st.columns([1.2, 1.4, 3])
-            with _bc1:
-                _gen_btn = st.button(
-                    "📝 Yorum Al", type="primary",
-                    use_container_width=True, key="ai_gen_btn"
-                )
-            with _bc2:
-                _regen_btn = st.button(
-                    "🔄 Yeniden Üret",
-                    use_container_width=True,
-                    disabled=(_cached is None),
-                    key="ai_regen_btn",
-                )
-
-            if _gen_btn or _regen_btn:
-                if _regen_btn:
-                    st.session_state.pop(_cache_key, None)
-
-                _sys_p, _usr_p = build_ai_prompt(
-                    detail=ai_detail, ticker=ticker, close=r_close,
-                    interval=interval, res_rows=res,
-                    swing_levels=swing_levels, fib_levels=fib_levels,
-                )
-
-                try:
-                    _t0 = time.time()
-
-                    with st.spinner(f"🤖 {ai_provider} · {ai_model} yanıt üretiyor..."):
-                        _full_text, _meta = fetch_llm(
-                            ai_provider, ai_api_key, ai_model,
-                            _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
-                        )
-
-                    _dt = time.time() - _t0
-
-                    # Yarım cümle güvenlik ağı (safety net)
-                    _cleaned, _was_cut = clean_half_sentence(_full_text)
-                    _final = _cleaned
-
-                    # Kesilme uyarıları
-                    _finish = (_meta or {}).get("finish_reason", "")
-                    _finish_lower = str(_finish).lower() if _finish else ""
-                    if _finish_lower in ("max_tokens", "length"):
-                        pro_hint = ""
-                        if ai_provider == "Google" and "pro" in ai_model.lower():
-                            pro_hint = (
-                                " **Not:** `gemini-2.5-pro` modelinde reasoning kapatılamıyor. "
-                                "`gemini-2.5-flash`'a geçmeyi deneyin."
-                            )
-                        _final += (
-                            f"\n\n---\n⚠️ **Yanıt token limitine takıldı** "
-                            f"(`{_finish}`). Detay seviyesini yükseltin.{pro_hint}"
-                        )
-                    elif _finish_lower in ("safety", "recitation", "blocklist", "content_filter"):
-                        _final += f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{_finish}`)."
-                    elif _was_cut:
-                        _final += (
-                            "\n\n---\n⚠️ *Model yanıtı yarıda bıraktı; son yarım cümle otomatik kaldırıldı. "
-                            "Yeniden üretmek için 🔄 tuşuna basabilirsiniz.*"
-                        )
-
-                    # Token kullanım satırı
-                    if _meta:
-                        _prompt_t   = _meta.get("prompt_tokens",   0)
-                        _output_t   = _meta.get("output_tokens",   0)
-                        _thought_t  = _meta.get("thinking_tokens", 0)
-                        _total_t    = _meta.get("total_tokens",    0) or (_prompt_t + _output_t + _thought_t)
-                        _final += (
-                            f"\n\n📊 Token Kullanımı — Prompt: {_prompt_t} · "
-                            f"Cevap: {_output_t} · Thinking: {_thought_t} · Toplam: {_total_t}"
-                        )
-
-                    if _cleaned:
-                        st.markdown(_final)
-                        st.session_state[_cache_key] = _final
-                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_cleaned.split())} kelime")
-                    else:
-                        st.warning("⚠️ Boş yanıt alındı. Farklı bir model veya detay seviyesi deneyin.")
-                except RuntimeError as e:
-                    st.error(f"❌ API Hatası: {str(e)}")
-                except requests.exceptions.Timeout:
-                    st.error("❌ Zaman aşımı — sunucu yanıt vermiyor. Tekrar deneyin.")
-                except requests.exceptions.ConnectionError as e:
-                    st.error(f"❌ Bağlantı hatası: {str(e)[:300]}")
-                except Exception as e:
-                    st.error(f"❌ {type(e).__name__}: {str(e)[:400]}")
-
-            elif _cached:
-                st.markdown(_cached)
-                st.caption(
-                    "💾 Cache'den gösteriliyor — fiyat/skor değişince anahtar değişir ve "
-                    "yeni yorum gerekir. Manuel yenileme için 🔄 tuşuna basın."
-                )
-
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")
 
@@ -4106,59 +3990,63 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 # 9. AI CHAT PANELİ (sağ fixed panel — 💬 AI butonuyla açılır)
 # ============================================================
 if st.session_state.get("chat_open"):
-    st.divider()  # CSS selector anchor — bu divider'ın altındaki block fixed olur
-
-    if not st.session_state.get(f"ai_key_{st.session_state.get('ai_provider_select', 'Google')}"):
+    with st.container():
         _cur_provider = st.session_state.get("ai_provider_select", "Google")
-        _link_lines = "\n".join(
-            f"- [{_pname}]({_pcfg['key_url']}){' ← seçili' if _pname == _cur_provider else ''}"
-            for _pname, _pcfg in LLM_PROVIDERS.items()
-        )
-        st.info(
-            f"💡 AI Chat için sidebar'dan **{_cur_provider}** API key'ini girin.\n\n"
-            f"**API key almak için:**\n\n{_link_lines}"
-        )
-        st.chat_input("API key gerekli...", disabled=True)
-    else:
-        _chat_provider = st.session_state.get("ai_provider_select", "Google")
-        _chat_key      = st.session_state.get(f"ai_key_{_chat_provider}", "")
-        _chat_model    = st.session_state.get(f"ai_model_{_chat_provider}", LLM_PROVIDERS[_chat_provider]["models"][0])
+        _has_key = bool(st.session_state.get(f"ai_key_{_cur_provider}", ""))
 
-        st.markdown(f"**💬 AI Sohbet** · {_chat_provider} / {_chat_model}")
+        if not _has_key:
+            _link_lines = "\n".join(
+                f"- [{_pname}]({_pcfg['key_url']}){' ← seçili' if _pname == _cur_provider else ''}"
+                for _pname, _pcfg in LLM_PROVIDERS.items()
+            )
+            st.info(
+                f"💡 AI Chat için sidebar'dan **{_cur_provider}** API key'ini girin.\n\n"
+                f"**API key almak için:**\n\n{_link_lines}"
+            )
+            st.text_input("Mesaj", placeholder="API key gerekli...", disabled=True, key="chat_input_disabled", label_visibility="collapsed")
+        else:
+            _chat_key   = st.session_state.get(f"ai_key_{_cur_provider}", "")
+            _chat_model = st.session_state.get(f"ai_model_{_cur_provider}", LLM_PROVIDERS[_cur_provider]["models"][0])
 
-        if st.button("🗑️ Sohbeti Temizle", key="clear_chat_btn"):
-            st.session_state.chat_history = []
-            st.rerun()
+            st.markdown(f"**💬 AI Sohbet** · {_cur_provider} / {_chat_model}")
 
-        # Geçmiş mesajları göster
-        for _msg in st.session_state.get("chat_history", []):
-            with st.chat_message(_msg["role"]):
-                st.markdown(_msg["content"])
+            if st.button("🗑️ Sohbeti Temizle", key="clear_chat_btn"):
+                st.session_state.chat_history = []
+                st.rerun()
 
-        # Yeni mesaj girişi
-        _user_input = st.chat_input("Grafik ve analiz hakkında soru sor...")
+            for _msg in st.session_state.get("chat_history", []):
+                with st.chat_message(_msg["role"]):
+                    st.markdown(_msg["content"])
 
-        if _user_input:
-            st.session_state.chat_history.append({"role": "user", "content": _user_input})
-            with st.chat_message("user"):
-                st.markdown(_user_input)
+            _ci_col, _sb_col = st.columns([5, 1])
+            with _ci_col:
+                _user_input = st.text_input("Mesaj", placeholder="Grafik ve analiz hakkında soru sor...",
+                                            key="chat_input_active", label_visibility="collapsed")
+            with _sb_col:
+                _send = st.button("➤", key="chat_send_btn", use_container_width=True)
 
-            _sys_p = build_chat_system_prompt(st.session_state.get("chat_ctx", {}))
-            _hist  = st.session_state.chat_history[:]  # kopyasını al
+            if (_send or (_user_input and st.session_state.get("_last_chat_input") != _user_input)) and _user_input:
+                st.session_state["_last_chat_input"] = _user_input
+                st.session_state.chat_history.append({"role": "user", "content": _user_input})
+                with st.chat_message("user"):
+                    st.markdown(_user_input)
 
-            with st.chat_message("assistant"):
-                try:
-                    _resp_placeholder = st.empty()
-                    _full = ""
-                    for _piece in stream_llm_chat(
-                        _chat_provider, _chat_key, _chat_model,
-                        _sys_p, _hist, max_tokens=2000
-                    ):
-                        _full += _piece
-                        _resp_placeholder.markdown(_full + "▌")
-                    _resp_placeholder.markdown(_full)
-                    st.session_state.chat_history.append({"role": "assistant", "content": _full})
-                except RuntimeError as e:
-                    st.error(f"❌ {e}")
-                except Exception as e:
-                    st.error(f"❌ {type(e).__name__}: {str(e)[:300]}")
+                _sys_p = build_chat_system_prompt(st.session_state.get("chat_ctx", {}))
+                _hist  = st.session_state.chat_history[:]
+
+                with st.chat_message("assistant"):
+                    try:
+                        _resp_placeholder = st.empty()
+                        _full = ""
+                        for _piece in stream_llm_chat(
+                            _cur_provider, _chat_key, _chat_model,
+                            _sys_p, _hist, max_tokens=2000
+                        ):
+                            _full += _piece
+                            _resp_placeholder.markdown(_full + "▌")
+                        _resp_placeholder.markdown(_full)
+                        st.session_state.chat_history.append({"role": "assistant", "content": _full})
+                    except RuntimeError as e:
+                        st.error(f"❌ {e}")
+                    except Exception as e:
+                        st.error(f"❌ {type(e).__name__}: {str(e)[:300]}")

@@ -3458,7 +3458,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             # 🔧 DEBUG PANELİ — 404 tanısı için
             # ──────────────────────────────────────────────
             with st.expander("🔧 Debug (404 tanı aracı)", expanded=False):
-                _dbg1, _dbg2, _dbg3, _dbg4 = st.columns(4)
+                _dbg1, _dbg2, _dbg3, _dbg4, _dbg5 = st.columns(5)
 
                 if _dbg1.button("1️⃣ Key kontrolü", key="dbg_key"):
                     _k = ai_api_key
@@ -3530,6 +3530,25 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                         st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
                         st.write(f"**Test edilen model:** `{_alt_model}`")
                         st.code(_r.text[:2000])
+                    except Exception as e:
+                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
+
+                if _dbg5.button("5️⃣ DeepSeek listele", key="dbg_list"):
+                    try:
+                        _r = requests.get(
+                            "https://integrate.api.nvidia.com/v1/models",
+                            headers={"Authorization": f"Bearer {ai_api_key}"},
+                            timeout=30,
+                        )
+                        if _r.status_code != 200:
+                            st.error(f"Status {_r.status_code}: {_r.text[:500]}")
+                        else:
+                            _data = _r.json()
+                            _all = _data.get("data", [])
+                            _deepseek = [m["id"] for m in _all if "deepseek" in m.get("id", "").lower()]
+                            st.write(f"**Toplam model sayısı:** {len(_all)}")
+                            st.write(f"**'deepseek' içeren modeller ({len(_deepseek)}):**")
+                            st.code("\n".join(_deepseek) if _deepseek else "HİÇ YOK")
                     except Exception as e:
                         st.error(f"İstek hatası: {type(e).__name__}: {e}")
 

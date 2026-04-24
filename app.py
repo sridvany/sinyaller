@@ -49,24 +49,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-_hcol1, _hcol2 = st.columns([9, 1])
-with _hcol1:
-    st.title("📈 PİYASA TERMİNALİ")
-    st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
-with _hcol2:
-    _chat_label = "💬 AI"
-    if st.button(_chat_label, key="chat_toggle_btn", use_container_width=True):
-        st.session_state.chat_open = True
-        st.rerun()
-
+st.title("📈 PİYASA TERMİNALİ")
+st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI
 # ============================================================
 _defaults = {
-    "chat_open":     False,
-    "chat_history":  [],
-    "chat_ctx":      {},
     "sma_short":     20,
     "sma_long":      200,
     "rsi_period":    14,
@@ -711,168 +700,6 @@ def clean_half_sentence(text):
 
     cleaned = stripped[:last_end]
     return cleaned, True
-
-
-# ============================================================
-# 🤖 CHAT FONKSİYONLARI
-# ============================================================
-def build_chat_system_prompt(ctx: dict) -> str:
-    """Mevcut analiz bağlamını chat sistem prompt'una dönüştür."""
-    ticker   = ctx.get("ticker", "?")
-    interval = ctx.get("interval", "?")
-    r_close  = ctx.get("r_close", float("nan"))
-
-    lines = [
-        "Sen deneyimli bir teknik analiz asistanısın. Kullanıcı sana grafik, indikatör ve strateji "
-        "hakkında sorular soruyor. Aşağıdaki mevcut analiz verisine dayanarak yanıt ver. "
-        "Yatırım tavsiyesi verme; sadece teknik analiz yorum ve açıklaması yap.",
-        "",
-        f"## Sembol / Zaman Dilimi\nTicker: {ticker}  |  Interval: {interval}  |  Son Fiyat: {r_close:.4f}",
-    ]
-
-    # Algoritma kararları
-    res = ctx.get("res", [])
-    if res:
-        lines.append("\n## Algoritma Kararları")
-        for row in res:
-            karar, algo, sebep = (row + ["", "", ""])[:3]
-            lines.append(f"- {algo}: **{karar}** — {sebep}")
-
-    # Swing S/R seviyeleri
-    swing = ctx.get("swing_levels", [])
-    if swing:
-        sorted_swing = sorted(swing, key=lambda x: abs(x.get("price", 0) - r_close))[:6]
-        lines.append("\n## En Yakın S/R Seviyeleri")
-        for s in sorted_swing:
-            p = s.get("price", 0)
-            t = s.get("type", "?")
-            touch = s.get("touches", 1)
-            lines.append(f"- {t.upper():9s} {p:.4f}  (dokunuş: {touch})")
-
-    # Fibonacci seviyeleri
-    fib = ctx.get("fib_levels", {})
-    if fib:
-        sorted_fib = sorted(fib.items(), key=lambda x: abs(x[1] - r_close))[:5]
-        lines.append("\n## En Yakın Fibonacci Seviyeleri")
-        for name, price in sorted_fib:
-            lines.append(f"- {name}: {price:.4f}")
-
-    # Optimizasyon sonuçları
-    opt_stats = ctx.get("opt_stats", {})
-    if opt_stats:
-        lines.append("\n## Walk-Forward Optimizasyon Sonuçları")
-        for algo, s in opt_stats.items():
-            sharpe  = s.get("sharpe", float("nan"))
-            dsr     = s.get("dsr",    float("nan"))
-            ret     = s.get("total_ret", 0.0)
-            n       = s.get("n", 0)
-            wr      = s.get("win_rate", 0.0)
-            lines.append(
-                f"- {algo}: Getiri={ret:.1f}%  Sharpe={sharpe:.2f}  DSR={dsr:.2f}  "
-                f"Trade={n}  WinRate={wr:.1f}%"
-            )
-
-    lines.append("\nVeri yoksa 'Henüz analiz çalıştırılmadı' de.")
-    return "\n".join(lines)
-
-
-def stream_llm_chat(provider, api_key, model, system_prompt, history, max_tokens=2000):
-    """
-    Multi-turn chat streaming.
-    history: [{"role": "user"|"assistant", "content": "..."}]
-    """
-    cfg = LLM_PROVIDERS[provider]
-
-    if cfg["type"] == "openai":
-        messages = [{"role": "system", "content": system_prompt}] + history
-        yield from _stream_openai_compat(
-            cfg["endpoint"], api_key, model, messages, max_tokens,
-            provider_name=provider,
-        )
-
-    elif cfg["type"] == "anthropic":
-        # Anthropic multi-turn: sistem ayrı, messages dizisi history
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "system": system_prompt,
-            "messages": history,
-            "stream": True,
-            "temperature": 0.4,
-        }
-        r = requests.post("https://api.anthropic.com/v1/messages",
-                          headers=headers, json=payload, stream=True, timeout=90)
-        try:
-            if r.status_code != 200:
-                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
-            for raw in r.iter_lines():
-                if not raw:
-                    continue
-                line = raw.decode("utf-8", errors="ignore")
-                if not line.startswith("data: "):
-                    continue
-                try:
-                    chunk = json.loads(line[6:])
-                    if chunk.get("type") == "content_block_delta":
-                        text = chunk.get("delta", {}).get("text", "")
-                        if text:
-                            yield text
-                except json.JSONDecodeError:
-                    continue
-        finally:
-            r.close()
-
-    elif cfg["type"] == "gemini":
-        # Gemini multi-turn: history → contents array
-        contents = []
-        for msg in history:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
-
-        model_name = model
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{model_name}:streamGenerateContent?alt=sse&key={api_key}")
-
-        gen_config = {"temperature": 0.4}
-        if model_name.startswith("gemini-2.5-flash"):
-            gen_config["thinkingConfig"]  = {"thinkingBudget": 0}
-            gen_config["maxOutputTokens"] = max_tokens
-        else:
-            gen_config["maxOutputTokens"] = max_tokens
-
-        payload = {
-            "contents":          contents,
-            "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "generationConfig":  gen_config,
-        }
-        r = requests.post(url, json=payload, stream=True, timeout=90)
-        try:
-            if r.status_code != 200:
-                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
-            for raw in r.iter_lines():
-                if not raw:
-                    continue
-                line = raw.decode("utf-8", errors="ignore")
-                if not line.startswith("data: "):
-                    continue
-                try:
-                    chunk = json.loads(line[6:])
-                    for cand in chunk.get("candidates", []):
-                        for part in cand.get("content", {}).get("parts", []):
-                            if "text" in part and not part.get("thought", False):
-                                yield part["text"]
-                except json.JSONDecodeError:
-                    continue
-        finally:
-            r.close()
-
-    else:
-        raise ValueError(f"Bilinmeyen provider: {cfg['type']}")
 
 
 # ============================================================
@@ -3949,83 +3776,122 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             "adımında k tanesinde train-kazananı olduğu."
         )
 
-        # ── Chat bağlamını güncelle ────────────────────────────
-        st.session_state["chat_ctx"] = {
-            "ticker":       ticker,
-            "interval":     interval,
-            "r_close":      r_close,
-            "swing_levels": swing_levels,
-            "fib_levels":   fib_levels,
-            "opt_stats":    opt_stats,
-            "res":          res,
-        }
+        # ============================================================
+        # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
+        # ============================================================
+        st.write("---")
+        st.subheader("🤖 AI Rapor Yorumu")
+
+        if not ai_api_key:
+            st.info(
+                f"💡 **{ai_provider}** için sidebar'dan API key girerseniz AI yorumcu aktif olur. "
+                f"Key almak için: {_prov_cfg['key_url']}"
+            )
+        else:
+            st.caption(
+                f"Provider: **{ai_provider}** · Model: **{ai_model}** · "
+                f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
+            )
+
+            _cache_key = ai_cache_key(
+                ticker, interval, 0.0, r_close,
+                ai_provider, ai_model, ai_detail
+            )
+            _cached = st.session_state.get(_cache_key)
+
+            _bc1, _bc2, _ = st.columns([1.2, 1.4, 3])
+            with _bc1:
+                _gen_btn = st.button(
+                    "📝 Yorum Al", type="primary",
+                    use_container_width=True, key="ai_gen_btn"
+                )
+            with _bc2:
+                _regen_btn = st.button(
+                    "🔄 Yeniden Üret",
+                    use_container_width=True,
+                    disabled=(_cached is None),
+                    key="ai_regen_btn",
+                )
+
+            if _gen_btn or _regen_btn:
+                if _regen_btn:
+                    st.session_state.pop(_cache_key, None)
+
+                _sys_p, _usr_p = build_ai_prompt(
+                    detail=ai_detail, ticker=ticker, close=r_close,
+                    interval=interval, res_rows=res,
+                    swing_levels=swing_levels, fib_levels=fib_levels,
+                )
+
+                try:
+                    _t0 = time.time()
+
+                    with st.spinner(f"🤖 {ai_provider} · {ai_model} yanıt üretiyor..."):
+                        _full_text, _meta = fetch_llm(
+                            ai_provider, ai_api_key, ai_model,
+                            _sys_p, _usr_p, AI_DETAIL_LEVELS[ai_detail]
+                        )
+
+                    _dt = time.time() - _t0
+
+                    # Yarım cümle güvenlik ağı (safety net)
+                    _cleaned, _was_cut = clean_half_sentence(_full_text)
+                    _final = _cleaned
+
+                    # Kesilme uyarıları
+                    _finish = (_meta or {}).get("finish_reason", "")
+                    _finish_lower = str(_finish).lower() if _finish else ""
+                    if _finish_lower in ("max_tokens", "length"):
+                        pro_hint = ""
+                        if ai_provider == "Google" and "pro" in ai_model.lower():
+                            pro_hint = (
+                                " **Not:** `gemini-2.5-pro` modelinde reasoning kapatılamıyor. "
+                                "`gemini-2.5-flash`'a geçmeyi deneyin."
+                            )
+                        _final += (
+                            f"\n\n---\n⚠️ **Yanıt token limitine takıldı** "
+                            f"(`{_finish}`). Detay seviyesini yükseltin.{pro_hint}"
+                        )
+                    elif _finish_lower in ("safety", "recitation", "blocklist", "content_filter"):
+                        _final += f"\n\n---\n⚠️ **Yanıt güvenlik filtresi nedeniyle kesildi** (`{_finish}`)."
+                    elif _was_cut:
+                        _final += (
+                            "\n\n---\n⚠️ *Model yanıtı yarıda bıraktı; son yarım cümle otomatik kaldırıldı. "
+                            "Yeniden üretmek için 🔄 tuşuna basabilirsiniz.*"
+                        )
+
+                    # Token kullanım satırı
+                    if _meta:
+                        _prompt_t   = _meta.get("prompt_tokens",   0)
+                        _output_t   = _meta.get("output_tokens",   0)
+                        _thought_t  = _meta.get("thinking_tokens", 0)
+                        _total_t    = _meta.get("total_tokens",    0) or (_prompt_t + _output_t + _thought_t)
+                        _final += (
+                            f"\n\n📊 Token Kullanımı — Prompt: {_prompt_t} · "
+                            f"Cevap: {_output_t} · Thinking: {_thought_t} · Toplam: {_total_t}"
+                        )
+
+                    if _cleaned:
+                        st.markdown(_final)
+                        st.session_state[_cache_key] = _final
+                        st.caption(f"✅ Tamamlandı · {_dt:.1f}s · ~{len(_cleaned.split())} kelime")
+                    else:
+                        st.warning("⚠️ Boş yanıt alındı. Farklı bir model veya detay seviyesi deneyin.")
+                except RuntimeError as e:
+                    st.error(f"❌ API Hatası: {str(e)}")
+                except requests.exceptions.Timeout:
+                    st.error("❌ Zaman aşımı — sunucu yanıt vermiyor. Tekrar deneyin.")
+                except requests.exceptions.ConnectionError as e:
+                    st.error(f"❌ Bağlantı hatası: {str(e)[:300]}")
+                except Exception as e:
+                    st.error(f"❌ {type(e).__name__}: {str(e)[:400]}")
+
+            elif _cached:
+                st.markdown(_cached)
+                st.caption(
+                    "💾 Cache'den gösteriliyor — fiyat/skor değişince anahtar değişir ve "
+                    "yeni yorum gerekir. Manuel yenileme için 🔄 tuşuna basın."
+                )
 
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")
-
-
-# ============================================================
-# 9. AI CHAT PANELİ (sağ fixed panel — 💬 AI butonuyla açılır)
-
-# ============================================================
-# 9. AI CHAT PANELİ (@st.dialog)
-# ============================================================
-@st.dialog("💬 AI Sohbet", width="large")
-def chat_dialog():
-    _cur_provider = st.session_state.get("ai_provider_select", "Google")
-    _has_key      = bool(st.session_state.get(f"ai_key_{_cur_provider}", ""))
-
-    if not _has_key:
-        _link_lines = "\n".join(
-            f"- [{_pname}]({_pcfg['key_url']}){' ← seçili' if _pname == _cur_provider else ''}"
-            for _pname, _pcfg in LLM_PROVIDERS.items()
-        )
-        st.info(
-            f"💡 AI Chat için sidebar'dan **{_cur_provider}** API key'ini girin.\n\n"
-            f"**API key almak için:**\n\n{_link_lines}"
-        )
-        return
-
-    _chat_key   = st.session_state.get(f"ai_key_{_cur_provider}", "")
-    _chat_model = st.session_state.get(f"ai_model_{_cur_provider}", LLM_PROVIDERS[_cur_provider]["models"][0])
-
-    st.caption(f"Provider: **{_cur_provider}** · Model: **{_chat_model}**")
-
-    if st.button("🗑️ Sohbeti Temizle", key="clear_chat_btn"):
-        st.session_state.chat_history = []
-        st.rerun()
-
-    for _msg in st.session_state.get("chat_history", []):
-        with st.chat_message(_msg["role"]):
-            st.markdown(_msg["content"])
-
-    _user_input = st.chat_input("Grafik ve analiz hakkında soru sor...")
-
-    if _user_input:
-        st.session_state.chat_history.append({"role": "user", "content": _user_input})
-        with st.chat_message("user"):
-            st.markdown(_user_input)
-
-        _sys_p = build_chat_system_prompt(st.session_state.get("chat_ctx", {}))
-        _hist  = st.session_state.chat_history[:]
-
-        with st.chat_message("assistant"):
-            try:
-                _ph   = st.empty()
-                _full = ""
-                for _piece in stream_llm_chat(
-                    _cur_provider, _chat_key, _chat_model,
-                    _sys_p, _hist, max_tokens=2000
-                ):
-                    _full += _piece
-                    _ph.markdown(_full + "▌")
-                _ph.markdown(_full)
-                st.session_state.chat_history.append({"role": "assistant", "content": _full})
-            except RuntimeError as e:
-                st.error(f"❌ {e}")
-            except Exception as e:
-                st.error(f"❌ {type(e).__name__}: {str(e)[:300]}")
-
-if st.session_state.get("chat_open"):
-    chat_dialog()
-    st.session_state.chat_open = False

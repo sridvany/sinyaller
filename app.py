@@ -2662,9 +2662,9 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         # ============================================================
         # ALT GRAFİKLER
         # ============================================================
-        tab_nw, tab_adx, tab_ichi, tab_kama, tab_st, tab_rsi, tab_macd, tab_obv, tab_stoch, tab_wt, tab_div = st.tabs([
+        tab_nw, tab_adx, tab_ichi, tab_kama, tab_st, tab_stoch, tab_wt, tab_rsi, tab_macd, tab_obv, tab_div = st.tabs([
             "Nadaraya-Watson", "ADX", "Ichimoku", "KAMA & LRC", "SuperTrend",
-            "RSI", "MACD", "OBV", "Stoch RSI", "WaveTrend", "Divergence"])
+            "Stoch RSI", "WaveTrend", "RSI", "MACD", "OBV", "Divergence"])
 
         # Eski tab1..tab11 değişken isimlerini koru (içerik bloklarını değiştirmemek için)
         tab1  = tab_rsi

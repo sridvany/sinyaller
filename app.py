@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -55,18 +54,11 @@ with _hcol1:
     st.title("📈 PİYASA TERMİNALİ")
     st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
 with _hcol2:
-    _chat_label = "💬 ✕" if st.session_state.get("chat_open") else "💬 AI"
+    _chat_label = "💬 AI"
     if st.button(_chat_label, key="chat_toggle_btn", use_container_width=True):
-        st.session_state.chat_open = not st.session_state.get("chat_open", False)
+        st.session_state.chat_open = True
         st.rerun()
 
-if st.session_state.get("chat_open"):
-    st.markdown("""
-<style>
-section[data-testid="stMain"] .block-container { padding-right: 410px !important; }
-iframe[height="0"], iframe[style*="height: 0"] { pointer-events: none !important; visibility: hidden !important; }
-</style>
-""", unsafe_allow_html=True)
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI
@@ -3974,95 +3966,66 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
 # ============================================================
 # 9. AI CHAT PANELİ (sağ fixed panel — 💬 AI butonuyla açılır)
+
 # ============================================================
+# 9. AI CHAT PANELİ (@st.dialog)
+# ============================================================
+@st.dialog("💬 AI Sohbet", width="large")
+def chat_dialog():
+    _cur_provider = st.session_state.get("ai_provider_select", "Google")
+    _has_key      = bool(st.session_state.get(f"ai_key_{_cur_provider}", ""))
+
+    if not _has_key:
+        _link_lines = "\n".join(
+            f"- [{_pname}]({_pcfg['key_url']}){' ← seçili' if _pname == _cur_provider else ''}"
+            for _pname, _pcfg in LLM_PROVIDERS.items()
+        )
+        st.info(
+            f"💡 AI Chat için sidebar'dan **{_cur_provider}** API key'ini girin.\n\n"
+            f"**API key almak için:**\n\n{_link_lines}"
+        )
+        return
+
+    _chat_key   = st.session_state.get(f"ai_key_{_cur_provider}", "")
+    _chat_model = st.session_state.get(f"ai_model_{_cur_provider}", LLM_PROVIDERS[_cur_provider]["models"][0])
+
+    st.caption(f"Provider: **{_cur_provider}** · Model: **{_chat_model}**")
+
+    if st.button("🗑️ Sohbeti Temizle", key="clear_chat_btn"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    for _msg in st.session_state.get("chat_history", []):
+        with st.chat_message(_msg["role"]):
+            st.markdown(_msg["content"])
+
+    _user_input = st.chat_input("Grafik ve analiz hakkında soru sor...")
+
+    if _user_input:
+        st.session_state.chat_history.append({"role": "user", "content": _user_input})
+        with st.chat_message("user"):
+            st.markdown(_user_input)
+
+        _sys_p = build_chat_system_prompt(st.session_state.get("chat_ctx", {}))
+        _hist  = st.session_state.chat_history[:]
+
+        with st.chat_message("assistant"):
+            try:
+                _ph   = st.empty()
+                _full = ""
+                for _piece in stream_llm_chat(
+                    _cur_provider, _chat_key, _chat_model,
+                    _sys_p, _hist, max_tokens=2000
+                ):
+                    _full += _piece
+                    _ph.markdown(_full + "▌")
+                _ph.markdown(_full)
+                st.session_state.chat_history.append({"role": "assistant", "content": _full})
+            except RuntimeError as e:
+                st.error(f"❌ {e}")
+            except Exception as e:
+                st.error(f"❌ {type(e).__name__}: {str(e)[:300]}")
+
 if st.session_state.get("chat_open"):
-    st.markdown('<div id="llm-chat-marker"></div>', unsafe_allow_html=True)
-    components.html("""
-<script>
-(function fix() {
-    var doc = window.parent.document;
-    var marker = doc.getElementById('llm-chat-marker');
-    if (!marker) { setTimeout(fix, 150); return; }
-    var el = marker;
-    while (el && el.getAttribute && el.getAttribute('data-testid') !== 'element-container') {
-        el = el.parentElement;
-        if (!el) { setTimeout(fix, 150); return; }
-    }
-    var sib = el ? el.nextElementSibling : null;
-    var found = null;
-    while (sib) {
-        if (sib.getAttribute && sib.getAttribute('data-testid') === 'stVerticalBlock') {
-            found = sib; break;
-        }
-        sib = sib.nextElementSibling;
-    }
-    if (!found) { setTimeout(fix, 150); return; }
-    var css = 'position:fixed!important;right:0!important;top:58px!important;' +
-              'width:400px!important;height:calc(100vh - 58px)!important;' +
-              'overflow-y:auto!important;background:#0e1117!important;' +
-              'border-left:2px solid #2d2d2d!important;z-index:999!important;' +
-              'padding:16px 14px!important;box-shadow:-6px 0 24px rgba(0,0,0,.6)!important;';
-    found.setAttribute('style', css);
-})();
-</script>
-""", height=0)
-    with st.container():
-        _cur_provider = st.session_state.get("ai_provider_select", "Google")
-        _has_key = bool(st.session_state.get(f"ai_key_{_cur_provider}", ""))
-
-        if not _has_key:
-            _link_lines = "\n".join(
-                f"- [{_pname}]({_pcfg['key_url']}){' ← seçili' if _pname == _cur_provider else ''}"
-                for _pname, _pcfg in LLM_PROVIDERS.items()
-            )
-            st.info(
-                f"💡 AI Chat için sidebar'dan **{_cur_provider}** API key'ini girin.\n\n"
-                f"**API key almak için:**\n\n{_link_lines}"
-            )
-            st.text_input("Mesaj", placeholder="API key gerekli...", disabled=True, key="chat_input_disabled", label_visibility="collapsed")
-        else:
-            _chat_key   = st.session_state.get(f"ai_key_{_cur_provider}", "")
-            _chat_model = st.session_state.get(f"ai_model_{_cur_provider}", LLM_PROVIDERS[_cur_provider]["models"][0])
-
-            st.markdown(f"**💬 AI Sohbet** · {_cur_provider} / {_chat_model}")
-
-            if st.button("🗑️ Sohbeti Temizle", key="clear_chat_btn"):
-                st.session_state.chat_history = []
-                st.rerun()
-
-            for _msg in st.session_state.get("chat_history", []):
-                with st.chat_message(_msg["role"]):
-                    st.markdown(_msg["content"])
-
-            _ci_col, _sb_col = st.columns([5, 1])
-            with _ci_col:
-                _user_input = st.text_input("Mesaj", placeholder="Grafik ve analiz hakkında soru sor...",
-                                            key="chat_input_active", label_visibility="collapsed")
-            with _sb_col:
-                _send = st.button("➤", key="chat_send_btn", use_container_width=True)
-
-            if (_send or (_user_input and st.session_state.get("_last_chat_input") != _user_input)) and _user_input:
-                st.session_state["_last_chat_input"] = _user_input
-                st.session_state.chat_history.append({"role": "user", "content": _user_input})
-                with st.chat_message("user"):
-                    st.markdown(_user_input)
-
-                _sys_p = build_chat_system_prompt(st.session_state.get("chat_ctx", {}))
-                _hist  = st.session_state.chat_history[:]
-
-                with st.chat_message("assistant"):
-                    try:
-                        _resp_placeholder = st.empty()
-                        _full = ""
-                        for _piece in stream_llm_chat(
-                            _cur_provider, _chat_key, _chat_model,
-                            _sys_p, _hist, max_tokens=2000
-                        ):
-                            _full += _piece
-                            _resp_placeholder.markdown(_full + "▌")
-                        _resp_placeholder.markdown(_full)
-                        st.session_state.chat_history.append({"role": "assistant", "content": _full})
-                    except RuntimeError as e:
-                        st.error(f"❌ {e}")
-                    except Exception as e:
-                        st.error(f"❌ {type(e).__name__}: {str(e)[:300]}")
+    chat_dialog()
+    st.session_state.chat_open = False

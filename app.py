@@ -102,59 +102,6 @@ def _get_nvidia_key():
         return os.environ.get("NVIDIA_API_KEY", "")
 
 
-def _stream_openai_compat(api_key, model, messages, max_tokens):
-    """NVIDIA NIM OpenAI-uyumlu streaming."""
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model, "messages": messages, "stream": True,
-        "max_tokens": max_tokens, "temperature": 0.4,
-    }
-    r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload, stream=True, timeout=90)
-    try:
-        if r.status_code != 200:
-            try:
-                err_body = r.text
-            except Exception:
-                err_body = "(yanıt okunamadı)"
-            err_msg = err_body[:500]
-            try:
-                err_json = json.loads(err_body)
-                if isinstance(err_json, dict) and "error" in err_json:
-                    err_detail = err_json["error"]
-                    if isinstance(err_detail, dict):
-                        err_msg = err_detail.get("message", err_msg)
-                    else:
-                        err_msg = str(err_detail)
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                pass
-            raise RuntimeError(f"HTTP {r.status_code}: {err_msg}")
-
-        for raw in r.iter_lines():
-            if not raw:
-                continue
-            line = raw.decode("utf-8", errors="ignore")
-            if not line.startswith("data: "):
-                continue
-            data = line[6:].strip()
-            if data == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data)
-                delta = chunk["choices"][0].get("delta", {})
-                piece = delta.get("content")
-                if piece:
-                    yield piece
-            except (json.JSONDecodeError, KeyError, IndexError):
-                continue
-    finally:
-        r.close()
-
-
-
-# ============================================================
-# 🔄 NON-STREAMING (toplu yanıt) FONKSİYONLARI
-# Streaming'deki yarım-kesilme bug'larından etkilenmez.
-# ============================================================
 def _parse_http_error(response, default_msg):
     """HTTP hata gövdesinden anlamlı mesaj çıkar."""
     try:
@@ -175,42 +122,68 @@ def _parse_http_error(response, default_msg):
     return msg
 
 
-def _fetch_openai_compat(api_key, model, messages, max_tokens):
-    """NVIDIA NIM OpenAI uyumlu non-streaming."""
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model, "messages": messages, "stream": False,
-        "max_tokens": max_tokens, "temperature": 0.4,
-    }
-    r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload, timeout=120)
-    if r.status_code != 200:
-        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
-    data = r.json()
-    try:
-        choice   = data["choices"][0]
-        text     = choice["message"].get("content", "") or ""
-        finish   = choice.get("finish_reason")
-    except (KeyError, IndexError):
-        raise RuntimeError("Beklenmeyen yanıt formatı")
-    usage = data.get("usage", {})
-    meta = {
-        "finish_reason":    finish,
-        "prompt_tokens":    usage.get("prompt_tokens",     0),
-        "output_tokens":    usage.get("completion_tokens", 0),
-        "thinking_tokens":  0,
-        "total_tokens":     usage.get("total_tokens",      0),
-    }
-    return text, meta
-
-
-
 def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
-    """NVIDIA NIM DeepSeek-V4-Pro non-streaming. (text, meta_dict) döner."""
+    """NVIDIA NIM DeepSeek-V4-Pro streaming — chunks birleştirip tek (text, meta) döner."""
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user",   "content": user_prompt},
     ]
-    return _fetch_openai_compat(api_key, NVIDIA_MODEL, messages, max_tokens)
+    payload = {
+        "model": NVIDIA_MODEL,
+        "messages": messages,
+        "stream": True,
+        "max_tokens": max_tokens,
+        "temperature": 0.4,
+        "top_p": 0.95,
+        "stream_options": {"include_usage": True},
+    }
+    r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload,
+                      stream=True, timeout=120)
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
+
+    text_parts = []
+    finish = None
+    usage  = {}
+    try:
+        for raw in r.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="ignore")
+            if not line.startswith("data: "):
+                continue
+            data_str = line[6:].strip()
+            if data_str == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data_str)
+                choices = chunk.get("choices", [])
+                if choices:
+                    delta = choices[0].get("delta", {}) or {}
+                    piece = delta.get("content")
+                    if piece:
+                        text_parts.append(piece)
+                    fr = choices[0].get("finish_reason")
+                    if fr:
+                        finish = fr
+                u = chunk.get("usage")
+                if u:
+                    usage = u
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+    finally:
+        r.close()
+
+    text = "".join(text_parts)
+    meta = {
+        "finish_reason":   finish,
+        "prompt_tokens":   usage.get("prompt_tokens",     0),
+        "output_tokens":   usage.get("completion_tokens", 0),
+        "thinking_tokens": 0,
+        "total_tokens":    usage.get("total_tokens",      0),
+    }
+    return text, meta
 
 
 def build_ai_prompt(*, detail, ticker, close, interval,

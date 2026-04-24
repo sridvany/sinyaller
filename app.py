@@ -49,13 +49,45 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 PİYASA TERMİNALİ")
-st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
+_hcol1, _hcol2 = st.columns([9, 1])
+with _hcol1:
+    st.title("📈 PİYASA TERMİNALİ")
+    st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
+with _hcol2:
+    _chat_label = "💬 ✕" if st.session_state.get("chat_open") else "💬 AI"
+    if st.button(_chat_label, key="chat_toggle_btn", use_container_width=True):
+        st.session_state.chat_open = not st.session_state.get("chat_open", False)
+        st.rerun()
+
+if st.session_state.get("chat_open"):
+    st.markdown("""
+<style>
+section[data-testid="stMain"] .block-container {
+    padding-right: 410px !important;
+}
+[data-testid="stVerticalBlock"]:has([data-testid="stChatInput"]) {
+    position: fixed !important;
+    right: 0 !important;
+    top: 58px !important;
+    width: 400px !important;
+    height: calc(100vh - 58px) !important;
+    overflow-y: auto !important;
+    background: #0e1117 !important;
+    border-left: 2px solid #2d2d2d !important;
+    z-index: 999 !important;
+    padding: 16px 12px 80px 12px !important;
+    box-shadow: -6px 0 24px rgba(0,0,0,0.6) !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI
 # ============================================================
 _defaults = {
+    "chat_open":     False,
+    "chat_history":  [],
+    "chat_ctx":      {},
     "sma_short":     20,
     "sma_long":      200,
     "rsi_period":    14,
@@ -700,6 +732,168 @@ def clean_half_sentence(text):
 
     cleaned = stripped[:last_end]
     return cleaned, True
+
+
+# ============================================================
+# 🤖 CHAT FONKSİYONLARI
+# ============================================================
+def build_chat_system_prompt(ctx: dict) -> str:
+    """Mevcut analiz bağlamını chat sistem prompt'una dönüştür."""
+    ticker   = ctx.get("ticker", "?")
+    interval = ctx.get("interval", "?")
+    r_close  = ctx.get("r_close", float("nan"))
+
+    lines = [
+        "Sen deneyimli bir teknik analiz asistanısın. Kullanıcı sana grafik, indikatör ve strateji "
+        "hakkında sorular soruyor. Aşağıdaki mevcut analiz verisine dayanarak yanıt ver. "
+        "Yatırım tavsiyesi verme; sadece teknik analiz yorum ve açıklaması yap.",
+        "",
+        f"## Sembol / Zaman Dilimi\nTicker: {ticker}  |  Interval: {interval}  |  Son Fiyat: {r_close:.4f}",
+    ]
+
+    # Algoritma kararları
+    res = ctx.get("res", [])
+    if res:
+        lines.append("\n## Algoritma Kararları")
+        for row in res:
+            karar, algo, sebep = (row + ["", "", ""])[:3]
+            lines.append(f"- {algo}: **{karar}** — {sebep}")
+
+    # Swing S/R seviyeleri
+    swing = ctx.get("swing_levels", [])
+    if swing:
+        sorted_swing = sorted(swing, key=lambda x: abs(x.get("price", 0) - r_close))[:6]
+        lines.append("\n## En Yakın S/R Seviyeleri")
+        for s in sorted_swing:
+            p = s.get("price", 0)
+            t = s.get("type", "?")
+            touch = s.get("touches", 1)
+            lines.append(f"- {t.upper():9s} {p:.4f}  (dokunuş: {touch})")
+
+    # Fibonacci seviyeleri
+    fib = ctx.get("fib_levels", {})
+    if fib:
+        sorted_fib = sorted(fib.items(), key=lambda x: abs(x[1] - r_close))[:5]
+        lines.append("\n## En Yakın Fibonacci Seviyeleri")
+        for name, price in sorted_fib:
+            lines.append(f"- {name}: {price:.4f}")
+
+    # Optimizasyon sonuçları
+    opt_stats = ctx.get("opt_stats", {})
+    if opt_stats:
+        lines.append("\n## Walk-Forward Optimizasyon Sonuçları")
+        for algo, s in opt_stats.items():
+            sharpe  = s.get("sharpe", float("nan"))
+            dsr     = s.get("dsr",    float("nan"))
+            ret     = s.get("total_ret", 0.0)
+            n       = s.get("n", 0)
+            wr      = s.get("win_rate", 0.0)
+            lines.append(
+                f"- {algo}: Getiri={ret:.1f}%  Sharpe={sharpe:.2f}  DSR={dsr:.2f}  "
+                f"Trade={n}  WinRate={wr:.1f}%"
+            )
+
+    lines.append("\nVeri yoksa 'Henüz analiz çalıştırılmadı' de.")
+    return "\n".join(lines)
+
+
+def stream_llm_chat(provider, api_key, model, system_prompt, history, max_tokens=2000):
+    """
+    Multi-turn chat streaming.
+    history: [{"role": "user"|"assistant", "content": "..."}]
+    """
+    cfg = LLM_PROVIDERS[provider]
+
+    if cfg["type"] == "openai":
+        messages = [{"role": "system", "content": system_prompt}] + history
+        yield from _stream_openai_compat(
+            cfg["endpoint"], api_key, model, messages, max_tokens,
+            provider_name=provider,
+        )
+
+    elif cfg["type"] == "anthropic":
+        # Anthropic multi-turn: sistem ayrı, messages dizisi history
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": history,
+            "stream": True,
+            "temperature": 0.4,
+        }
+        r = requests.post("https://api.anthropic.com/v1/messages",
+                          headers=headers, json=payload, stream=True, timeout=90)
+        try:
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+            for raw in r.iter_lines():
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="ignore")
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    chunk = json.loads(line[6:])
+                    if chunk.get("type") == "content_block_delta":
+                        text = chunk.get("delta", {}).get("text", "")
+                        if text:
+                            yield text
+                except json.JSONDecodeError:
+                    continue
+        finally:
+            r.close()
+
+    elif cfg["type"] == "gemini":
+        # Gemini multi-turn: history → contents array
+        contents = []
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+        model_name = model
+        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
+               f"{model_name}:streamGenerateContent?alt=sse&key={api_key}")
+
+        gen_config = {"temperature": 0.4}
+        if model_name.startswith("gemini-2.5-flash"):
+            gen_config["thinkingConfig"]  = {"thinkingBudget": 0}
+            gen_config["maxOutputTokens"] = max_tokens
+        else:
+            gen_config["maxOutputTokens"] = max_tokens
+
+        payload = {
+            "contents":          contents,
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "generationConfig":  gen_config,
+        }
+        r = requests.post(url, json=payload, stream=True, timeout=90)
+        try:
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+            for raw in r.iter_lines():
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="ignore")
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    chunk = json.loads(line[6:])
+                    for cand in chunk.get("candidates", []):
+                        for part in cand.get("content", {}).get("parts", []):
+                            if "text" in part and not part.get("thought", False):
+                                yield part["text"]
+                except json.JSONDecodeError:
+                    continue
+        finally:
+            r.close()
+
+    else:
+        raise ValueError(f"Bilinmeyen provider: {cfg['type']}")
 
 
 # ============================================================
@@ -3776,6 +3970,17 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             "adımında k tanesinde train-kazananı olduğu."
         )
 
+        # ── Chat bağlamını güncelle ────────────────────────────
+        st.session_state["chat_ctx"] = {
+            "ticker":       ticker,
+            "interval":     interval,
+            "r_close":      r_close,
+            "swing_levels": swing_levels,
+            "fib_levels":   fib_levels,
+            "opt_stats":    opt_stats,
+            "res":          res,
+        }
+
         # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
         # ============================================================
@@ -3895,3 +4100,60 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
     else:
         st.error("Veri çekilemedi. Ticker veya internet bağlantısını kontrol edin.")
+
+
+# ============================================================
+# 9. AI CHAT PANELİ (sağ fixed panel — 💬 AI butonuyla açılır)
+# ============================================================
+if st.session_state.get("chat_open"):
+    st.divider()  # CSS selector anchor — bu divider'ın altındaki block fixed olur
+
+    if not st.session_state.get(f"ai_key_{st.session_state.get('ai_provider_select', 'Google')}"):
+        st.info(
+            "💡 AI Chat için sidebar'dan API key girin. "
+            f"Provider: **{st.session_state.get('ai_provider_select', 'Google')}**"
+        )
+        st.chat_input("API key gerekli...", disabled=True)
+    else:
+        _chat_provider = st.session_state.get("ai_provider_select", "Google")
+        _chat_key      = st.session_state.get(f"ai_key_{_chat_provider}", "")
+        _chat_model    = st.session_state.get(f"ai_model_{_chat_provider}", LLM_PROVIDERS[_chat_provider]["models"][0])
+
+        st.markdown(f"**💬 AI Sohbet** · {_chat_provider} / {_chat_model}")
+
+        if st.button("🗑️ Sohbeti Temizle", key="clear_chat_btn"):
+            st.session_state.chat_history = []
+            st.rerun()
+
+        # Geçmiş mesajları göster
+        for _msg in st.session_state.get("chat_history", []):
+            with st.chat_message(_msg["role"]):
+                st.markdown(_msg["content"])
+
+        # Yeni mesaj girişi
+        _user_input = st.chat_input("Grafik ve analiz hakkında soru sor...")
+
+        if _user_input:
+            st.session_state.chat_history.append({"role": "user", "content": _user_input})
+            with st.chat_message("user"):
+                st.markdown(_user_input)
+
+            _sys_p = build_chat_system_prompt(st.session_state.get("chat_ctx", {}))
+            _hist  = st.session_state.chat_history[:]  # kopyasını al
+
+            with st.chat_message("assistant"):
+                try:
+                    _resp_placeholder = st.empty()
+                    _full = ""
+                    for _piece in stream_llm_chat(
+                        _chat_provider, _chat_key, _chat_model,
+                        _sys_p, _hist, max_tokens=2000
+                    ):
+                        _full += _piece
+                        _resp_placeholder.markdown(_full + "▌")
+                    _resp_placeholder.markdown(_full)
+                    st.session_state.chat_history.append({"role": "assistant", "content": _full})
+                except RuntimeError as e:
+                    st.error(f"❌ {e}")
+                except Exception as e:
+                    st.error(f"❌ {type(e).__name__}: {str(e)[:300]}")

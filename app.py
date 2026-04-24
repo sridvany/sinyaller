@@ -65,8 +65,7 @@ if st.session_state.get("chat_open"):
 section[data-testid="stMain"] .block-container {
     padding-right: 410px !important;
 }
-[data-testid="stVerticalBlock"]:has(> [data-testid="stChatInput"]),
-[data-testid="stVerticalBlock"]:has(> div > [data-testid="stChatInput"]) {
+div[data-testid="element-container"]:has(#llm-chat-marker) + div[data-testid="stVerticalBlock"] {
     position: fixed !important;
     right: 0 !important;
     top: 58px !important;
@@ -76,7 +75,7 @@ section[data-testid="stMain"] .block-container {
     background: #0e1117 !important;
     border-left: 2px solid #2d2d2d !important;
     z-index: 999 !important;
-    padding: 16px 12px 80px 12px !important;
+    padding: 16px 12px 16px 12px !important;
     box-shadow: -6px 0 24px rgba(0,0,0,0.6) !important;
 }
 </style>
@@ -3990,6 +3989,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 # 9. AI CHAT PANELİ (sağ fixed panel — 💬 AI butonuyla açılır)
 # ============================================================
 if st.session_state.get("chat_open"):
+    st.markdown('<div id="llm-chat-marker"></div>', unsafe_allow_html=True)
     with st.container():
         _cur_provider = st.session_state.get("ai_provider_select", "Google")
         _has_key = bool(st.session_state.get(f"ai_key_{_cur_provider}", ""))

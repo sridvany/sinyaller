@@ -3454,6 +3454,60 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
             )
 
+            # ──────────────────────────────────────────────
+            # 🔧 DEBUG PANELİ — 404 tanısı için
+            # ──────────────────────────────────────────────
+            with st.expander("🔧 Debug (404 tanı aracı)", expanded=False):
+                _dbg1, _dbg2, _dbg3 = st.columns(3)
+
+                if _dbg1.button("1️⃣ Key kontrolü", key="dbg_key"):
+                    _k = ai_api_key
+                    st.write(f"**Uzunluk:** {len(_k)} karakter")
+                    st.write(f"**İlk 15:** `{_k[:15]}`")
+                    st.write(f"**Son 5:** `{_k[-5:]}`")
+                    st.write(f"**Baştaki/sondaki boşluk:** {_k != _k.strip()}")
+                    st.write(f"**ASCII mi:** {_k.isascii()}")
+                    st.write(f"**Satır sonu karakteri var mı:** {'\\n' in _k or '\\r' in _k}")
+
+                if _dbg2.button("2️⃣ GET /v1/models", key="dbg_get"):
+                    try:
+                        _r = requests.get(
+                            "https://integrate.api.nvidia.com/v1/models",
+                            headers={"Authorization": f"Bearer {ai_api_key}"},
+                            timeout=30,
+                        )
+                        st.write(f"**Status:** `{_r.status_code}`")
+                        st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
+                        st.code(_r.text[:2000], language="json")
+                    except Exception as e:
+                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
+
+                if _dbg3.button("3️⃣ Minimum POST", key="dbg_post"):
+                    try:
+                        _payload = {
+                            "model": NVIDIA_MODEL,
+                            "messages": [{"role": "user", "content": "hi"}],
+                            "max_tokens": 20,
+                            "stream": False,
+                        }
+                        _r = requests.post(
+                            NVIDIA_ENDPOINT,
+                            headers={
+                                "Authorization": f"Bearer {ai_api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json=_payload,
+                            timeout=30,
+                        )
+                        st.write(f"**Status:** `{_r.status_code}`")
+                        st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
+                        st.write(f"**Server:** `{_r.headers.get('server', '?')}`")
+                        st.write(f"**Endpoint:** `{NVIDIA_ENDPOINT}`")
+                        st.write(f"**Model:** `{NVIDIA_MODEL}`")
+                        st.code(_r.text[:2000])
+                    except Exception as e:
+                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
+
             _cache_key = ai_cache_key(
                 ticker, interval, 0.0, r_close, ai_detail
             )

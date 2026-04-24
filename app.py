@@ -86,9 +86,9 @@ for k, v in _defaults.items():
 # ============================================================
 # 🤖 LLM PROVIDER KONFİGÜRASYONU VE AKIŞ FONKSİYONLARI
 # ============================================================
-# NVIDIA NIM — OpenAI-compatible endpoint, DeepSeek-V4-Pro
+# NVIDIA NIM — OpenAI-compatible endpoint, DeepSeek-V3.2
 NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-NVIDIA_MODEL    = "deepseek-ai/deepseek-v4-pro"
+NVIDIA_MODEL    = "deepseek-ai/deepseek-v3.2"
 
 AI_DETAIL_LEVELS = {"Kısa": 1500, "Orta": 4000, "Detaylı": 8000}
 
@@ -123,7 +123,7 @@ def _parse_http_error(response, default_msg):
 
 
 def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
-    """NVIDIA NIM DeepSeek-V4-Pro streaming — chunks birleştirip tek (text, meta) döner."""
+    """NVIDIA NIM DeepSeek-V3.2 streaming — chunks birleştirip tek (text, meta) döner."""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     messages = [
         {"role": "system", "content": system_prompt},
@@ -409,7 +409,7 @@ with st.sidebar:
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
     # ──────────────────────────────────────────────────────────
-    # 🤖 AI RAPOR YORUMCUSU — NVIDIA NIM · DeepSeek-V4-Pro
+    # 🤖 AI RAPOR YORUMCUSU — NVIDIA NIM · DeepSeek-V3.2
     # Key Streamlit Secrets'tan okunur, kullanıcıya gösterilmez
     # ──────────────────────────────────────────────────────────
     st.write("---")
@@ -417,9 +417,9 @@ with st.sidebar:
 
     ai_api_key = _get_nvidia_key()
     if ai_api_key:
-        st.caption(f"Model: **DeepSeek-V4-Pro** (NVIDIA NIM) · Key: ✅ bağlı")
+        st.caption(f"Model: **DeepSeek-V3.2** (NVIDIA NIM) · Key: ✅ bağlı")
     else:
-        st.caption("Model: **DeepSeek-V4-Pro** (NVIDIA NIM) · Key: ❌ yok")
+        st.caption("Model: **DeepSeek-V3.2** (NVIDIA NIM) · Key: ❌ yok")
 
     ai_detail = st.select_slider(
         "Detay Seviyesi",
@@ -3450,107 +3450,9 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             )
         else:
             st.caption(
-                f"Model: **DeepSeek-V4-Pro** (NVIDIA NIM) · "
+                f"Model: **DeepSeek-V3.2** (NVIDIA NIM) · "
                 f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
             )
-
-            # ──────────────────────────────────────────────
-            # 🔧 DEBUG PANELİ — 404 tanısı için
-            # ──────────────────────────────────────────────
-            with st.expander("🔧 Debug (404 tanı aracı)", expanded=False):
-                _dbg1, _dbg2, _dbg3, _dbg4, _dbg5 = st.columns(5)
-
-                if _dbg1.button("1️⃣ Key kontrolü", key="dbg_key"):
-                    _k = ai_api_key
-                    st.write(f"**Uzunluk:** {len(_k)} karakter")
-                    st.write(f"**İlk 15:** `{_k[:15]}`")
-                    st.write(f"**Son 5:** `{_k[-5:]}`")
-                    st.write(f"**Baştaki/sondaki boşluk:** {_k != _k.strip()}")
-                    st.write(f"**ASCII mi:** {_k.isascii()}")
-                    st.write(f"**Satır sonu karakteri var mı:** {'\\n' in _k or '\\r' in _k}")
-
-                if _dbg2.button("2️⃣ GET /v1/models", key="dbg_get"):
-                    try:
-                        _r = requests.get(
-                            "https://integrate.api.nvidia.com/v1/models",
-                            headers={"Authorization": f"Bearer {ai_api_key}"},
-                            timeout=30,
-                        )
-                        st.write(f"**Status:** `{_r.status_code}`")
-                        st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
-                        st.code(_r.text[:2000], language="json")
-                    except Exception as e:
-                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
-
-                if _dbg3.button("3️⃣ Minimum POST", key="dbg_post"):
-                    try:
-                        _payload = {
-                            "model": NVIDIA_MODEL,
-                            "messages": [{"role": "user", "content": "hi"}],
-                            "max_tokens": 20,
-                            "stream": False,
-                        }
-                        _r = requests.post(
-                            NVIDIA_ENDPOINT,
-                            headers={
-                                "Authorization": f"Bearer {ai_api_key}",
-                                "Content-Type": "application/json",
-                            },
-                            json=_payload,
-                            timeout=30,
-                        )
-                        st.write(f"**Status:** `{_r.status_code}`")
-                        st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
-                        st.write(f"**Server:** `{_r.headers.get('server', '?')}`")
-                        st.write(f"**Endpoint:** `{NVIDIA_ENDPOINT}`")
-                        st.write(f"**Model:** `{NVIDIA_MODEL}`")
-                        st.code(_r.text[:2000])
-                    except Exception as e:
-                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
-
-                if _dbg4.button("4️⃣ R1 ile POST", key="dbg_r1"):
-                    try:
-                        _alt_model = "deepseek-ai/deepseek-r1"
-                        _payload = {
-                            "model": _alt_model,
-                            "messages": [{"role": "user", "content": "hi"}],
-                            "max_tokens": 20,
-                            "stream": False,
-                        }
-                        _r = requests.post(
-                            NVIDIA_ENDPOINT,
-                            headers={
-                                "Authorization": f"Bearer {ai_api_key}",
-                                "Content-Type": "application/json",
-                            },
-                            json=_payload,
-                            timeout=30,
-                        )
-                        st.write(f"**Status:** `{_r.status_code}`")
-                        st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
-                        st.write(f"**Test edilen model:** `{_alt_model}`")
-                        st.code(_r.text[:2000])
-                    except Exception as e:
-                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
-
-                if _dbg5.button("5️⃣ DeepSeek listele", key="dbg_list"):
-                    try:
-                        _r = requests.get(
-                            "https://integrate.api.nvidia.com/v1/models",
-                            headers={"Authorization": f"Bearer {ai_api_key}"},
-                            timeout=30,
-                        )
-                        if _r.status_code != 200:
-                            st.error(f"Status {_r.status_code}: {_r.text[:500]}")
-                        else:
-                            _data = _r.json()
-                            _all = _data.get("data", [])
-                            _deepseek = [m["id"] for m in _all if "deepseek" in m.get("id", "").lower()]
-                            st.write(f"**Toplam model sayısı:** {len(_all)}")
-                            st.write(f"**'deepseek' içeren modeller ({len(_deepseek)}):**")
-                            st.code("\n".join(_deepseek) if _deepseek else "HİÇ YOK")
-                    except Exception as e:
-                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
 
             _cache_key = ai_cache_key(
                 ticker, interval, 0.0, r_close, ai_detail
@@ -3584,7 +3486,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 try:
                     _t0 = time.time()
 
-                    with st.spinner("🤖 DeepSeek-V4-Pro yanıt üretiyor..."):
+                    with st.spinner("🤖 DeepSeek-V3.2 yanıt üretiyor..."):
                         _full_text, _meta = fetch_llm(
                             ai_api_key, _sys_p, _usr_p,
                             AI_DETAIL_LEVELS[ai_detail]

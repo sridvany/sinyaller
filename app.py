@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -62,22 +63,8 @@ with _hcol2:
 if st.session_state.get("chat_open"):
     st.markdown("""
 <style>
-section[data-testid="stMain"] .block-container {
-    padding-right: 410px !important;
-}
-div[data-testid="element-container"]:has(#llm-chat-marker) + div[data-testid="stVerticalBlock"] {
-    position: fixed !important;
-    right: 0 !important;
-    top: 58px !important;
-    width: 400px !important;
-    height: calc(100vh - 58px) !important;
-    overflow-y: auto !important;
-    background: #0e1117 !important;
-    border-left: 2px solid #2d2d2d !important;
-    z-index: 999 !important;
-    padding: 16px 12px 16px 12px !important;
-    box-shadow: -6px 0 24px rgba(0,0,0,0.6) !important;
-}
+section[data-testid="stMain"] .block-container { padding-right: 410px !important; }
+iframe[height="0"], iframe[style*="height: 0"] { pointer-events: none !important; visibility: hidden !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -3990,6 +3977,35 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 # ============================================================
 if st.session_state.get("chat_open"):
     st.markdown('<div id="llm-chat-marker"></div>', unsafe_allow_html=True)
+    components.html("""
+<script>
+(function fix() {
+    var doc = window.parent.document;
+    var marker = doc.getElementById('llm-chat-marker');
+    if (!marker) { setTimeout(fix, 150); return; }
+    var el = marker;
+    while (el && el.getAttribute && el.getAttribute('data-testid') !== 'element-container') {
+        el = el.parentElement;
+        if (!el) { setTimeout(fix, 150); return; }
+    }
+    var sib = el ? el.nextElementSibling : null;
+    var found = null;
+    while (sib) {
+        if (sib.getAttribute && sib.getAttribute('data-testid') === 'stVerticalBlock') {
+            found = sib; break;
+        }
+        sib = sib.nextElementSibling;
+    }
+    if (!found) { setTimeout(fix, 150); return; }
+    var css = 'position:fixed!important;right:0!important;top:58px!important;' +
+              'width:400px!important;height:calc(100vh - 58px)!important;' +
+              'overflow-y:auto!important;background:#0e1117!important;' +
+              'border-left:2px solid #2d2d2d!important;z-index:999!important;' +
+              'padding:16px 14px!important;box-shadow:-6px 0 24px rgba(0,0,0,.6)!important;';
+    found.setAttribute('style', css);
+})();
+</script>
+""", height=0)
     with st.container():
         _cur_provider = st.session_state.get("ai_provider_select", "Google")
         _has_key = bool(st.session_state.get(f"ai_key_{_cur_provider}", ""))

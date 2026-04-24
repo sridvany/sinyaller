@@ -4110,15 +4110,14 @@ if st.session_state.get("chat_open"):
 
     if not st.session_state.get(f"ai_key_{st.session_state.get('ai_provider_select', 'Google')}"):
         _cur_provider = st.session_state.get("ai_provider_select", "Google")
-        _cur_key_url  = LLM_PROVIDERS.get(_cur_provider, {}).get("key_url", "")
-        st.info(
-            "💡 AI Chat için sidebar'dan API key girin. "
-            f"Provider: **{_cur_provider}**"
+        _link_lines = "\n".join(
+            f"- [{_pname}]({_pcfg['key_url']}){' ← seçili' if _pname == _cur_provider else ''}"
+            for _pname, _pcfg in LLM_PROVIDERS.items()
         )
-        st.markdown("**API key almak için:**")
-        for _pname, _pcfg in LLM_PROVIDERS.items():
-            _active = "← seçili" if _pname == _cur_provider else ""
-            st.markdown(f"- [{_pname}]({_pcfg['key_url']}) {_active}")
+        st.info(
+            f"💡 AI Chat için sidebar'dan **{_cur_provider}** API key'ini girin.\n\n"
+            f"**API key almak için:**\n\n{_link_lines}"
+        )
         st.chat_input("API key gerekli...", disabled=True)
     else:
         _chat_provider = st.session_state.get("ai_provider_select", "Google")

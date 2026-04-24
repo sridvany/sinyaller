@@ -3458,7 +3458,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             # 🔧 DEBUG PANELİ — 404 tanısı için
             # ──────────────────────────────────────────────
             with st.expander("🔧 Debug (404 tanı aracı)", expanded=False):
-                _dbg1, _dbg2, _dbg3 = st.columns(3)
+                _dbg1, _dbg2, _dbg3, _dbg4 = st.columns(4)
 
                 if _dbg1.button("1️⃣ Key kontrolü", key="dbg_key"):
                     _k = ai_api_key
@@ -3504,6 +3504,31 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                         st.write(f"**Server:** `{_r.headers.get('server', '?')}`")
                         st.write(f"**Endpoint:** `{NVIDIA_ENDPOINT}`")
                         st.write(f"**Model:** `{NVIDIA_MODEL}`")
+                        st.code(_r.text[:2000])
+                    except Exception as e:
+                        st.error(f"İstek hatası: {type(e).__name__}: {e}")
+
+                if _dbg4.button("4️⃣ R1 ile POST", key="dbg_r1"):
+                    try:
+                        _alt_model = "deepseek-ai/deepseek-r1"
+                        _payload = {
+                            "model": _alt_model,
+                            "messages": [{"role": "user", "content": "hi"}],
+                            "max_tokens": 20,
+                            "stream": False,
+                        }
+                        _r = requests.post(
+                            NVIDIA_ENDPOINT,
+                            headers={
+                                "Authorization": f"Bearer {ai_api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json=_payload,
+                            timeout=30,
+                        )
+                        st.write(f"**Status:** `{_r.status_code}`")
+                        st.write(f"**Content-Type:** `{_r.headers.get('content-type', '?')}`")
+                        st.write(f"**Test edilen model:** `{_alt_model}`")
                         st.code(_r.text[:2000])
                     except Exception as e:
                         st.error(f"İstek hatası: {type(e).__name__}: {e}")

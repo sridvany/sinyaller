@@ -137,6 +137,7 @@ def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
         "temperature": 0.4,
         "top_p": 0.95,
         "stream_options": {"include_usage": True},
+        "chat_template_kwargs": {"thinking": False},
     }
     r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload,
                       stream=True, timeout=120)

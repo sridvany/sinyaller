@@ -158,206 +158,10 @@ def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
     return text, meta
 
 
-# ============================================================
-# 📰 HABER ÇEKME FONKSİYONLARI
-# Türk hisseleri (.IS): KAP + Bigpara
-# Yabancılar: yfinance.news fallback
-# ============================================================
-_NEWS_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/124.0 Safari/537.36",
-    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.5",
-}
-
-
-def _strip_is(ticker):
-    """`THYAO.IS` → `THYAO`, diğerlerini olduğu gibi döndür."""
-    return ticker.upper().replace(".IS", "").strip()
-
-
-def _is_turkish(ticker):
-    return ticker.upper().endswith(".IS")
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def _bigpara_slug_map():
-    """Bigpara hisse listesinden TICKER→slug haritası. 1 gün cache.
-
-    Liste URL'sinde her hisse `/borsa/hisse-fiyatlari/{ticker}-{slug}-detay/`
-    formatında; ticker'ı upper'a çevirip dict yapıyoruz.
-    """
-    import re
-    try:
-        r = requests.get(
-            "https://bigpara.hurriyet.com.tr/borsa/hisse-fiyatlari/",
-            headers=_NEWS_HEADERS, timeout=15,
-        )
-        if r.status_code != 200:
-            return {}
-    except requests.RequestException:
-        return {}
-
-    # /hisse-fiyatlari/garan-garanti-bankasi-detay/ formatını yakala
-    pattern = re.compile(
-        r"/borsa/hisse-fiyatlari/([a-z0-9]+)-([a-z0-9\-]+?)-detay/",
-        re.IGNORECASE,
-    )
-    out = {}
-    for m in pattern.finditer(r.text):
-        ticker = m.group(1).upper()
-        slug   = m.group(2).lower()
-        # Aynı ticker birden çok eşleşirse ilkini koru
-        out.setdefault(ticker, slug)
-    return out
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_bigpara_news(ticker, max_items=20):
-    """Bigpara hisse haberleri sayfasını parse et.
-    KAP haberleri de bu sayfada olduğu için tek kaynak yetiyor."""
-    from bs4 import BeautifulSoup
-    from datetime import datetime
-    import re
-    base = _strip_is(ticker)
-
-    slug_map = _bigpara_slug_map()
-    slug = slug_map.get(base)
-    if not slug:
-        # Slug bulunamadıysa boş liste — KAP fallback yok artık
-        return []
-
-    url = (
-        f"https://bigpara.hurriyet.com.tr/borsa/hisse-fiyatlari/"
-        f"{base.lower()}-{slug}-detay/hisse-haberleri/"
-    )
-    try:
-        r = requests.get(url, headers=_NEWS_HEADERS, timeout=10)
-        if r.status_code != 200:
-            return []
-        soup = BeautifulSoup(r.text, "html.parser")
-    except (requests.RequestException, Exception):
-        return []
-
-    # Sayfada haber linkleri /haberler/{kap-haberleri,piyasa-haberleri,...}/ ile başlar
-    news_link_re = re.compile(r"/haberler/[a-z\-]+haberleri/", re.IGNORECASE)
-    date_re      = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
-
-    out = []
-    seen = set()
-
-    # Tablodaki her satırı sırayla yokla — tarih + link aynı satırda olmalı
-    for row in soup.find_all(["tr", "li"]):
-        a = row.find("a", href=news_link_re)
-        if not a:
-            continue
-        href = a.get("href", "")
-        if href.startswith("/"):
-            href = "https://bigpara.hurriyet.com.tr" + href
-        if href in seen:
-            continue
-        seen.add(href)
-
-        title = a.get_text(strip=True)
-        # Bigpara başlıkları "***GARAN***" gibi yıldızlarla başlıyor — temizle
-        title = re.sub(r"\*+", "", title).strip()
-        if not title or len(title) < 8:
-            continue
-
-        # Tarihi satır metninden çıkar
-        row_text = row.get_text(" ", strip=True)
-        m = date_re.search(row_text)
-        dt = None
-        if m:
-            try:
-                dt = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
-            except ValueError:
-                dt = None
-
-        # Kaynak: URL'de "kap-haberleri" varsa KAP, değilse Bigpara
-        source = "KAP" if "kap-haberleri" in href else "Bigpara"
-
-        out.append({
-            "source":   source,
-            "title":    title[:200],
-            "summary":  "",
-            "url":      href,
-            "datetime": dt,
-        })
-        if len(out) >= max_items:
-            break
-    return out
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_yfinance_news(ticker, max_items=20):
-    """yfinance.news fallback — yabancı ticker'lar için."""
-    from datetime import datetime
-    try:
-        raw = yf.Ticker(ticker).news or []
-    except Exception:
-        return []
-    out = []
-    for it in raw[:max_items]:
-        # yfinance yapısı: bazen düz dict, bazen {'content': {...}}
-        c = it.get("content", it) if isinstance(it, dict) else {}
-        title = c.get("title") or it.get("title") or ""
-        link  = (c.get("canonicalUrl", {}) or {}).get("url") or \
-                c.get("link") or it.get("link") or ""
-        pub   = c.get("pubDate") or c.get("providerPublishTime") or \
-                it.get("providerPublishTime")
-        dt = None
-        if isinstance(pub, (int, float)):
-            try: dt = datetime.fromtimestamp(float(pub))
-            except (ValueError, OSError): dt = None
-        elif isinstance(pub, str):
-            try:
-                dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
-            except ValueError:
-                dt = None
-        publisher = (c.get("provider") or {}).get("displayName") or \
-                    c.get("publisher") or it.get("publisher") or "yfinance"
-        if not title:
-            continue
-        out.append({
-            "source": str(publisher)[:30],
-            "title":  str(title)[:200],
-            "summary": "",
-            "url":    link,
-            "datetime": dt,
-        })
-    return out
-
-
-def get_news(ticker, limit=5):
-    """Türk hisse → Bigpara (KAP haberleri zaten içinde); diğer → yfinance."""
-    if _is_turkish(ticker):
-        items = fetch_bigpara_news(ticker)
-    else:
-        items = fetch_yfinance_news(ticker)
-    # Tarihe göre azalan; tarihsizler en sona
-    from datetime import datetime
-    items.sort(key=lambda x: x.get("datetime") or datetime.min, reverse=True)
-    return items[:limit]
-
-
-def format_news_for_prompt(news_items):
-    """Gemini prompt'una eklenecek metin. Boş liste → boş string."""
-    if not news_items:
-        return ""
-    lines = []
-    for n in news_items:
-        dt = n.get("datetime")
-        date_str = dt.strftime("%d.%m.%Y %H:%M") if dt else "tarih?"
-        lines.append(f"- [{n['source']} · {date_str}] {n['title']}")
-    return "\n".join(lines)
-
-
 def build_ai_prompt(*, detail, ticker, close, interval,
-                    res_rows, swing_levels, fib_levels,
-                    news_items=None):
+                    res_rows, swing_levels, fib_levels):
     """Yapılandırılmış system + user prompt üret.
-    Sadece Algoritmik Detaylar tablosu + Seviye bilgileri + (varsa) güncel haberler kullanılır.
+    Sadece Algoritmik Detaylar tablosu + Seviye bilgileri kullanılır.
     """
     system = (
         "Sen deneyimli bir kurumsal teknik analiz uzmanısın. "
@@ -405,10 +209,6 @@ def build_ai_prompt(*, detail, ticker, close, interval,
     if fib_levels:
         sorted_fib = sorted(fib_levels.items(), key=lambda x: abs(x[1] - close))[:5]
         fib_text = ", ".join(f"{k} = {v:.2f}" for k, v in sorted_fib)
-
-    # Güncel haberler bloğu
-    news_text = format_news_for_prompt(news_items) if news_items else ""
-    news_block = news_text if news_text else "_Bu enstrüman için güncel haber bulunamadı._"
 
     # Algoritmik Detaylar tablosu (res_rows = [[karar, algoritma, durum], ...])
     detay_lines = []
@@ -497,9 +297,6 @@ def build_ai_prompt(*, detail, ticker, close, interval,
 - **Destek / Direnç:**{sr_text}
 - **En Yakın Fibonacci Seviyeleri:** {fib_text}
 
-## 📰 Güncel Haberler (Son 7 gün)
-{news_block}
-
 ---
 {output_req}
 ### Önemli Kurallar
@@ -508,7 +305,6 @@ def build_ai_prompt(*, detail, ticker, close, interval,
 - "Yatırım tavsiyesi" ibaresi kullanma
 - Markdown formatında yaz (başlıklar, bold, listeler)
 - Kısa Vadeli Beklenti'de kehanet dili değil, 'göstergelerin ima ettiği' dili kullan
-- **Haberler verildiyse:** ilgili teknik göstergelerle çakıştığında "Haber → Etki" çıkarımı yap, ama haberden olmayan bilgi uydurma
 """
     return system, user
 
@@ -559,7 +355,7 @@ def clean_half_sentence(text):
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "gc=f")
+    ticker = st.text_input("Ticker Sembolü:", "^GSPC")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
@@ -593,7 +389,7 @@ with st.sidebar:
     ai_api_key = st.text_input(
         "Gemini API Key",
         type="password",
-        placeholder="AIza...",
+        placeholder="api anahtarı buraya...",
         key="gemini_api_key",
         help="API key almak için: https://aistudio.google.com/app/apikey",
     )
@@ -3622,42 +3418,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         )
 
         # ============================================================
-        # 📰 GÜNCEL HABERLER (KAP + Bigpara veya yfinance)
-        # ============================================================
-        st.write("---")
-        st.subheader("📰 Güncel Haberler")
-
-        with st.spinner("Haberler çekiliyor..."):
-            _news_items = get_news(ticker, limit=5)
-
-        if _is_turkish(ticker):
-            st.caption("Kaynak: Bigpara (KAP bildirimleri dahil) · 5 dk cache")
-        else:
-            st.caption("Kaynak: yfinance · 5 dk cache")
-
-        if not _news_items:
-            st.info("Bu enstrüman için güncel haber bulunamadı.")
-        else:
-            for _n in _news_items:
-                _src   = _n.get("source", "?")
-                _title = _n.get("title",  "")
-                _url   = _n.get("url",    "#")
-                _dt    = _n.get("datetime")
-                _date_str = _dt.strftime("%d.%m.%Y %H:%M") if _dt else "—"
-
-                # Kaynak rozeti renklendirme
-                if _src == "KAP":
-                    _badge = ":red-background[**KAP**]"
-                elif _src == "Bigpara":
-                    _badge = ":orange-background[**Bigpara**]"
-                else:
-                    _badge = f":blue-background[**{_src}**]"
-
-                st.markdown(
-                    f"{_badge} · `{_date_str}` · [{_title}]({_url})"
-                )
-
-        # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
         # ============================================================
         st.write("---")
@@ -3707,7 +3467,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                     detail=ai_detail, ticker=ticker, close=r_close,
                     interval=interval, res_rows=res,
                     swing_levels=swing_levels, fib_levels=fib_levels,
-                    news_items=_news_items,
                 )
 
                 try:

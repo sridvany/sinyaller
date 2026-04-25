@@ -3439,6 +3439,12 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             )
             _cached = st.session_state.get(_cache_key)
 
+            if auto_refresh_on:
+                st.warning(
+                    "⚠️ **Canlı Yenileme açık.** Yorum üretimi sürerken sayfa yenilenirse "
+                    "yanıt yarıda kesilir. Sol kenar çubuğundan 🔄 **Canlı Yenileme**'yi kapatın."
+                )
+
             _bc1, _bc2, _ = st.columns([1.2, 1.4, 3])
             with _bc1:
                 _gen_btn = st.button(

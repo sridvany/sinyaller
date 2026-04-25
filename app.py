@@ -180,74 +180,57 @@ def _is_turkish(ticker):
     return ticker.upper().endswith(".IS")
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_kap_news(ticker, days=7, max_items=20):
-    """KAP'tan ticker bazlı son bildirimler. Hata olursa boş liste."""
-    from datetime import datetime, timedelta
-    base = _strip_is(ticker)
-    today = datetime.now().date()
-    payload = {
-        "fromDate": (today - timedelta(days=days)).isoformat(),
-        "toDate":   today.isoformat(),
-        "year": "", "prd": "", "term": "", "ruleType": "", "bdkReview": "",
-        "disclosureClass": "", "index": "", "market": "", "isLate": "",
-        "subjectList": [], "mkkMemberOidList": [],
-        "inactiveMkkMemberOidList": [], "bdkMemberOidList": [],
-        "mainSector": "", "sector": "", "subSector": "",
-        "memberType": "IGS", "fromSrc": "N", "srcCategory": "",
-        "discIndex": [],
-    }
+@st.cache_data(ttl=86400, show_spinner=False)
+def _bigpara_slug_map():
+    """Bigpara hisse listesinden TICKER→slug haritası. 1 gün cache.
+
+    Liste URL'sinde her hisse `/borsa/hisse-fiyatlari/{ticker}-{slug}-detay/`
+    formatında; ticker'ı upper'a çevirip dict yapıyoruz.
+    """
+    import re
     try:
-        r = requests.post(
-            "https://www.kap.org.tr/tr/api/disclosures",
-            headers={**_NEWS_HEADERS, "Content-Type": "application/json"},
-            json=payload, timeout=10,
+        r = requests.get(
+            "https://bigpara.hurriyet.com.tr/borsa/hisse-fiyatlari/",
+            headers=_NEWS_HEADERS, timeout=15,
         )
         if r.status_code != 200:
-            return []
-        data = r.json()
-    except (requests.RequestException, ValueError):
-        return []
+            return {}
+    except requests.RequestException:
+        return {}
 
-    items = data if isinstance(data, list) else data.get("disclosures", [])
-    out = []
-    for it in items:
-        # KAP item yapısı projeden projeye değişebilir; en yaygın alanları yokla
-        basic   = it.get("basic", it) if isinstance(it, dict) else {}
-        codes   = (basic.get("stockCodes") or it.get("stockCodes") or "")
-        if base not in codes.upper():
-            continue
-        title   = (basic.get("subject") or it.get("subject") or
-                   basic.get("title")   or "Bildirim")
-        summary = (basic.get("summary") or it.get("summary") or "")
-        idx     = (basic.get("disclosureIndex") or it.get("disclosureIndex") or
-                   basic.get("oldId") or "")
-        ts_ms   = (basic.get("publishDate") or it.get("publishDate") or 0)
-        try:
-            ts = float(ts_ms) / 1000.0 if ts_ms else 0.0
-            dt = datetime.fromtimestamp(ts) if ts else None
-        except (TypeError, ValueError):
-            dt = None
-        url = f"https://www.kap.org.tr/tr/Bildirim/{idx}" if idx else "https://www.kap.org.tr/tr"
-        out.append({
-            "source": "KAP",
-            "title":  str(title)[:200],
-            "summary": str(summary)[:300],
-            "url":    url,
-            "datetime": dt,
-        })
-        if len(out) >= max_items:
-            break
+    # /hisse-fiyatlari/garan-garanti-bankasi-detay/ formatını yakala
+    pattern = re.compile(
+        r"/borsa/hisse-fiyatlari/([a-z0-9]+)-([a-z0-9\-]+?)-detay/",
+        re.IGNORECASE,
+    )
+    out = {}
+    for m in pattern.finditer(r.text):
+        ticker = m.group(1).upper()
+        slug   = m.group(2).lower()
+        # Aynı ticker birden çok eşleşirse ilkini koru
+        out.setdefault(ticker, slug)
     return out
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_bigpara_news(ticker, max_items=20):
-    """Bigpara hisse haber sayfasını parse et. Hata olursa boş liste."""
+    """Bigpara hisse haberleri sayfasını parse et.
+    KAP haberleri de bu sayfada olduğu için tek kaynak yetiyor."""
     from bs4 import BeautifulSoup
     from datetime import datetime
+    import re
     base = _strip_is(ticker)
-    url  = f"https://bigpara.hurriyet.com.tr/borsa/hisse-detay/hisse/{base}/haberler/"
+
+    slug_map = _bigpara_slug_map()
+    slug = slug_map.get(base)
+    if not slug:
+        # Slug bulunamadıysa boş liste — KAP fallback yok artık
+        return []
+
+    url = (
+        f"https://bigpara.hurriyet.com.tr/borsa/hisse-fiyatlari/"
+        f"{base.lower()}-{slug}-detay/hisse-haberleri/"
+    )
     try:
         r = requests.get(url, headers=_NEWS_HEADERS, timeout=10)
         if r.status_code != 200:
@@ -256,45 +239,49 @@ def fetch_bigpara_news(ticker, max_items=20):
     except (requests.RequestException, Exception):
         return []
 
-    out = []
-    # Bigpara haber listesi yapısı zaman zaman değişiyor — esnek arama
-    candidates = soup.select("ul.newsList li, div.newsList li, li.haber, article")
-    if not candidates:
-        # Fallback: sayfadaki tüm haber bağlantılarını topla
-        candidates = soup.select("a[href*='/haber/']")
+    # Sayfada haber linkleri /haberler/{kap-haberleri,piyasa-haberleri,...}/ ile başlar
+    news_link_re = re.compile(r"/haberler/[a-z\-]+haberleri/", re.IGNORECASE)
+    date_re      = re.compile(r"(\d{2})\.(\d{2})\.(\d{4})")
 
+    out = []
     seen = set()
-    for el in candidates:
-        a = el if el.name == "a" else el.find("a", href=True)
-        if not a or not a.get("href"):
+
+    # Tablodaki her satırı sırayla yokla — tarih + link aynı satırda olmalı
+    for row in soup.find_all(["tr", "li"]):
+        a = row.find("a", href=news_link_re)
+        if not a:
             continue
-        href  = a["href"]
+        href = a.get("href", "")
         if href.startswith("/"):
             href = "https://bigpara.hurriyet.com.tr" + href
         if href in seen:
             continue
         seen.add(href)
-        title = a.get_text(strip=True) or (el.find(["h2","h3","h4"]) or a).get_text(strip=True)
-        if not title or len(title) < 10:
+
+        title = a.get_text(strip=True)
+        # Bigpara başlıkları "***GARAN***" gibi yıldızlarla başlıyor — temizle
+        title = re.sub(r"\*+", "", title).strip()
+        if not title or len(title) < 8:
             continue
-        date_el = el.find(class_=["date", "newsDate", "time"])
+
+        # Tarihi satır metninden çıkar
+        row_text = row.get_text(" ", strip=True)
+        m = date_re.search(row_text)
         dt = None
-        if date_el:
+        if m:
             try:
-                txt = date_el.get_text(strip=True)
-                # Bigpara format: "26.04.2026 13:45" veya "26 Nisan 2026"
-                for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%d %H:%M"):
-                    try:
-                        dt = datetime.strptime(txt, fmt); break
-                    except ValueError:
-                        continue
-            except Exception:
+                dt = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            except ValueError:
                 dt = None
+
+        # Kaynak: URL'de "kap-haberleri" varsa KAP, değilse Bigpara
+        source = "KAP" if "kap-haberleri" in href else "Bigpara"
+
         out.append({
-            "source": "Bigpara",
-            "title":  title[:200],
-            "summary": "",
-            "url":    href,
+            "source":   source,
+            "title":    title[:200],
+            "summary":  "",
+            "url":      href,
             "datetime": dt,
         })
         if len(out) >= max_items:
@@ -343,9 +330,9 @@ def fetch_yfinance_news(ticker, max_items=20):
 
 
 def get_news(ticker, limit=5):
-    """Türk hisselerinde KAP + Bigpara birleşik; diğerlerinde yfinance."""
+    """Türk hisse → Bigpara (KAP haberleri zaten içinde); diğer → yfinance."""
     if _is_turkish(ticker):
-        items = fetch_kap_news(ticker) + fetch_bigpara_news(ticker)
+        items = fetch_bigpara_news(ticker)
     else:
         items = fetch_yfinance_news(ticker)
     # Tarihe göre azalan; tarihsizler en sona
@@ -3644,7 +3631,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             _news_items = get_news(ticker, limit=5)
 
         if _is_turkish(ticker):
-            st.caption("Kaynaklar: KAP (resmi bildirimler) + Bigpara · 5 dk cache")
+            st.caption("Kaynak: Bigpara (KAP bildirimleri dahil) · 5 dk cache")
         else:
             st.caption("Kaynak: yfinance · 5 dk cache")
 
@@ -3669,50 +3656,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 st.markdown(
                     f"{_badge} · `{_date_str}` · [{_title}]({_url})"
                 )
-
-        # ---- GEÇİCİ DEBUG (parser doğrulandıktan sonra silinecek) ----
-        if _is_turkish(ticker):
-            with st.expander("🔍 Haber Debug (geçici)"):
-                from datetime import datetime, timedelta
-                _base = _strip_is(ticker)
-                st.caption(f"Test ticker: `{_base}`")
-
-                st.write("**KAP — POST /tr/api/disclosures**")
-                _today = datetime.now().date()
-                _kap_payload = {
-                    "fromDate": (_today - timedelta(days=7)).isoformat(),
-                    "toDate":   _today.isoformat(),
-                    "year": "", "prd": "", "term": "", "ruleType": "",
-                    "bdkReview": "", "disclosureClass": "", "index": "",
-                    "market": "", "isLate": "",
-                    "subjectList": [], "mkkMemberOidList": [],
-                    "inactiveMkkMemberOidList": [], "bdkMemberOidList": [],
-                    "mainSector": "", "sector": "", "subSector": "",
-                    "memberType": "IGS", "fromSrc": "N", "srcCategory": "",
-                    "discIndex": [],
-                }
-                try:
-                    _rk = requests.post(
-                        "https://www.kap.org.tr/tr/api/disclosures",
-                        headers={**_NEWS_HEADERS, "Content-Type": "application/json"},
-                        json=_kap_payload, timeout=10,
-                    )
-                    st.code(f"HTTP {_rk.status_code} · Content-Type: {_rk.headers.get('Content-Type','?')}")
-                    st.code(_rk.text[:2500] or "(boş gövde)")
-                except Exception as _e:
-                    st.error(f"KAP isteği hatası: {type(_e).__name__}: {_e}")
-
-                st.write("**Bigpara — GET /borsa/hisse-detay/hisse/{T}/haberler/**")
-                try:
-                    _rb = requests.get(
-                        f"https://bigpara.hurriyet.com.tr/borsa/hisse-detay/hisse/{_base}/haberler/",
-                        headers=_NEWS_HEADERS, timeout=10, allow_redirects=True,
-                    )
-                    st.code(f"HTTP {_rb.status_code} · Final URL: {_rb.url}")
-                    st.code(_rb.text[:2500] or "(boş gövde)")
-                except Exception as _e:
-                    st.error(f"Bigpara isteği hatası: {type(_e).__name__}: {_e}")
-        # ---- DEBUG sonu ----
 
         # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)

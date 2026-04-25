@@ -3670,6 +3670,50 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                     f"{_badge} · `{_date_str}` · [{_title}]({_url})"
                 )
 
+        # ---- GEÇİCİ DEBUG (parser doğrulandıktan sonra silinecek) ----
+        if _is_turkish(ticker):
+            with st.expander("🔍 Haber Debug (geçici)"):
+                from datetime import datetime, timedelta
+                _base = _strip_is(ticker)
+                st.caption(f"Test ticker: `{_base}`")
+
+                st.write("**KAP — POST /tr/api/disclosures**")
+                _today = datetime.now().date()
+                _kap_payload = {
+                    "fromDate": (_today - timedelta(days=7)).isoformat(),
+                    "toDate":   _today.isoformat(),
+                    "year": "", "prd": "", "term": "", "ruleType": "",
+                    "bdkReview": "", "disclosureClass": "", "index": "",
+                    "market": "", "isLate": "",
+                    "subjectList": [], "mkkMemberOidList": [],
+                    "inactiveMkkMemberOidList": [], "bdkMemberOidList": [],
+                    "mainSector": "", "sector": "", "subSector": "",
+                    "memberType": "IGS", "fromSrc": "N", "srcCategory": "",
+                    "discIndex": [],
+                }
+                try:
+                    _rk = requests.post(
+                        "https://www.kap.org.tr/tr/api/disclosures",
+                        headers={**_NEWS_HEADERS, "Content-Type": "application/json"},
+                        json=_kap_payload, timeout=10,
+                    )
+                    st.code(f"HTTP {_rk.status_code} · Content-Type: {_rk.headers.get('Content-Type','?')}")
+                    st.code(_rk.text[:2500] or "(boş gövde)")
+                except Exception as _e:
+                    st.error(f"KAP isteği hatası: {type(_e).__name__}: {_e}")
+
+                st.write("**Bigpara — GET /borsa/hisse-detay/hisse/{T}/haberler/**")
+                try:
+                    _rb = requests.get(
+                        f"https://bigpara.hurriyet.com.tr/borsa/hisse-detay/hisse/{_base}/haberler/",
+                        headers=_NEWS_HEADERS, timeout=10, allow_redirects=True,
+                    )
+                    st.code(f"HTTP {_rb.status_code} · Final URL: {_rb.url}")
+                    st.code(_rb.text[:2500] or "(boş gövde)")
+                except Exception as _e:
+                    st.error(f"Bigpara isteği hatası: {type(_e).__name__}: {_e}")
+        # ---- DEBUG sonu ----
+
         # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
         # ============================================================

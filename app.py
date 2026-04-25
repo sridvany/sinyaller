@@ -158,10 +158,219 @@ def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
     return text, meta
 
 
+# ============================================================
+# 📰 HABER ÇEKME FONKSİYONLARI
+# Türk hisseleri (.IS): KAP + Bigpara
+# Yabancılar: yfinance.news fallback
+# ============================================================
+_NEWS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/124.0 Safari/537.36",
+    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.5",
+}
+
+
+def _strip_is(ticker):
+    """`THYAO.IS` → `THYAO`, diğerlerini olduğu gibi döndür."""
+    return ticker.upper().replace(".IS", "").strip()
+
+
+def _is_turkish(ticker):
+    return ticker.upper().endswith(".IS")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_kap_news(ticker, days=7, max_items=20):
+    """KAP'tan ticker bazlı son bildirimler. Hata olursa boş liste."""
+    from datetime import datetime, timedelta
+    base = _strip_is(ticker)
+    today = datetime.now().date()
+    payload = {
+        "fromDate": (today - timedelta(days=days)).isoformat(),
+        "toDate":   today.isoformat(),
+        "year": "", "prd": "", "term": "", "ruleType": "", "bdkReview": "",
+        "disclosureClass": "", "index": "", "market": "", "isLate": "",
+        "subjectList": [], "mkkMemberOidList": [],
+        "inactiveMkkMemberOidList": [], "bdkMemberOidList": [],
+        "mainSector": "", "sector": "", "subSector": "",
+        "memberType": "IGS", "fromSrc": "N", "srcCategory": "",
+        "discIndex": [],
+    }
+    try:
+        r = requests.post(
+            "https://www.kap.org.tr/tr/api/disclosures",
+            headers={**_NEWS_HEADERS, "Content-Type": "application/json"},
+            json=payload, timeout=10,
+        )
+        if r.status_code != 200:
+            return []
+        data = r.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    items = data if isinstance(data, list) else data.get("disclosures", [])
+    out = []
+    for it in items:
+        # KAP item yapısı projeden projeye değişebilir; en yaygın alanları yokla
+        basic   = it.get("basic", it) if isinstance(it, dict) else {}
+        codes   = (basic.get("stockCodes") or it.get("stockCodes") or "")
+        if base not in codes.upper():
+            continue
+        title   = (basic.get("subject") or it.get("subject") or
+                   basic.get("title")   or "Bildirim")
+        summary = (basic.get("summary") or it.get("summary") or "")
+        idx     = (basic.get("disclosureIndex") or it.get("disclosureIndex") or
+                   basic.get("oldId") or "")
+        ts_ms   = (basic.get("publishDate") or it.get("publishDate") or 0)
+        try:
+            ts = float(ts_ms) / 1000.0 if ts_ms else 0.0
+            dt = datetime.fromtimestamp(ts) if ts else None
+        except (TypeError, ValueError):
+            dt = None
+        url = f"https://www.kap.org.tr/tr/Bildirim/{idx}" if idx else "https://www.kap.org.tr/tr"
+        out.append({
+            "source": "KAP",
+            "title":  str(title)[:200],
+            "summary": str(summary)[:300],
+            "url":    url,
+            "datetime": dt,
+        })
+        if len(out) >= max_items:
+            break
+    return out
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_bigpara_news(ticker, max_items=20):
+    """Bigpara hisse haber sayfasını parse et. Hata olursa boş liste."""
+    from bs4 import BeautifulSoup
+    from datetime import datetime
+    base = _strip_is(ticker)
+    url  = f"https://bigpara.hurriyet.com.tr/borsa/hisse-detay/hisse/{base}/haberler/"
+    try:
+        r = requests.get(url, headers=_NEWS_HEADERS, timeout=10)
+        if r.status_code != 200:
+            return []
+        soup = BeautifulSoup(r.text, "html.parser")
+    except (requests.RequestException, Exception):
+        return []
+
+    out = []
+    # Bigpara haber listesi yapısı zaman zaman değişiyor — esnek arama
+    candidates = soup.select("ul.newsList li, div.newsList li, li.haber, article")
+    if not candidates:
+        # Fallback: sayfadaki tüm haber bağlantılarını topla
+        candidates = soup.select("a[href*='/haber/']")
+
+    seen = set()
+    for el in candidates:
+        a = el if el.name == "a" else el.find("a", href=True)
+        if not a or not a.get("href"):
+            continue
+        href  = a["href"]
+        if href.startswith("/"):
+            href = "https://bigpara.hurriyet.com.tr" + href
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True) or (el.find(["h2","h3","h4"]) or a).get_text(strip=True)
+        if not title or len(title) < 10:
+            continue
+        date_el = el.find(class_=["date", "newsDate", "time"])
+        dt = None
+        if date_el:
+            try:
+                txt = date_el.get_text(strip=True)
+                # Bigpara format: "26.04.2026 13:45" veya "26 Nisan 2026"
+                for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%d %H:%M"):
+                    try:
+                        dt = datetime.strptime(txt, fmt); break
+                    except ValueError:
+                        continue
+            except Exception:
+                dt = None
+        out.append({
+            "source": "Bigpara",
+            "title":  title[:200],
+            "summary": "",
+            "url":    href,
+            "datetime": dt,
+        })
+        if len(out) >= max_items:
+            break
+    return out
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_yfinance_news(ticker, max_items=20):
+    """yfinance.news fallback — yabancı ticker'lar için."""
+    from datetime import datetime
+    try:
+        raw = yf.Ticker(ticker).news or []
+    except Exception:
+        return []
+    out = []
+    for it in raw[:max_items]:
+        # yfinance yapısı: bazen düz dict, bazen {'content': {...}}
+        c = it.get("content", it) if isinstance(it, dict) else {}
+        title = c.get("title") or it.get("title") or ""
+        link  = (c.get("canonicalUrl", {}) or {}).get("url") or \
+                c.get("link") or it.get("link") or ""
+        pub   = c.get("pubDate") or c.get("providerPublishTime") or \
+                it.get("providerPublishTime")
+        dt = None
+        if isinstance(pub, (int, float)):
+            try: dt = datetime.fromtimestamp(float(pub))
+            except (ValueError, OSError): dt = None
+        elif isinstance(pub, str):
+            try:
+                dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+            except ValueError:
+                dt = None
+        publisher = (c.get("provider") or {}).get("displayName") or \
+                    c.get("publisher") or it.get("publisher") or "yfinance"
+        if not title:
+            continue
+        out.append({
+            "source": str(publisher)[:30],
+            "title":  str(title)[:200],
+            "summary": "",
+            "url":    link,
+            "datetime": dt,
+        })
+    return out
+
+
+def get_news(ticker, limit=5):
+    """Türk hisselerinde KAP + Bigpara birleşik; diğerlerinde yfinance."""
+    if _is_turkish(ticker):
+        items = fetch_kap_news(ticker) + fetch_bigpara_news(ticker)
+    else:
+        items = fetch_yfinance_news(ticker)
+    # Tarihe göre azalan; tarihsizler en sona
+    from datetime import datetime
+    items.sort(key=lambda x: x.get("datetime") or datetime.min, reverse=True)
+    return items[:limit]
+
+
+def format_news_for_prompt(news_items):
+    """Gemini prompt'una eklenecek metin. Boş liste → boş string."""
+    if not news_items:
+        return ""
+    lines = []
+    for n in news_items:
+        dt = n.get("datetime")
+        date_str = dt.strftime("%d.%m.%Y %H:%M") if dt else "tarih?"
+        lines.append(f"- [{n['source']} · {date_str}] {n['title']}")
+    return "\n".join(lines)
+
+
 def build_ai_prompt(*, detail, ticker, close, interval,
-                    res_rows, swing_levels, fib_levels):
+                    res_rows, swing_levels, fib_levels,
+                    news_items=None):
     """Yapılandırılmış system + user prompt üret.
-    Sadece Algoritmik Detaylar tablosu + Seviye bilgileri kullanılır.
+    Sadece Algoritmik Detaylar tablosu + Seviye bilgileri + (varsa) güncel haberler kullanılır.
     """
     system = (
         "Sen deneyimli bir kurumsal teknik analiz uzmanısın. "
@@ -209,6 +418,10 @@ def build_ai_prompt(*, detail, ticker, close, interval,
     if fib_levels:
         sorted_fib = sorted(fib_levels.items(), key=lambda x: abs(x[1] - close))[:5]
         fib_text = ", ".join(f"{k} = {v:.2f}" for k, v in sorted_fib)
+
+    # Güncel haberler bloğu
+    news_text = format_news_for_prompt(news_items) if news_items else ""
+    news_block = news_text if news_text else "_Bu enstrüman için güncel haber bulunamadı._"
 
     # Algoritmik Detaylar tablosu (res_rows = [[karar, algoritma, durum], ...])
     detay_lines = []
@@ -297,6 +510,9 @@ def build_ai_prompt(*, detail, ticker, close, interval,
 - **Destek / Direnç:**{sr_text}
 - **En Yakın Fibonacci Seviyeleri:** {fib_text}
 
+## 📰 Güncel Haberler (Son 7 gün)
+{news_block}
+
 ---
 {output_req}
 ### Önemli Kurallar
@@ -305,6 +521,7 @@ def build_ai_prompt(*, detail, ticker, close, interval,
 - "Yatırım tavsiyesi" ibaresi kullanma
 - Markdown formatında yaz (başlıklar, bold, listeler)
 - Kısa Vadeli Beklenti'de kehanet dili değil, 'göstergelerin ima ettiği' dili kullan
+- **Haberler verildiyse:** ilgili teknik göstergelerle çakıştığında "Haber → Etki" çıkarımı yap, ama haberden olmayan bilgi uydurma
 """
     return system, user
 
@@ -355,7 +572,7 @@ def clean_half_sentence(text):
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "^GSPC")
+    ticker = st.text_input("Ticker Sembolü:", "gc=f")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
@@ -389,7 +606,7 @@ with st.sidebar:
     ai_api_key = st.text_input(
         "Gemini API Key",
         type="password",
-        placeholder="api anahtarı buraya...",
+        placeholder="AIza...",
         key="gemini_api_key",
         help="API key almak için: https://aistudio.google.com/app/apikey",
     )
@@ -3418,6 +3635,42 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         )
 
         # ============================================================
+        # 📰 GÜNCEL HABERLER (KAP + Bigpara veya yfinance)
+        # ============================================================
+        st.write("---")
+        st.subheader("📰 Güncel Haberler")
+
+        with st.spinner("Haberler çekiliyor..."):
+            _news_items = get_news(ticker, limit=5)
+
+        if _is_turkish(ticker):
+            st.caption("Kaynaklar: KAP (resmi bildirimler) + Bigpara · 5 dk cache")
+        else:
+            st.caption("Kaynak: yfinance · 5 dk cache")
+
+        if not _news_items:
+            st.info("Bu enstrüman için güncel haber bulunamadı.")
+        else:
+            for _n in _news_items:
+                _src   = _n.get("source", "?")
+                _title = _n.get("title",  "")
+                _url   = _n.get("url",    "#")
+                _dt    = _n.get("datetime")
+                _date_str = _dt.strftime("%d.%m.%Y %H:%M") if _dt else "—"
+
+                # Kaynak rozeti renklendirme
+                if _src == "KAP":
+                    _badge = ":red-background[**KAP**]"
+                elif _src == "Bigpara":
+                    _badge = ":orange-background[**Bigpara**]"
+                else:
+                    _badge = f":blue-background[**{_src}**]"
+
+                st.markdown(
+                    f"{_badge} · `{_date_str}` · [{_title}]({_url})"
+                )
+
+        # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)
         # ============================================================
         st.write("---")
@@ -3467,6 +3720,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                     detail=ai_detail, ticker=ticker, close=r_close,
                     interval=interval, res_rows=res,
                     swing_levels=swing_levels, fib_levels=fib_levels,
+                    news_items=_news_items,
                 )
 
                 try:

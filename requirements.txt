@@ -5,4 +5,5 @@ numpy
 plotly
 streamlit-autorefresh
 scipy
+beautifulsoup4
  

@@ -84,22 +84,16 @@ for k, v in _defaults.items():
         st.session_state[k] = v
 
 # ============================================================
-# 🤖 LLM PROVIDER KONFİGÜRASYONU VE AKIŞ FONKSİYONLARI
+# 🤖 LLM PROVIDER KONFİGÜRASYONU (Google Gemini)
 # ============================================================
-# NVIDIA NIM — OpenAI-compatible endpoint, DeepSeek-V3.2
-NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
-NVIDIA_MODEL    = "deepseek-ai/deepseek-v3.2"
+# API key almak için: https://aistudio.google.com/app/apikey
+GEMINI_MODEL    = "gemini-2.5-flash"
+GEMINI_ENDPOINT = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{GEMINI_MODEL}:generateContent"
+)
 
 AI_DETAIL_LEVELS = {"Kısa": 1500, "Orta": 4000, "Detaylı": 8000}
-
-
-def _get_nvidia_key():
-    """Streamlit secrets veya env'den NVIDIA API key oku."""
-    import os
-    try:
-        return st.secrets.get("NVIDIA_API_KEY") or os.environ.get("NVIDIA_API_KEY", "")
-    except Exception:
-        return os.environ.get("NVIDIA_API_KEY", "")
 
 
 def _parse_http_error(response, default_msg):
@@ -123,66 +117,43 @@ def _parse_http_error(response, default_msg):
 
 
 def fetch_llm(api_key, system_prompt, user_prompt, max_tokens):
-    """NVIDIA NIM DeepSeek-V3.2 streaming — chunks birleştirip tek (text, meta) döner."""
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_prompt},
-    ]
+    """Google Gemini — (text, meta) döner."""
+    headers = {"Content-Type": "application/json"}
     payload = {
-        "model": NVIDIA_MODEL,
-        "messages": messages,
-        "stream": True,
-        "max_tokens": max_tokens,
-        "temperature": 0.4,
-        "top_p": 0.95,
-        "stream_options": {"include_usage": True},
-        "chat_template_kwargs": {"thinking": False},
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [
+            {"role": "user", "parts": [{"text": user_prompt}]},
+        ],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature":     0.4,
+            "topP":            0.95,
+        },
     }
-    r = requests.post(NVIDIA_ENDPOINT, headers=headers, json=payload,
-                      stream=True, timeout=120)
+    r = requests.post(
+        f"{GEMINI_ENDPOINT}?key={api_key}",
+        headers=headers, json=payload, timeout=120,
+    )
     if r.status_code != 200:
         raise RuntimeError(f"HTTP {r.status_code}: {_parse_http_error(r, r.text[:500])}")
 
-    text_parts = []
+    data = r.json()
+    candidates = data.get("candidates", []) or []
+    text   = ""
     finish = None
-    usage  = {}
-    try:
-        for raw in r.iter_lines():
-            if not raw:
-                continue
-            line = raw.decode("utf-8", errors="ignore")
-            if not line.startswith("data: "):
-                continue
-            data_str = line[6:].strip()
-            if data_str == "[DONE]":
-                break
-            try:
-                chunk = json.loads(data_str)
-                choices = chunk.get("choices", [])
-                if choices:
-                    delta = choices[0].get("delta", {}) or {}
-                    piece = delta.get("content")
-                    if piece:
-                        text_parts.append(piece)
-                    fr = choices[0].get("finish_reason")
-                    if fr:
-                        finish = fr
-                u = chunk.get("usage")
-                if u:
-                    usage = u
-            except (json.JSONDecodeError, KeyError, IndexError):
-                continue
-    finally:
-        r.close()
+    if candidates:
+        cand   = candidates[0] or {}
+        finish = cand.get("finishReason")
+        parts  = (cand.get("content") or {}).get("parts", []) or []
+        text   = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
 
-    text = "".join(text_parts)
+    usage = data.get("usageMetadata", {}) or {}
     meta = {
         "finish_reason":   finish,
-        "prompt_tokens":   usage.get("prompt_tokens",     0),
-        "output_tokens":   usage.get("completion_tokens", 0),
-        "thinking_tokens": 0,
-        "total_tokens":    usage.get("total_tokens",      0),
+        "prompt_tokens":   usage.get("promptTokenCount",     0),
+        "output_tokens":   usage.get("candidatesTokenCount", 0),
+        "thinking_tokens": usage.get("thoughtsTokenCount",   0),
+        "total_tokens":    usage.get("totalTokenCount",      0),
     }
     return text, meta
 
@@ -409,17 +380,27 @@ with st.sidebar:
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 
     # ──────────────────────────────────────────────────────────
-    # 🤖 AI RAPOR YORUMCUSU — NVIDIA NIM · DeepSeek-V3.2
-    # Key Streamlit Secrets'tan okunur, kullanıcıya gösterilmez
+    # 🤖 AI RAPOR YORUMCUSU — Google Gemini
+    # API key kullanıcı tarafından konsola girilir
     # ──────────────────────────────────────────────────────────
     st.write("---")
     st.subheader("🤖 AI Rapor Yorumcusu")
 
-    ai_api_key = _get_nvidia_key()
+    ai_api_key = st.text_input(
+        "Gemini API Key",
+        type="password",
+        placeholder="AIza...",
+        key="gemini_api_key",
+        help="API key almak için: https://aistudio.google.com/app/apikey",
+    )
     if ai_api_key:
-        st.caption(f"Model: **DeepSeek-V3.2** (NVIDIA NIM) · Key: ✅ bağlı")
+        st.caption(f"Model: **{GEMINI_MODEL}** · Key: ✅ girildi")
     else:
-        st.caption("Model: **DeepSeek-V3.2** (NVIDIA NIM) · Key: ❌ yok")
+        st.caption(f"Model: **{GEMINI_MODEL}** · Key: ❌ yok")
+        st.markdown(
+            "🔑 [API key al →](https://aistudio.google.com/app/apikey)",
+            unsafe_allow_html=False,
+        )
 
     ai_detail = st.select_slider(
         "Detay Seviyesi",
@@ -3444,13 +3425,12 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         if not ai_api_key:
             st.info(
-                "💡 **NVIDIA API key bulunamadı.** Streamlit Cloud → Settings → Secrets kısmına "
-                "`NVIDIA_API_KEY = \"nvapi-...\"` ekleyin. "
-                "Key almak için: https://build.nvidia.com/settings/api-keys"
+                "💡 **Gemini API key girilmedi.** Sol kenar çubuğundan API key girin. "
+                "Key almak için: https://aistudio.google.com/app/apikey"
             )
         else:
             st.caption(
-                f"Model: **DeepSeek-V3.2** (NVIDIA NIM) · "
+                f"Model: **{GEMINI_MODEL}** · "
                 f"Detay: **{ai_detail}** (max {AI_DETAIL_LEVELS[ai_detail]} token)"
             )
 
@@ -3486,7 +3466,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 try:
                     _t0 = time.time()
 
-                    with st.spinner("🤖 DeepSeek-V3.2 yanıt üretiyor..."):
+                    with st.spinner(f"🤖 {GEMINI_MODEL} yanıt üretiyor..."):
                         _full_text, _meta = fetch_llm(
                             ai_api_key, _sys_p, _usr_p,
                             AI_DETAIL_LEVELS[ai_detail]

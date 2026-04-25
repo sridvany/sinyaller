@@ -389,7 +389,7 @@ with st.sidebar:
     ai_api_key = st.text_input(
         "Gemini API Key",
         type="password",
-        placeholder="AIza...",
+        placeholder="api anahtarı buraya...",
         key="gemini_api_key",
         help="API key almak için: https://aistudio.google.com/app/apikey",
     )

@@ -355,7 +355,7 @@ def clean_half_sentence(text):
 # ============================================================
 with st.sidebar:
     st.header("⚙️ Veri Ayarları")
-    ticker = st.text_input("Ticker Sembolü:", "^GSPC")
+    ticker = st.text_input("Ticker Sembolü:","PAXG-USD")
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",

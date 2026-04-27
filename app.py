@@ -367,11 +367,11 @@ with st.sidebar:
         interval_options = ["1m", "2m", "5m", "15m", "30m", "60m", "1h", "1d"]
         default_int_idx = 0
     elif period == "1mo":
-        interval_options = ["2m", "5m", "15m", "30m", "60m", "1h", "1d"]
+        interval_options = ["2m", "5m", "15m", "30m", "60m", "1h", "4h", "1d"]
         default_int_idx = 6
     else:
-        interval_options = ["1h", "1d", "1wk", "1mo"]
-        default_int_idx = 1
+        interval_options = ["1h", "4h", "8h", "1d", "1wk", "1mo"]
+        default_int_idx = 3
 
     interval = st.selectbox(
         "Mum Aralığı (Interval):", options=interval_options, index=default_int_idx
@@ -1045,7 +1045,8 @@ def bars_per_year_from_interval(interval):
     m = {
         "1m":  252 * 390,  "2m":  252 * 195,  "5m":  252 * 78,
         "15m": 252 * 26,   "30m": 252 * 13,   "60m": 252 * 6.5,
-        "1h":  252 * 6.5,  "1d":  252,        "1wk": 52,         "1mo": 12,
+        "1h":  252 * 6.5,  "4h":  252 * 1.625, "8h": 252 * 0.8125,
+        "1d":  252,        "1wk": 52,         "1mo": 12,
     }
     return m.get(interval, 252)
 
@@ -1511,8 +1512,19 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
 @st.cache_data(ttl=55)
 def fetch_live_data(symbol, p, i):
     try:
-        data = yf.download(symbol, period=p, interval=i, progress=False)
-        return pd.DataFrame() if data is None or data.empty else data
+        fetch_i = "1h" if i in ("4h", "8h") else i
+        data = yf.download(symbol, period=p, interval=fetch_i, progress=False)
+        if data is None or data.empty:
+            return pd.DataFrame()
+        if i in ("4h", "8h"):
+            rule = "4h" if i == "4h" else "8h"
+            data = (
+                data.resample(rule)
+                .agg({"Open": "first", "High": "max", "Low": "min",
+                      "Close": "last", "Volume": "sum"})
+                .dropna()
+            )
+        return data
     except Exception as e:
         st.error(f"Veri çekme hatası: {e}")
         return pd.DataFrame()

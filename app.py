@@ -1517,6 +1517,11 @@ def fetch_live_data(symbol, p, i):
         if data is None or data.empty:
             return pd.DataFrame()
         if i in ("4h", "8h"):
+            if isinstance(data.columns, pd.MultiIndex):
+                uniq = data.columns.get_level_values(1).unique()
+                data.columns = (data.columns.get_level_values(0)
+                                if len(uniq) <= 1
+                                else [f"{c[1]}_{c[0]}" for c in data.columns])
             rule = "4h" if i == "4h" else "8h"
             data = (
                 data.resample(rule)

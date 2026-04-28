@@ -2142,12 +2142,6 @@ if ticker:
             annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
             annotation_position="bottom right", row=1, col=2)
 
-        fig.add_annotation(text=f"<b>{ticker}  {lp:,.4f}</b>",
-            xref="paper", yref="paper", x=0.01, y=0.99, showarrow=False,
-            font=dict(size=13, color="#007a3d" if lp >= pp else "#cc2200", family="monospace"),
-            align="left", bgcolor="rgba(255,255,255,0.92)",
-            bordercolor="rgba(200,200,200,0.5)", borderwidth=1, borderpad=4)
-
         fig.update_layout(
             template="plotly_dark", height=580,
             dragmode="pan",

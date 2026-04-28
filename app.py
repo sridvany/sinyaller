@@ -51,7 +51,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📈 PİYASA TERMİNALİ")
-st.caption("VERİLER 15 DK GECİKMELİDİR. YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
+st.caption("YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI
@@ -2332,8 +2332,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         # ============================================================
         # ALT GRAFİKLER
         # ============================================================
-        tab_nw, tab_adx, tab_ichi, tab_kama, tab_st, tab_stoch, tab_wt, tab_rsi, tab_macd, tab_obv, tab_div = st.tabs([
-            "Nadaraya-Watson", "ADX", "Ichimoku", "KAMA & LRC", "SuperTrend",
+        tab_nw, tab_bb, tab_adx, tab_ichi, tab_kama, tab_st, tab_stoch, tab_wt, tab_rsi, tab_macd, tab_obv, tab_div = st.tabs([
+            "Nadaraya-Watson", "Bollinger Bands", "ADX", "Ichimoku", "KAMA & LRC", "SuperTrend",
             "Stoch RSI", "WaveTrend", "RSI", "MACD", "OBV", "Divergence"])
 
         # Eski tab1..tab11 değişken isimlerini koru (içerik bloklarını değiştirmemek için)
@@ -2665,6 +2665,102 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 | Fiyat üst zarfın üstünde 🔴 | Aşırı alım — geri çekilme beklenebilir |
 | Fiyat alt zarfın altında 🟢 | Aşırı satım — toparlanma beklenebilir |
 | Fiyat zarf içinde | Normal seyir |
+                """)
+
+        with tab_bb:
+            f = go.Figure()
+            # Üst-alt bant arası şeffaf mavi dolgu (önce alt bandı ekleyip,
+            # üst bandı "tonexty" ile ona doldurmak gerekiyor)
+            f.add_trace(go.Scatter(x=df.index, y=df["Low_BB"], name="Alt Band",
+                line=dict(color="lime", width=1, dash="dot")))
+            f.add_trace(go.Scatter(x=df.index, y=df["Up"], name="Üst Band",
+                line=dict(color="red", width=1, dash="dot"),
+                fill="tonexty", fillcolor="rgba(80,140,255,0.08)"))
+            f.add_trace(go.Scatter(x=df.index, y=df["Mid"], name="Orta (SMA)",
+                line=dict(color="gold", width=1.5, dash="dash")))
+            f.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
+                line=dict(color="white", width=1.5)))
+
+            # Üst/alt kırmalar
+            bb_break_up   = close > df["Up"]
+            bb_break_down = close < df["Low_BB"]
+            if bb_break_up.any():
+                f.add_trace(go.Scatter(x=df.index[bb_break_up], y=close[bb_break_up],
+                    name="Aşırı Alım", mode="markers",
+                    marker=dict(color="red", size=7, symbol="circle")))
+            if bb_break_down.any():
+                f.add_trace(go.Scatter(x=df.index[bb_break_down], y=close[bb_break_down],
+                    name="Aşırı Satım", mode="markers",
+                    marker=dict(color="lime", size=7, symbol="circle")))
+
+            # Squeeze: bant genişliği son 60 barın p25'inin altındaysa
+            bb_width = (df["Up"] - df["Low_BB"]) / df["Mid"]
+            if len(bb_width.dropna()) >= 60:
+                _wnd = bb_width.rolling(60, min_periods=20)
+                _p25 = _wnd.quantile(0.25)
+                squeeze_mask = (bb_width <= _p25) & bb_width.notna()
+                if squeeze_mask.any():
+                    f.add_trace(go.Scatter(
+                        x=df.index[squeeze_mask], y=df["Mid"][squeeze_mask],
+                        name="Squeeze (sıkışma)", mode="markers",
+                        marker=dict(color="orange", size=4, symbol="diamond"),
+                        opacity=0.7))
+
+            f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
+            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
+
+            # Anlık değerler (alt yazı)
+            _bb_last_w   = float(bb_width.iloc[-1]) if not bb_width.empty else float("nan")
+            _bb_w_med    = float(bb_width.tail(60).median()) if len(bb_width.dropna()) >= 20 else float("nan")
+            _bb_pos_text = ""
+            _lc = float(close.iloc[-1])
+            _lu = float(df["Up"].iloc[-1]) if not df["Up"].empty else float("nan")
+            _ll = float(df["Low_BB"].iloc[-1]) if not df["Low_BB"].empty else float("nan")
+            _lm = float(df["Mid"].iloc[-1]) if not df["Mid"].empty else float("nan")
+            if not (np.isnan(_lu) or np.isnan(_ll) or np.isnan(_lm)):
+                if _lc > _lu:
+                    _bb_pos_text = f"🔴 Üst bandın **üstünde** ({_lc:.2f} > {_lu:.2f}) — aşırı alım"
+                elif _lc < _ll:
+                    _bb_pos_text = f"🟢 Alt bandın **altında** ({_lc:.2f} < {_ll:.2f}) — aşırı satım"
+                else:
+                    _pct_b = (_lc - _ll) / (_lu - _ll) * 100 if (_lu - _ll) > 0 else 50.0
+                    _bb_pos_text = f"⚪ Bant **içinde** (%{_pct_b:.0f} pozisyon, orta: {_lm:.2f})"
+
+            _bb_w_pct = (_bb_last_w / _bb_w_med * 100 - 100) if _bb_w_med else 0.0
+            _bb_w_label = (
+                f"Bant Genişliği: %{_bb_last_w*100:.2f} "
+                f"({'+' if _bb_w_pct >= 0 else ''}{_bb_w_pct:.1f}% medyana göre)"
+            )
+            st.caption(f"{_bb_pos_text} · {_bb_w_label}")
+
+            with st.expander("📖 Bollinger Bands Nasıl Okunur?"):
+                st.markdown(f"""
+**Bollinger Bands** — fiyatın etrafına çizilen istatistiksel zarftır. Orta çizgi {bb_period} bar SMA, üst/alt bantlar bu ortalamadan **±{bb_std}σ** uzaklıkta. Volatilite ölçer; aynı zamanda mean-reversion ve breakout sinyali verir.
+
+**Bantların yapısı**
+
+| Unsur | Anlam |
+|---|---|
+| 🟡 Orta çizgi (sarı kesikli) | {bb_period} barlık SMA — fiyatın "denge" noktası |
+| 🔴 Üst band (kırmızı kesikli) | SMA + {bb_std}σ — istatistiksel olarak yüksek seviye |
+| 🟢 Alt band (yeşil kesikli) | SMA − {bb_std}σ — istatistiksel olarak düşük seviye |
+| 🔵 Mavi dolgu | Bantlar arası alan — "normal" hareket aralığı (~%{int((1 - 2*(1 - 0.9772)) * 100) if bb_std == 2.0 else 95}) |
+
+**Sinyal okuma**
+
+| Durum | Yorum |
+|---|---|
+| 🔴 Fiyat üst bandın üstünde | **Aşırı alım** — istatistiksel olarak nadir bölge. Range piyasasında SAT sinyali; trend piyasasında "trend güçlü" anlamına gelir, hemen satma |
+| 🟢 Fiyat alt bandın altında | **Aşırı satım** — Range piyasasında AL sinyali; düşüş trendinde "trend güçlü" |
+| ⚪ Fiyat bant içinde | Normal seyir — orta çizgiye yakınlık denge halini gösterir |
+| 🟠 Squeeze (turuncu elmaslar) | **Sıkışma** — bant genişliği son 60 barın en düşük %25'inde. Volatilite çökmüş, **breakout yakın** olabilir (yön belirsiz) |
+
+**İki kullanım modu**
+
+- **Mean Reversion (geri dönüş):** Range piyasada üst/alt band kırmaları ters yöne dönüş sinyali. Çoğu zaman geçerli.
+- **Squeeze + Breakout:** Bant daralırken bir kırılım gelirse, **trend başlangıcı**. Squeeze sonrası ilk büyük bant dışı hareket güçlü sinyaldir.
+
+⚠️ **Not:** Bollinger tek başına yön söylemez. ADX (trend gücü) ve hacim ile birlikte yorumlanmalı. Güçlü trendde fiyat üst banda yapışıp ilerleyebilir — bu durumda "aşırı alım" yanıltıcıdır.
                 """)
 
         with tab10:

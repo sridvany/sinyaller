@@ -9,6 +9,7 @@ import requests
 import json
 import hashlib
 import time
+from datetime import datetime, timedelta, timezone
 
 # ============================================================
 # 1. SAYFA KONFİGÜRASYONU
@@ -3433,6 +3434,122 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             "< 0.05 → sinyal istatistiksel olarak anlamlı. **Seçim k/n** → kombonun n expanding "
             "adımında k tanesinde train-kazananı olduğu."
         )
+
+        # ============================================================
+        # 📅 EKONOMİK TAKVİM (TradingView)
+        # ============================================================
+        st.write("---")
+        with st.expander("📅 Ekonomik Takvim", expanded=False):
+            TV_CAL_URL = "https://economic-calendar.tradingview.com/events"
+            TV_CAL_HEADERS = {
+                "accept":     "application/json",
+                "origin":     "https://www.tradingview.com",
+                "referer":    "https://www.tradingview.com/",
+                "user-agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/147.0.0.0 Safari/537.36"
+                ),
+            }
+            CAL_COUNTRIES = {
+                "TR": "🇹🇷 Türkiye",
+                "US": "🇺🇸 ABD",
+                "EU": "🇪🇺 Euro Bölgesi",
+                "GB": "🇬🇧 İngiltere",
+                "DE": "🇩🇪 Almanya",
+                "JP": "🇯🇵 Japonya",
+                "CN": "🇨🇳 Çin",
+            }
+
+            @st.cache_data(ttl=1800, show_spinner=False)
+            def _fetch_economic_calendar(country, days):
+                """TradingView ekonomik takvimi → (events_list, error_msg)."""
+                _now = datetime.now(timezone.utc)
+                _params = {
+                    "from":      _now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "to":        (_now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "countries": country,
+                }
+                try:
+                    _r = requests.get(TV_CAL_URL, headers=TV_CAL_HEADERS,
+                                      params=_params, timeout=15)
+                    _r.raise_for_status()
+                    _js = _r.json()
+                    if _js.get("status") != "ok":
+                        return None, f"API status != ok ({_js.get('status')})"
+                    return _js.get("result", []), None
+                except requests.exceptions.Timeout:
+                    return None, "Zaman aşımı — TradingView yanıt vermiyor."
+                except requests.exceptions.ConnectionError as _e:
+                    return None, f"Bağlantı hatası: {str(_e)[:200]}"
+                except requests.exceptions.HTTPError as _e:
+                    return None, f"HTTP {_e.response.status_code}"
+                except (ValueError, KeyError) as _e:
+                    return None, f"Yanıt ayrıştırılamadı ({type(_e).__name__})"
+                except Exception as _e:
+                    return None, f"{type(_e).__name__}: {str(_e)[:200]}"
+
+            _cc1, _cc2 = st.columns([1, 1])
+            with _cc1:
+                _cal_country = st.selectbox(
+                    "Ülke",
+                    options=list(CAL_COUNTRIES.keys()),
+                    format_func=lambda k: CAL_COUNTRIES[k],
+                    index=0, key="cal_country",
+                )
+            with _cc2:
+                _cal_days = st.slider(
+                    "Önümüzdeki gün sayısı",
+                    min_value=1, max_value=30, value=7, step=1,
+                    key="cal_days",
+                )
+
+            _cal_events, _cal_err = _fetch_economic_calendar(_cal_country, _cal_days)
+
+            if _cal_err:
+                st.error(f"❌ Takvim çekilemedi — {_cal_err}")
+            elif not _cal_events:
+                st.info("Bu aralıkta olay bulunamadı.")
+            else:
+                _TRT = timezone(timedelta(hours=3))
+                _IMP_MAP = {1: "YÜK", 0: "ORT", -1: "DÜŞ"}
+
+                _cal_rows = []
+                for _e in _cal_events:
+                    _d_str = _e.get("date", "")
+                    try:
+                        _dt = datetime.fromisoformat(_d_str.replace("Z", "+00:00"))
+                        _dt_str = _dt.astimezone(_TRT).strftime("%Y-%m-%d %H:%M")
+                    except (ValueError, TypeError):
+                        _dt_str = _d_str[:16].replace("T", " ")
+
+                    _unit = _e.get("unit") or ""
+                    def _f(v, u=_unit):
+                        return f"{v}{u}" if v is not None else "—"
+
+                    _cal_rows.append({
+                        "Tarih (TRT)": _dt_str,
+                        "Önem":        _IMP_MAP.get(_e.get("importance"), "—"),
+                        "Önceki":      _f(_e.get("previous")),
+                        "Beklenti":    _f(_e.get("forecast")),
+                        "Açıklanan":   _f(_e.get("actual")),
+                        "Başlık":      _e.get("title", ""),
+                    })
+
+                _cal_df = pd.DataFrame(_cal_rows)
+
+                def _cal_imp_color(v):
+                    if v == "YÜK": return "color: #ff4b4b; font-weight: bold"
+                    if v == "ORT": return "color: #ffcc00"
+                    if v == "DÜŞ": return "color: #888888"
+                    return ""
+
+                _cal_styled = _cal_df.style.map(_cal_imp_color, subset=["Önem"])
+                st.caption(
+                    f"{CAL_COUNTRIES[_cal_country]} · önümüzdeki {_cal_days} gün · "
+                    f"{len(_cal_events)} olay · cache 30dk"
+                )
+                st.dataframe(_cal_styled, use_container_width=True, hide_index=True)
 
         # ============================================================
         # 🤖 AI RAPOR YORUMU (Manuel tetikleme + cache + streaming)

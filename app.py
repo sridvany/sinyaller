@@ -391,12 +391,17 @@ with st.sidebar:
         key="interval_select",
     )
 
-    # Seçilen interval'a uygun period seçenekleri ve default = max
+    # Seçilen interval'a uygun period seçenekleri
+    # Default: 1d için "2y", diğerleri için en uzun (max)
     period_options = INTERVAL_PERIODS[interval]
+    if interval == "1d" and "2y" in period_options:
+        _default_period_idx = period_options.index("2y")
+    else:
+        _default_period_idx = len(period_options) - 1
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
         options=period_options,
-        index=len(period_options) - 1,        # default = en son = max
+        index=_default_period_idx,
         key=f"period_select_{interval}",      # interval değişince state sıfırlanır
     )
 

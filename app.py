@@ -358,25 +358,48 @@ with st.sidebar:
     st.header("⚙️ Veri Ayarları")
     ticker = st.text_input("Ticker Sembolü:","PAXG-USD")
 
-    period = st.selectbox(
-        "Toplam Veri Süresi (Period):",
-        options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
-        index=5,
-    )
-
-    if period in ["1d", "5d"]:
-        interval_options = ["1m", "2m", "5m", "15m", "30m", "60m", "1h", "1d"]
-        default_int_idx = 0
-    elif period == "1mo":
-        interval_options = ["2m", "5m", "15m", "30m", "60m", "1h", "4h", "1d"]
-        default_int_idx = 6
-    else:
-        interval_options = ["1h", "4h", "8h", "1d", "1wk", "1mo"]
-        default_int_idx = 3
+    # ──────────────────────────────────────────────────────────
+    # Interval önce seçilir; period seçilen interval'a göre
+    # otomatik olarak max'a çekilir, ama kullanıcı daraltabilir.
+    #
+    # Yahoo limitleri:
+    #   1m            → en fazla 7 gün
+    #   2m,5m,15m,30m → en fazla 60 gün
+    #   60m,1h        → en fazla 2 yıl (730 gün)
+    #   4h,8h         → 1h'den resample → 2 yıl
+    #   1d ve üstü    → sınırsız (max)
+    # ──────────────────────────────────────────────────────────
+    INTERVAL_PERIODS = {
+        "1m":  ["1d", "5d"],
+        "2m":  ["1d", "5d", "1mo"],
+        "5m":  ["1d", "5d", "1mo"],
+        "15m": ["1d", "5d", "1mo"],
+        "30m": ["1d", "5d", "1mo"],
+        "1h":  ["1d", "5d", "1mo", "6mo", "1y", "2y"],
+        "4h":  ["1mo", "6mo", "1y", "2y"],
+        "8h":  ["6mo", "1y", "2y"],
+        "1d":  ["1mo", "6mo", "1y", "2y", "5y", "max"],
+        "1wk": ["6mo", "1y", "2y", "5y", "max"],
+        "1mo": ["1y", "2y", "5y", "max"],
+    }
+    INTERVAL_LIST = list(INTERVAL_PERIODS.keys())
 
     interval = st.selectbox(
-        "Mum Aralığı (Interval):", options=interval_options, index=default_int_idx
+        "Mum Aralığı (Interval):",
+        options=INTERVAL_LIST,
+        index=INTERVAL_LIST.index("1d"),     # default: günlük
+        key="interval_select",
     )
+
+    # Seçilen interval'a uygun period seçenekleri ve default = max
+    period_options = INTERVAL_PERIODS[interval]
+    period = st.selectbox(
+        "Toplam Veri Süresi (Period):",
+        options=period_options,
+        index=len(period_options) - 1,        # default = en son = max
+        key=f"period_select_{interval}",      # interval değişince state sıfırlanır
+    )
+
     st.write("---")
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
 

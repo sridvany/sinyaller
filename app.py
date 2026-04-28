@@ -2173,8 +2173,7 @@ if ticker:
             _hdr_color, _hdr_arrow, _hdr_sign = "#bbbbbb", "▬", ""
         st.markdown(
             f"## {ticker} &nbsp;·&nbsp; "
-            f"<span style='color:{_hdr_color}'>{_hdr_last_close:.2f}</span> &nbsp;·&nbsp; "
-            f"`{interval}` &nbsp;&nbsp; "
+            f"<span style='color:{_hdr_color}'>{_hdr_last_close:.2f}</span> &nbsp;&nbsp; "
             f"<span style='color:{_hdr_color};font-size:0.7em'>"
             f"{_hdr_arrow} {_hdr_sign}{_hdr_diff:.2f} ({_hdr_sign}{_hdr_pct:.2f}%)</span>",
             unsafe_allow_html=True,

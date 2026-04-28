@@ -1993,20 +1993,20 @@ if ticker:
             name="LRC Orta", visible="legendonly",
             line=dict(color="white", width=1, dash="dash")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"],
-            name="LRC Üst", visible="legendonly",
+            name="LRC Üst", visible=False, showlegend=False,
             line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"],
-            name="LRC Alt", visible="legendonly",
+            name="LRC Alt", visible=False, showlegend=False,
             line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
             fill="tonexty", fillcolor="rgba(150,150,150,0.05)"), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"],
             name="NW Orta", visible="legendonly",
             line=dict(color="gold", width=1.5)), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"],
-            name="NW Üst", visible="legendonly",
+            name="NW Üst", visible=False, showlegend=False,
             line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"],
-            name="NW Alt", visible="legendonly",
+            name="NW Alt", visible=False, showlegend=False,
             line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
             fill="tonexty", fillcolor="rgba(255,215,0,0.04)"), row=1, col=1)
 

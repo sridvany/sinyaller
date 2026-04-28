@@ -2162,7 +2162,23 @@ if ticker:
         )
 
         _hdr_last_close = float(df["Close"].iloc[-1])
-        st.markdown(f"## {ticker} &nbsp;·&nbsp; {_hdr_last_close:.2f} &nbsp;·&nbsp; `{interval}`")
+        _hdr_prev_close = float(df["Close"].iloc[-2]) if len(df) > 1 else _hdr_last_close
+        _hdr_diff = _hdr_last_close - _hdr_prev_close
+        _hdr_pct  = (_hdr_diff / _hdr_prev_close * 100) if _hdr_prev_close else 0.0
+        if _hdr_diff > 0:
+            _hdr_color, _hdr_arrow, _hdr_sign = "#00c853", "▲", "+"
+        elif _hdr_diff < 0:
+            _hdr_color, _hdr_arrow, _hdr_sign = "#ff4b4b", "▼", ""
+        else:
+            _hdr_color, _hdr_arrow, _hdr_sign = "#bbbbbb", "▬", ""
+        st.markdown(
+            f"## {ticker} &nbsp;·&nbsp; "
+            f"<span style='color:{_hdr_color}'>{_hdr_last_close:.2f}</span> &nbsp;·&nbsp; "
+            f"`{interval}` &nbsp;&nbsp; "
+            f"<span style='color:{_hdr_color};font-size:0.7em'>"
+            f"{_hdr_arrow} {_hdr_sign}{_hdr_diff:.2f} ({_hdr_sign}{_hdr_pct:.2f}%)</span>",
+            unsafe_allow_html=True,
+        )
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================

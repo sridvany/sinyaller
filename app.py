@@ -51,7 +51,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📈 PİYASA TERMİNALİ")
-st.caption("VERİLER GECİKMELİDİR. YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
+st.caption("VERİLER 15 DK GECİKMELİDİR. YATIRIM TAVSİYESİ İÇERMEZ. ARAŞTIRMA İÇİNDİR.")
 
 # ============================================================
 # SESSION STATE VARSAYILANLARI

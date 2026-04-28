@@ -1958,12 +1958,12 @@ if ticker:
             x=df.index[bull_st], y=df["SuperTrend"][bull_st],
             name="SuperTrend (Boğa çizgi)", mode="lines",
             line=dict(color="rgba(0,255,100,0.5)", width=1.5),
-            visible="legendonly", showlegend=True), row=1, col=1)
+            visible=False, showlegend=False), row=1, col=1)
         fig.add_trace(go.Scatter(
             x=df.index[bear_st], y=df["SuperTrend"][bear_st],
             name="SuperTrend (Ayı çizgi)", mode="lines",
             line=dict(color="rgba(255,60,60,0.5)", width=1.5),
-            visible="legendonly", showlegend=True), row=1, col=1)
+            visible=False, showlegend=False), row=1, col=1)
 
         if st_buy_signal.any():
             fig.add_trace(go.Scatter(

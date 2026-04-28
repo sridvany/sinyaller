@@ -1859,7 +1859,7 @@ if ticker:
 
         fig = make_subplots(
             rows=1, cols=2,
-            column_widths=[0.75, 0.25],
+            column_widths=[0.85, 0.15],
             shared_yaxes=True,
             horizontal_spacing=0.0,
         )

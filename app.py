@@ -2167,6 +2167,8 @@ if ticker:
             margin=dict(l=110, r=10, t=30, b=30),
         )
 
+        _hdr_last_close = float(df["Close"].iloc[-1])
+        st.markdown(f"## {ticker} &nbsp;·&nbsp; {_hdr_last_close:.2f} &nbsp;·&nbsp; `{interval}`")
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
         # ============================================================
@@ -3341,10 +3343,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             closest_lvl = min(fib_levels.items(), key=lambda x: abs(x[1] - last_close))
             res.append(["BİLGİ", f"Fibonacci ({fib_lookback} bar)",
                         f"En yakın seviye: {closest_lvl[0]} ({closest_lvl[1]:.2f}) | Swing: {fib_low:.2f} — {fib_high:.2f}"])
-
-        c1, c2 = st.columns(2)
-        c1.metric("Anlık Fiyat",  f"{last_close:.2f}")
-        c2.metric("Zaman Dilimi", f"{interval}")
 
         # ============================================================
         # (Kombine Sinyal Skoru kaldırıldı)

@@ -1395,11 +1395,14 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         train_arr = close_arr[ts:te]
         test_arr  = close_arr[ts_test:es]
 
-        # Adaptif min_trades: pencere kısaysa alt sınır 10'a iner,
-        # uzun pencerelerde kullanıcının ayarladığı tavan geçerli olur.
-        # Alt sınır 10 — daha düşüğünde Sharpe istatistiksel olarak anlamsız.
+        # Adaptif min_trades:
+        # - Alt sınır: günlük+ veri için 10, haftalık/aylık için 5 (örneklem kıtlığı).
+        # - Üst sınır: kullanıcının ayarladığı min_trades, ama pencere ne kadar
+        #   trade üretebilir (train_bars // 30) onunla sınırlı.
+        # n=5 zayıf ama anlamsız değil; n<5 saf yazı-tura.
         train_bars = te - ts
-        eff_min_trades = max(10, min(min_trades, train_bars // 30))
+        abs_floor = 5 if bars_per_year <= 60 else 10
+        eff_min_trades = max(abs_floor, min(min_trades, train_bars // 30))
 
         # TRAIN: her kombo için skor, en iyiyi bul
         best_train_combo = None

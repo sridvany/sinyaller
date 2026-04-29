@@ -533,21 +533,6 @@ PARAM_GRIDS = {
                        "obv_long":      [20, 30, 40]},
 }
 
-# Hangi parametreler "lookback period" — embargo hesabı için gereklidir.
-# Eşik/çarpan/std tipi parametreler dahil değil (lookback yapmazlar).
-LOOKBACK_PARAMS = {
-    "SMA Crossover":  ["sma_s", "sma_l"],
-    "RSI":            ["rsi_period"],
-    "Bollinger Bands":["bb_period"],
-    "MACD":           ["macd_fast", "macd_slow", "macd_signal"],
-    "Mean Reversion": ["z_period"],
-    "ADX":            ["adx_period"],
-    "SuperTrend":     ["st_period"],
-    "LR Channel":     ["lrc_period"],
-    "WaveTrend":      ["wt_n1", "wt_n2"],
-    "OBV":            ["obv_short", "obv_long"],
-}
-
 
 # ============================================================
 # 4. YARDIMCI FONKSİYONLAR
@@ -1067,45 +1052,18 @@ def bars_per_year_from_interval(interval):
     return m.get(interval, 252)
 
 
-def _compute_position(sig):
-    """Sinyal serisinden pozisyon serisini vektörize üret.
-
-    Sinyal: 1=AL, -1=SAT, 0=nötr. Pozisyon: 1=long, 0=flat.
-
-    State-machine eşdeğeri (vektörize):
-      - Entry candidate: sig[i]==1 ve sig[i-1]!=1
-      - Exit candidate:  sig[i]==-1 ve sig[i-1]!=-1
-      - position[i] = 1 ⟺ son entry candidate (≤i), son exit candidate'tan
-        daha güncel. ("In_pos" filtresi gerekmez: yinelenen aynı yönlü olaylar
-        zaten last-event-wins mantığında etkisiz kalır — birebir aynı sonuç.)
-    """
-    sig = np.asarray(sig)
-    n = len(sig)
-    if n == 0:
-        return np.zeros(0, dtype=float)
-
-    # sig_prev[0] = sig[0] → entry/exit_cand[0] otomatik False (bar 0'da pozisyon 0)
-    sig_prev = np.empty_like(sig)
-    sig_prev[0] = sig[0]
-    sig_prev[1:] = sig[:-1]
-
-    entry_cand = (sig == 1)  & (sig_prev != 1)
-    exit_cand  = (sig == -1) & (sig_prev != -1)
-
-    arange = np.arange(n)
-    last_entry = np.maximum.accumulate(np.where(entry_cand, arange, -1))
-    last_exit  = np.maximum.accumulate(np.where(exit_cand,  arange, -1))
-
-    return (last_entry > last_exit).astype(float)
-
-
 def _strategy_bar_returns(sig_vals, close_arr):
     """Sinyal + fiyat → bar-bazlı strateji log getirisi (pozisyon 1 bar geciktirilmiş)."""
     sig_vals  = np.asarray(sig_vals)
     close_arr = np.asarray(close_arr, dtype=float)
     if len(sig_vals) < 2 or not (close_arr > 0).all():
         return np.array([])
-    position = _compute_position(sig_vals)
+    position = np.zeros(len(sig_vals))
+    in_pos = False
+    for i in range(1, len(sig_vals)):
+        if not in_pos and sig_vals[i] == 1 and sig_vals[i-1] != 1: in_pos = True
+        elif in_pos and sig_vals[i] == -1 and sig_vals[i-1] != -1: in_pos = False
+        position[i] = 1.0 if in_pos else 0.0
     pos_lag = np.concatenate(([0.0], position[:-1]))
     log_ret = np.diff(np.log(close_arr), prepend=np.log(close_arr[0]))
     return pos_lag * log_ret
@@ -1130,59 +1088,50 @@ def permutation_pvalue(strat_ret, observed_sharpe, bars_per_year, n_perm=200, se
 
 def stationary_bootstrap_pvalue(strat_ret, observed_sharpe, bars_per_year,
                                  n_boot=200, avg_block_len=10, seed=42):
-    """Politis & Romano (1994) Stationary Bootstrap — vektörize.
+    """Politis & Romano (1994) Stationary Bootstrap.
 
     Finansal getirilerin bağımsız olmadığı gerçeğini dikkate alır.
     Blok uzunlukları geometrik dağılımdan seçilir (ortalama = avg_block_len).
     Zaman serisi yapısı (volatility clustering, autocorrelation) korunur.
 
-    H0 İMPOZASYONU: Orijinal seri bir kez merkezlenir (mean=0). Bootstrap
-    örnekleri bu merkezlenmiş seriden çekilir; her örnek tekrar merkezlenmez
-    (aksi halde her bootstrap Sharpe'ı sıfıra çöker — yaygın bir tuzak).
+    Basit permutation'a göre p-değeri genellikle daha yüksek (daha dürüst) çıkar.
     """
-    strat_ret = np.asarray(strat_ret, dtype=float)
+    strat_ret = np.asarray(strat_ret)
     n = len(strat_ret)
     if n < 20 or strat_ret.std() == 0:
         return 1.0
 
-    # H0: gerçek Sharpe = 0 → orijinal seriyi BİR KEZ merkezle
-    centered_data = strat_ret - strat_ret.mean()
-
-    p_geom = 1.0 / max(avg_block_len, 2)
+    p_geom = 1.0 / max(avg_block_len, 2)  # blok başlangıç olasılığı
     rng = np.random.default_rng(seed)
+    count_ge = 0
+    valid_iters = 0
 
-    # ── Vektörize stationary bootstrap indeks inşası ──
-    # Her satır bir bootstrap örneği; her sütun bir zaman adımı.
-    # restart_mask[i,j]=True → j konumunda yeni blok başlatılır
-    restart_mask = rng.random(size=(n_boot, n)) < p_geom
-    restart_mask[:, 0] = True  # her örnek 0. konumda blok başlatır
-    random_starts = rng.integers(0, n, size=(n_boot, n))
+    for _ in range(n_boot):
+        # Stationary bootstrap örneği oluştur
+        boot = np.empty(n, dtype=strat_ret.dtype)
+        idx = int(rng.integers(0, n))
+        for i in range(n):
+            boot[i] = strat_ret[idx]
+            # Yeni blok başlatma olasılığı
+            if rng.random() < p_geom:
+                idx = int(rng.integers(0, n))
+            else:
+                idx = (idx + 1) % n  # aynı bloğa devam
 
-    # En son restart konumunu satır bazında yay (cumulative max)
-    positions = np.arange(n)
-    restart_positions = np.where(restart_mask, positions[None, :], -1)
-    last_restart_pos = np.maximum.accumulate(restart_positions, axis=1)
+        if boot.std() == 0:
+            continue
+        valid_iters += 1
+        # Null dağılım: sharpe'ı "getirileri merkezileştirilmiş" örnekle ölç
+        # (H0: gerçek Sharpe = 0 varsayımı altında)
+        centered = boot - boot.mean()
+        if centered.std() == 0:
+            continue
+        s_boot = float(centered.mean() / centered.std() * np.sqrt(bars_per_year))
+        if s_boot >= observed_sharpe:
+            count_ge += 1
 
-    # Anchor değeri = son restart konumundaki random_starts değeri
-    rows = np.arange(n_boot)[:, None]
-    anchors = random_starts[rows, last_restart_pos]
-    offsets = positions[None, :] - last_restart_pos
-    indices = (anchors + offsets) % n
-
-    # Tüm bootstrap örnekleri tek seferde
-    boot_samples = centered_data[indices]            # (n_boot, n)
-    boot_means   = boot_samples.mean(axis=1)
-    boot_stds    = boot_samples.std(axis=1)
-
-    valid = boot_stds > 0
-    valid_iters = int(valid.sum())
     if valid_iters == 0:
         return 1.0
-
-    s_boot = np.zeros(n_boot)
-    s_boot[valid] = boot_means[valid] / boot_stds[valid] * np.sqrt(bars_per_year)
-
-    count_ge = int((s_boot[valid] >= observed_sharpe).sum())
     return (count_ge + 1) / (valid_iters + 1)
 
 
@@ -1271,16 +1220,23 @@ def deflated_sharpe_ratio(observed_sharpe, n_trials, n_obs, skew=0.0, kurt=3.0):
 
 
 def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
-    """Vektörize backtest — state machine ve equity loop'ları yerine NumPy.
-
-    Long-only, sinyal-bazlı (1=AL, -1=SAT, 0=nötr). Pozisyon, sinyal
-    transition'larında flip eder; aynı yöndeki tekrar sinyaller no-op.
-    Açık pozisyon serinin sonunda zorla kapatılır.
-    """
     sig    = signal_series.values if hasattr(signal_series, "values") else signal_series
     sig    = np.asarray(sig)
     close_arr = np.asarray(close_arr, dtype=float)
-    n = len(sig)
+    trades = []
+    in_pos = False
+    entry_p = 0.0
+    for i in range(1, len(sig)):
+        if not in_pos and sig[i] == 1 and sig[i-1] != 1:
+            entry_p = float(close_arr[i])
+            in_pos  = True
+        elif in_pos and sig[i] == -1 and sig[i-1] != -1:
+            ep = float(close_arr[i])
+            trades.append(((ep * (1 - cost_pct) - entry_p * (1 + cost_pct)) / (entry_p * (1 + cost_pct))) * 100)
+            in_pos = False
+    if in_pos:
+        ep = float(close_arr[-1])
+        trades.append(((ep * (1 - cost_pct) - entry_p * (1 + cost_pct)) / (entry_p * (1 + cost_pct))) * 100)
 
     # ── Bar-bazlı yıllıklandırılmış Sharpe (akademik standart) ──
     strat_ret = _strategy_bar_returns(sig, close_arr)
@@ -1289,48 +1245,24 @@ def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
     else:
         sharpe_bar = 0.0
 
-    _empty = {"total_ret": 0.0, "sharpe": round(sharpe_bar, 4), "sharpe_trade": 0.0, "n": 0,
-              "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd": 0.0, "pf": 0.0,
-              "trades": []}
-    if n < 2:
-        return _empty
-
-    # ── Vektörize trade çıkarımı ──
-    # Pozisyon serisinden gerçek entry/exit barlarını diff ile bul.
-    position = _compute_position(sig)
-    pos_int  = position.astype(np.int8)
-    diff     = np.diff(pos_int, prepend=np.int8(0))
-    real_entries = np.where(diff == 1)[0]
-    real_exits   = np.where(diff == -1)[0]
-
-    # Açık pozisyon kalmışsa son barda kapat (orijinal davranışla aynı)
-    if position[-1] == 1.0:
-        real_exits = np.append(real_exits, n - 1)
-
-    if len(real_entries) == 0 or len(real_exits) == 0:
-        return _empty
-
-    # Trade getirileri (vektörize): komisyon dahil net %
-    entry_prices = close_arr[real_entries]
-    exit_prices  = close_arr[real_exits]
-    r = ((exit_prices * (1 - cost_pct) - entry_prices * (1 + cost_pct))
-         / (entry_prices * (1 + cost_pct))) * 100
-
-    # Equity eğrisi & max DD (vektörize)
-    # Başlangıç sermayesi 1.0 ile prepend → peak ilk trade'den önce 1.0'da
-    # (ilk trade kayıpla başlarsa drawdown başlangıç sermayesine göre ölçülür).
-    cumul_path = np.cumprod(1.0 + r / 100.0)
-    peak       = np.maximum.accumulate(np.concatenate(([1.0], cumul_path)))[1:]
-    dd_path    = (peak - cumul_path) / peak * 100
-    max_dd     = float(dd_path.max())
-    total_ret  = float((cumul_path[-1] - 1.0) * 100)
-
-    wins   = r[r > 0]
-    losses = r[r <= 0]
-    wr     = float(len(wins) / len(r) * 100)
-    sharpe_trade = float(r.mean() / r.std()) * np.sqrt(len(r)) if len(r) > 1 and r.std() > 0 else 0.0
-    pf     = float(abs(wins.sum() / losses.sum())) if len(losses) > 0 and losses.sum() != 0 else float("inf")
-
+    if not trades:
+        return {"total_ret": 0.0, "sharpe": round(sharpe_bar, 4), "sharpe_trade": 0.0, "n": 0,
+                "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd": 0.0, "pf": 0.0}
+    r      = np.array(trades)
+    cumul  = 1.0
+    peak   = 1.0
+    max_dd = 0.0
+    for rv in r:
+        cumul *= (1 + rv / 100)
+        if cumul > peak: peak = cumul
+        dd = ((peak - cumul) / peak) * 100
+        if dd > max_dd: max_dd = dd
+    wins      = r[r > 0]
+    losses    = r[r <= 0]
+    total_ret = (cumul - 1) * 100
+    wr        = len(wins) / len(r) * 100
+    sharpe_trade = float(np.mean(r) / np.std(r)) * np.sqrt(len(r)) if len(r) > 1 and np.std(r) > 0 else 0.0
+    pf        = abs(wins.sum() / losses.sum()) if len(losses) > 0 and losses.sum() != 0 else float("inf")
     return {"total_ret": round(total_ret, 4),
             "sharpe":       round(sharpe_bar, 4),     # yıllıklandırılmış bar-bazlı
             "sharpe_trade": round(sharpe_trade, 4),   # eski metrik (referans)
@@ -1339,8 +1271,7 @@ def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
             "avg_win":  round(float(wins.mean())   if len(wins)   > 0 else 0.0, 4),
             "avg_loss": round(float(losses.mean())  if len(losses) > 0 else 0.0, 4),
             "max_dd":   round(max_dd, 4),
-            "pf":       round(pf, 4) if pf != float("inf") else float("inf"),
-            "trades":   list(r)}
+            "pf":       round(pf, 4) if pf != float("inf") else float("inf")}
 
 
 def _score(stats, metric):
@@ -1356,8 +1287,7 @@ def _score(stats, metric):
 def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
                   n_windows=4, metric="Sharpe", min_trades=5,
                   bars_per_year=252, run_permutation=True, n_perm=200,
-                  purge_bars=10, embargo_pct=0.01,
-                  total_n_trials=None, max_lookback=None):
+                  purge_bars=10, embargo_pct=0.01):
     """Gerçek walk-forward optimizasyon (Purging & Embargo destekli):
       1) Her pencerede TRAIN dilimi üzerinde en iyi kombo seçilir
       2) Kazanan kombo TEST diliminde dokunulmamış OOS skoru alır
@@ -1375,10 +1305,8 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     n       = len(close_arr)
     default = {k: v[0] for k, v in param_grid.items()}
 
-    # Embargo bar sayısı: max(yüzde-bazlı, indikatör max lookback'i)
-    # SMA(200) gibi uzun lookback'lerde %1 embargo yetersiz — leakage'ı önle.
-    embargo_bars_pct = max(0, int(n * embargo_pct))
-    embargo_bars = max(embargo_bars_pct, int(max_lookback or 0))
+    # Embargo bar sayısı: veri uzunluğunun yüzdesi (López de Prado formülü)
+    embargo_bars = max(0, int(n * embargo_pct))
 
     # ── EXPANDING WINDOW ──
     # Rolling pencerelerin aksine, her adımda geçmiş birikir (gerçek trading gibi).
@@ -1438,14 +1366,10 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         train_arr = close_arr[ts:te]
         test_arr  = close_arr[ts_test:es]
 
-        # Adaptif min_trades:
-        # - Alt sınır: günlük+ veri için 10, haftalık/aylık için 5 (örneklem kıtlığı).
-        # - Üst sınır: kullanıcının ayarladığı min_trades, ama pencere ne kadar
-        #   trade üretebilir (train_bars // 30) onunla sınırlı.
-        # n=5 zayıf ama anlamsız değil; n<5 saf yazı-tura.
+        # Adaptif min_trades: pencere kısaysa alt sınır 3'e iner,
+        # uzun pencerelerde kullanıcının ayarladığı tavan geçerli olur
         train_bars = te - ts
-        abs_floor = 5 if bars_per_year <= 60 else 10
-        eff_min_trades = max(abs_floor, min(min_trades, train_bars // 30))
+        eff_min_trades = max(3, min(min_trades, train_bars // 30))
 
         # TRAIN: her kombo için skor, en iyiyi bul
         best_train_combo = None
@@ -1486,41 +1410,18 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     best_p = dict(zip(keys, best_combo))
 
     # ── OOS aggregate stats (asla train verisi dahil değil) ──
-    # Tüm OOS pencerelerinin trade'lerini birleştir → trade-ağırlıklı metrikler
-    # ve pencere sınırını aşan drawdown'ları yakalayan birleşik equity eğrisi.
-    all_trades = []
+    pooled_n  = sum(st["n"] for (st, _, _) in best_results)
+    cumul = 1.0
     for (st, _, _) in best_results:
-        all_trades.extend(st.get("trades", []))
-    all_trades = np.asarray(all_trades, dtype=float)
-    pooled_n = int(len(all_trades))
-
-    if pooled_n > 0:
-        # Birleşik equity eğrisi (trade-bazlı, sıralı concat)
-        cumul_path = np.cumprod(1.0 + all_trades / 100.0)
-        pooled_ret = float((cumul_path[-1] - 1.0) * 100.0)
-
-        # Pooled max DD: pencere sınırını aşan düşüşleri YAKALAR
-        # (eski max-of-per-window mantığı bunu gizliyordu).
-        # Başlangıç sermayesi 1.0 prepend → ilk trade kayıpla başlarsa
-        # drawdown başlangıç sermayesinden itibaren ölçülür.
-        peak = np.maximum.accumulate(np.concatenate(([1.0], cumul_path)))[1:]
-        pooled_max_dd = float(((peak - cumul_path) / peak).max() * 100.0)
-
-        # Trade-ağırlıklı metrikler (Simpson paradoksu → simple mean YANLIŞ)
-        wins   = all_trades[all_trades > 0]
-        losses = all_trades[all_trades <= 0]
-        pooled_wr = float(len(wins) / pooled_n * 100.0)
-        pooled_aw = float(wins.mean())   if len(wins)   > 0 else 0.0
-        pooled_al = float(losses.mean()) if len(losses) > 0 else 0.0
-        sum_loss_abs = float(abs(losses.sum()))
-        pooled_pf = float(wins.sum() / sum_loss_abs) if sum_loss_abs > 0 else float("inf")
-    else:
-        pooled_ret    = 0.0
-        pooled_max_dd = 0.0
-        pooled_wr     = 0.0
-        pooled_aw     = 0.0
-        pooled_al     = 0.0
-        pooled_pf     = 0.0
+        cumul *= (1 + st["total_ret"] / 100)
+    pooled_ret = (cumul - 1) * 100
+    pooled_max_dd = max((st["max_dd"] for (st, _, _) in best_results), default=0.0)
+    valid_stats = [st for (st, _, _) in best_results if st["n"] > 0]
+    pooled_wr   = float(np.mean([st["win_rate"] for st in valid_stats])) if valid_stats else 0.0
+    pooled_aw   = float(np.mean([st["avg_win"]  for st in valid_stats])) if valid_stats else 0.0
+    pooled_al   = float(np.mean([st["avg_loss"] for st in valid_stats])) if valid_stats else 0.0
+    finite_pfs  = [st["pf"] for st in valid_stats if st["pf"] != float("inf")]
+    pooled_pf   = float(np.mean(finite_pfs)) if finite_pfs else float("inf")
 
     # ── Bar-bazlı OOS Sharpe: test dilimlerinin strateji getirileri concat ──
     all_strat_ret = []
@@ -1570,9 +1471,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
 
     # ── Deflated Sharpe Ratio (Bailey & López de Prado 2014) ──
     # Multiple testing / data snooping cezası uygula.
-    # total_n_trials verilirse TÜM algoritmalar+kombolar üzerinden ceza
-    # (algoritma seçimi de bir trial'dır — meta-seviye snooping).
-    n_trials_grid = int(total_n_trials) if total_n_trials is not None else len(combos)
+    n_trials_grid = len(combos)  # bu algoritma için denenen kombo sayısı
     if n_trials_grid > 1 and len(strat_ret_concat) > 20:
         # Skewness ve kurtosis güvenli hesap (sıfır std, NaN ve inf koruması)
         try:
@@ -1746,24 +1645,9 @@ if ticker:
             prog       = st.progress(0, text="Optimizasyon başlatılıyor…")
             algo_list  = list(PARAM_GRIDS.keys())
 
-            # Toplam trial sayısı: tüm algoritmalardaki tüm parametre kombinasyonları.
-            # DSR'de meta-seviye data-snooping cezası için kullanılır
-            # (algoritma seçimi de bir snooping kaynağıdır).
-            TOTAL_TRIALS = sum(
-                len(list(iter_product(*g.values()))) for g in PARAM_GRIDS.values()
-            )
-
             for idx, algo_name in enumerate(algo_list):
                 prog.progress(idx / len(algo_list), text=f"Optimize ediliyor: {algo_name}")
                 grid = PARAM_GRIDS[algo_name]
-
-                # Bu algoritma için max lookback: dinamik embargo'ya verilir.
-                # Eşik/çarpan tipi parametreler dahil değil (LOOKBACK_PARAMS filtresi).
-                _lb_keys = LOOKBACK_PARAMS.get(algo_name, list(grid.keys()))
-                algo_max_lookback = max(
-                    (max(grid[k]) for k in _lb_keys if k in grid),
-                    default=0,
-                )
 
                 if algo_name == "SMA Crossover":
                     def make_fn():
@@ -1825,9 +1709,7 @@ if ticker:
                     n_windows=n_windows,
                     metric="Sharpe", min_trades=5,
                     bars_per_year=bars_per_year_from_interval(interval),
-                    run_permutation=True, n_perm=200,
-                    total_n_trials=TOTAL_TRIALS,
-                    max_lookback=algo_max_lookback)
+                    run_permutation=True, n_perm=200)
                 opt_params[algo_name] = best_p
                 opt_stats[algo_name]  = best_s if best_s else {"total_ret": 0.0, "sharpe": 0.0, "n": 0, "win_rate": 0.0}
 

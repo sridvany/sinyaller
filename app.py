@@ -1067,18 +1067,45 @@ def bars_per_year_from_interval(interval):
     return m.get(interval, 252)
 
 
+def _compute_position(sig):
+    """Sinyal serisinden pozisyon serisini vektörize üret.
+
+    Sinyal: 1=AL, -1=SAT, 0=nötr. Pozisyon: 1=long, 0=flat.
+
+    State-machine eşdeğeri (vektörize):
+      - Entry candidate: sig[i]==1 ve sig[i-1]!=1
+      - Exit candidate:  sig[i]==-1 ve sig[i-1]!=-1
+      - position[i] = 1 ⟺ son entry candidate (≤i), son exit candidate'tan
+        daha güncel. ("In_pos" filtresi gerekmez: yinelenen aynı yönlü olaylar
+        zaten last-event-wins mantığında etkisiz kalır — birebir aynı sonuç.)
+    """
+    sig = np.asarray(sig)
+    n = len(sig)
+    if n == 0:
+        return np.zeros(0, dtype=float)
+
+    # sig_prev[0] = sig[0] → entry/exit_cand[0] otomatik False (bar 0'da pozisyon 0)
+    sig_prev = np.empty_like(sig)
+    sig_prev[0] = sig[0]
+    sig_prev[1:] = sig[:-1]
+
+    entry_cand = (sig == 1)  & (sig_prev != 1)
+    exit_cand  = (sig == -1) & (sig_prev != -1)
+
+    arange = np.arange(n)
+    last_entry = np.maximum.accumulate(np.where(entry_cand, arange, -1))
+    last_exit  = np.maximum.accumulate(np.where(exit_cand,  arange, -1))
+
+    return (last_entry > last_exit).astype(float)
+
+
 def _strategy_bar_returns(sig_vals, close_arr):
     """Sinyal + fiyat → bar-bazlı strateji log getirisi (pozisyon 1 bar geciktirilmiş)."""
     sig_vals  = np.asarray(sig_vals)
     close_arr = np.asarray(close_arr, dtype=float)
     if len(sig_vals) < 2 or not (close_arr > 0).all():
         return np.array([])
-    position = np.zeros(len(sig_vals))
-    in_pos = False
-    for i in range(1, len(sig_vals)):
-        if not in_pos and sig_vals[i] == 1 and sig_vals[i-1] != 1: in_pos = True
-        elif in_pos and sig_vals[i] == -1 and sig_vals[i-1] != -1: in_pos = False
-        position[i] = 1.0 if in_pos else 0.0
+    position = _compute_position(sig_vals)
     pos_lag = np.concatenate(([0.0], position[:-1]))
     log_ret = np.diff(np.log(close_arr), prepend=np.log(close_arr[0]))
     return pos_lag * log_ret
@@ -1244,23 +1271,16 @@ def deflated_sharpe_ratio(observed_sharpe, n_trials, n_obs, skew=0.0, kurt=3.0):
 
 
 def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
+    """Vektörize backtest — state machine ve equity loop'ları yerine NumPy.
+
+    Long-only, sinyal-bazlı (1=AL, -1=SAT, 0=nötr). Pozisyon, sinyal
+    transition'larında flip eder; aynı yöndeki tekrar sinyaller no-op.
+    Açık pozisyon serinin sonunda zorla kapatılır.
+    """
     sig    = signal_series.values if hasattr(signal_series, "values") else signal_series
     sig    = np.asarray(sig)
     close_arr = np.asarray(close_arr, dtype=float)
-    trades = []
-    in_pos = False
-    entry_p = 0.0
-    for i in range(1, len(sig)):
-        if not in_pos and sig[i] == 1 and sig[i-1] != 1:
-            entry_p = float(close_arr[i])
-            in_pos  = True
-        elif in_pos and sig[i] == -1 and sig[i-1] != -1:
-            ep = float(close_arr[i])
-            trades.append(((ep * (1 - cost_pct) - entry_p * (1 + cost_pct)) / (entry_p * (1 + cost_pct))) * 100)
-            in_pos = False
-    if in_pos:
-        ep = float(close_arr[-1])
-        trades.append(((ep * (1 - cost_pct) - entry_p * (1 + cost_pct)) / (entry_p * (1 + cost_pct))) * 100)
+    n = len(sig)
 
     # ── Bar-bazlı yıllıklandırılmış Sharpe (akademik standart) ──
     strat_ret = _strategy_bar_returns(sig, close_arr)
@@ -1269,25 +1289,48 @@ def run_backtest(signal_series, close_arr, cost_pct, bars_per_year=252):
     else:
         sharpe_bar = 0.0
 
-    if not trades:
-        return {"total_ret": 0.0, "sharpe": round(sharpe_bar, 4), "sharpe_trade": 0.0, "n": 0,
-                "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd": 0.0, "pf": 0.0,
-                "trades": []}
-    r      = np.array(trades)
-    cumul  = 1.0
-    peak   = 1.0
-    max_dd = 0.0
-    for rv in r:
-        cumul *= (1 + rv / 100)
-        if cumul > peak: peak = cumul
-        dd = ((peak - cumul) / peak) * 100
-        if dd > max_dd: max_dd = dd
-    wins      = r[r > 0]
-    losses    = r[r <= 0]
-    total_ret = (cumul - 1) * 100
-    wr        = len(wins) / len(r) * 100
-    sharpe_trade = float(np.mean(r) / np.std(r)) * np.sqrt(len(r)) if len(r) > 1 and np.std(r) > 0 else 0.0
-    pf        = abs(wins.sum() / losses.sum()) if len(losses) > 0 and losses.sum() != 0 else float("inf")
+    _empty = {"total_ret": 0.0, "sharpe": round(sharpe_bar, 4), "sharpe_trade": 0.0, "n": 0,
+              "win_rate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd": 0.0, "pf": 0.0,
+              "trades": []}
+    if n < 2:
+        return _empty
+
+    # ── Vektörize trade çıkarımı ──
+    # Pozisyon serisinden gerçek entry/exit barlarını diff ile bul.
+    position = _compute_position(sig)
+    pos_int  = position.astype(np.int8)
+    diff     = np.diff(pos_int, prepend=np.int8(0))
+    real_entries = np.where(diff == 1)[0]
+    real_exits   = np.where(diff == -1)[0]
+
+    # Açık pozisyon kalmışsa son barda kapat (orijinal davranışla aynı)
+    if position[-1] == 1.0:
+        real_exits = np.append(real_exits, n - 1)
+
+    if len(real_entries) == 0 or len(real_exits) == 0:
+        return _empty
+
+    # Trade getirileri (vektörize): komisyon dahil net %
+    entry_prices = close_arr[real_entries]
+    exit_prices  = close_arr[real_exits]
+    r = ((exit_prices * (1 - cost_pct) - entry_prices * (1 + cost_pct))
+         / (entry_prices * (1 + cost_pct))) * 100
+
+    # Equity eğrisi & max DD (vektörize)
+    # Başlangıç sermayesi 1.0 ile prepend → peak ilk trade'den önce 1.0'da
+    # (ilk trade kayıpla başlarsa drawdown başlangıç sermayesine göre ölçülür).
+    cumul_path = np.cumprod(1.0 + r / 100.0)
+    peak       = np.maximum.accumulate(np.concatenate(([1.0], cumul_path)))[1:]
+    dd_path    = (peak - cumul_path) / peak * 100
+    max_dd     = float(dd_path.max())
+    total_ret  = float((cumul_path[-1] - 1.0) * 100)
+
+    wins   = r[r > 0]
+    losses = r[r <= 0]
+    wr     = float(len(wins) / len(r) * 100)
+    sharpe_trade = float(r.mean() / r.std()) * np.sqrt(len(r)) if len(r) > 1 and r.std() > 0 else 0.0
+    pf     = float(abs(wins.sum() / losses.sum())) if len(losses) > 0 and losses.sum() != 0 else float("inf")
+
     return {"total_ret": round(total_ret, 4),
             "sharpe":       round(sharpe_bar, 4),     # yıllıklandırılmış bar-bazlı
             "sharpe_trade": round(sharpe_trade, 4),   # eski metrik (referans)
@@ -1457,8 +1500,10 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         pooled_ret = float((cumul_path[-1] - 1.0) * 100.0)
 
         # Pooled max DD: pencere sınırını aşan düşüşleri YAKALAR
-        # (eski max-of-per-window mantığı bunu gizliyordu)
-        peak = np.maximum.accumulate(cumul_path)
+        # (eski max-of-per-window mantığı bunu gizliyordu).
+        # Başlangıç sermayesi 1.0 prepend → ilk trade kayıpla başlarsa
+        # drawdown başlangıç sermayesinden itibaren ölçülür.
+        peak = np.maximum.accumulate(np.concatenate(([1.0], cumul_path)))[1:]
         pooled_max_dd = float(((peak - cumul_path) / peak).max() * 100.0)
 
         # Trade-ağırlıklı metrikler (Simpson paradoksu → simple mean YANLIŞ)

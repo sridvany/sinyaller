@@ -360,7 +360,7 @@ with st.sidebar:
 
     period = st.selectbox(
         "Toplam Veri Süresi (Period):",
-        options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "10y", "15y", "20y", "max"],
+        options=["1d", "5d", "1mo", "6mo", "1y", "2y", "5y", "max"],
         index=5,
     )
 
@@ -1570,15 +1570,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
 def fetch_live_data(symbol, p, i):
     try:
         fetch_i = "1h" if i in ("4h", "8h") else i
-        # yfinance period sadece şu değerleri kabul eder:
-        # 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
-        # 15y / 20y → start tarihine çevir (period değil, start parametresi)
-        if p in ("15y", "20y"):
-            years = int(p.replace("y", ""))
-            start = (datetime.now() - timedelta(days=years * 365)).strftime("%Y-%m-%d")
-            data = yf.download(symbol, start=start, interval=fetch_i, progress=False)
-        else:
-            data = yf.download(symbol, period=p, interval=fetch_i, progress=False)
+        data = yf.download(symbol, period=p, interval=fetch_i, progress=False)
         if data is None or data.empty:
             return pd.DataFrame()
         if i in ("4h", "8h"):

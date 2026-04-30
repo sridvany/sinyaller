@@ -917,17 +917,48 @@ def sig_sma(close, atr_high, sma_s=20, sma_l=100):
 
 
 def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70, trend_period=200):
-    """RSI sinyali — SMA trend filtreli (catching a falling knife önlemi).
-    - AL sinyali yalnızca fiyat SMA(trend_period) üzerindeyken geçerli.
-    - SAT sinyali yalnızca fiyat SMA(trend_period) altındayken geçerli.
-    - trend_period optimize edilebilir: [50, 100, 200]
-    - SMA henüz hesaplanamadıysa (ilk trend_period bar) filtre devre dışı kalır.
+    """RSI sinyali — Wilder EWM + SMA trend filtreli + RSI 50 çıkış.
+
+    Hesaplama:
+    - Wilder RSI: EWM(alpha=1/period) — TradingView/Bloomberg ile tutarlı.
+    - SMA(trend_period) trend filtresi: catching a falling knife önlemi.
+      AL yalnızca fiyat SMA üzerinde, SAT yalnızca fiyat SMA altında geçerli.
+    - Giriş: RSI < rsi_lower → AL, RSI > rsi_upper → SAT.
+    - Çıkış: Long için RSI 50'yi yukarı geçince kapat (Connors standardı).
+             Short için RSI 50'yi aşağı geçince kapat.
     """
-    d   = close.diff()
-    g   = d.where(d > 0, 0.0).rolling(rsi_period).mean()
-    l   = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
-    rsi = 100 - (100 / (1 + g / l.replace(0, np.nan)))
-    sig = np.where(rsi < rsi_lower, 1, np.where(rsi > rsi_upper, -1, 0))
+    d     = close.diff()
+    gain  = d.where(d > 0, 0.0)
+    loss  = (-d.where(d < 0, 0.0))
+    # Wilder smoothing: ilk değer SMA, sonrası EWM (adjust=False, alpha=1/period)
+    alpha = 1.0 / rsi_period
+    avg_g = gain.ewm(alpha=alpha, min_periods=rsi_period, adjust=False).mean()
+    avg_l = loss.ewm(alpha=alpha, min_periods=rsi_period, adjust=False).mean()
+    rsi   = 100 - (100 / (1 + avg_g / avg_l.replace(0, np.nan)))
+
+    # Giriş sinyalleri
+    rsi_v   = rsi.values
+    entry   = np.where(rsi_v < rsi_lower, 1, np.where(rsi_v > rsi_upper, -1, 0))
+
+    # RSI 50 çıkış: long pozisyon RSI 50 yukarı geçince SAT,
+    #               short pozisyon RSI 50 aşağı geçince AL
+    cross_above_50 = (rsi_v >= 50) & (np.concatenate(([50], rsi_v[:-1])) < 50)
+    cross_below_50 = (rsi_v <= 50) & (np.concatenate(([50], rsi_v[:-1])) > 50)
+
+    sig      = np.zeros(len(rsi_v), dtype=float)
+    position = 0
+    for i in range(len(rsi_v)):
+        if position == 0:
+            if entry[i] == 1:  position = 1;  sig[i] = 1
+            elif entry[i] == -1: position = -1; sig[i] = -1
+        elif position == 1:
+            if cross_above_50[i]: position = 0; sig[i] = -1  # long kapat
+            else: sig[i] = 1
+        elif position == -1:
+            if cross_below_50[i]: position = 0; sig[i] = 1   # short kapat
+            else: sig[i] = -1
+
+    # Trend filtresi: SMA(trend_period)
     trend_sma = close.rolling(trend_period, min_periods=trend_period).mean()
     above = (close > trend_sma).values
     below = (close < trend_sma).values

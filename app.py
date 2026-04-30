@@ -1017,22 +1017,36 @@ def sig_adx_fn(high, low, close, atr_high, adx_period, adx_threshold=25):
     return pd.Series(sig, index=close.index), adx_v, pdi, mdi
 
 
-def sig_stochrsi(close, rsi_series, srsi_period, sd_period, sl, su):
-    """Stoch RSI — bölge + %K/%D kesişim teyitli sinyal.
-    - Aşırı satım (K < sl) VE yukarı dönüş (K > D) → AL (+1)
-    - Aşırı alım  (K > su) VE aşağı dönüş (K < D) → SAT (-1)
+def sig_stochrsi(close, rsi_series, rsi_ma_series, srsi_period, sd_period, sl, su):
+    """Stoch RSI — bölge + %K/%D kesişim + RSI MA momentum filtreli sinyal.
+    - Aşırı satım (K < sl) VE yukarı dönüş (K > D) VE RSI > RSI_MA → AL (+1)
+    - Aşırı alım  (K > su) VE aşağı dönüş (K < D) VE RSI < RSI_MA → SAT (-1)
     - Aksi halde nötr (0)
-    Sadece bölgede olmak yetmez — K/D kesişimi dönüş teyidi şarttır.
+
+    Çift teyit:
+    1. Bölgede olmak yetmez — K/D kesişimi dönüş teyidi şarttır.
+    2. RSI > RSI_MA: kısa-vadeli momentum yukarı eğimli → AL'lar geçerli.
+       RSI < RSI_MA: kısa-vadeli momentum aşağı eğimli → SAT'lar geçerli.
+       Bu filtre RSI ekosistemi ile tutarlılık sağlar; trend dönüşü henüz
+       teyitlenmemişken erken sinyalleri eler.
     """
     rmin = rsi_series.rolling(srsi_period, min_periods=srsi_period).min()
     rmax = rsi_series.rolling(srsi_period, min_periods=srsi_period).max()
     k    = ((rsi_series - rmin) / (rmax - rmin).replace(0, np.nan) * 100).fillna(50).clip(0, 100)
     d    = k.rolling(sd_period).mean()
 
-    # Kesişim teyitli sinyal
+    # RSI MA momentum filtresi
+    rsi_ma_v = rsi_ma_series.values
+    rsi_v    = rsi_series.values
+    momentum_up   = rsi_v > rsi_ma_v
+    momentum_down = rsi_v < rsi_ma_v
+    valid_ma      = ~np.isnan(rsi_ma_v)
+
+    # Kesişim teyitli + momentum filtreli sinyal
     bull = (k < sl) & (k > d)   # Aşırı satımda yukarı dönüş
     bear = (k > su) & (k < d)   # Aşırı alımda aşağı dönüş
-    sig  = np.where(bull, 1, np.where(bear, -1, 0))
+    sig  = np.where(valid_ma & bull & momentum_up,   1,
+           np.where(valid_ma & bear & momentum_down, -1, 0))
     return pd.Series(sig, index=close.index), k, d
 
 
@@ -1841,7 +1855,7 @@ if ticker:
             high, low, close, atr_high, p_adx["adx_period"], p_adx["adx_threshold"])
 
         df["Sig_StochRSI"], df["StochRSI_K"], df["StochRSI_D"] = sig_stochrsi(
-            close, df["RSI"], stoch_rsi_period, stoch_d_period, stoch_lower, stoch_upper)
+            close, df["RSI"], df["RSI_MA"], stoch_rsi_period, stoch_d_period, stoch_lower, stoch_upper)
 
         df["Sig_Ichimoku"], df["Tenkan"], df["Kijun"], df["Senkou_A"], df["Senkou_B"] = sig_ichimoku(
             high, low, close, atr_high, ichi_tenkan, ichi_kijun, ichi_senkou_b)

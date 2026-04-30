@@ -497,8 +497,8 @@ with st.sidebar:
     st.write("---")
     st.subheader("🔁 Walk-Forward Optimizasyon")
     n_windows = st.slider("Pencere Sayısı:", 2, 8, 3,
-        help="Veri kaç eşit parçaya bölünsün? Train expanding olarak büyür.")
-    st.caption(f"{n_windows} pencere · expanding window (train büyür, test sabit boyut)")
+        help="Veri kaç eşit parçaya bölünsün? Train sabit boyutta kayar (sliding).")
+    st.caption(f"{n_windows} pencere · sliding window (train sabit boyut, kaydırmalı)")
 
     st.write("---")
     run_opt = st.button("🚀 Algoritmaları Optimize Et", use_container_width=True, type="primary")
@@ -1288,11 +1288,16 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
                   n_windows=4, metric="Sharpe", min_trades=5,
                   bars_per_year=252, run_permutation=True, n_perm=200,
                   purge_bars=10, embargo_pct=0.01):
-    """Gerçek walk-forward optimizasyon (Purging & Embargo destekli):
-      1) Her pencerede TRAIN dilimi üzerinde en iyi kombo seçilir
+    """Gerçek walk-forward optimizasyon — Sliding Window (Purging & Embargo destekli):
+      1) Her pencerede sabit boyutlu TRAIN dilimi üzerinde en iyi kombo seçilir
       2) Kazanan kombo TEST diliminde dokunulmamış OOS skoru alır
       3) En çok seçilen (ve en yüksek OOS skora sahip) kombo sistem tarafından döndürülür
       4) Tüm OOS test dilimleri birleştirilip permutation test ile p-değeri hesaplanır
+
+    Sliding vs Expanding:
+      - Sliding: train penceresi sabit boyutta kayar — eski veri düşer.
+        Rejim değişimlerinde daha hızlı adapte olur; son döneme daha duyarlı.
+      - Expanding: tüm geçmiş train'e dahil edilir (daha fazla veri ama daha yavaş adaptasyon).
 
     Purging & Embargo (López de Prado 2018):
       - purge_bars: Train sonundan kesilen bar sayısı. Train'de başlayıp test'e
@@ -1308,15 +1313,14 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     # Embargo bar sayısı: veri uzunluğunun yüzdesi (López de Prado formülü)
     embargo_bars = max(0, int(n * embargo_pct))
 
-    # ── EXPANDING WINDOW ──
-    # Rolling pencerelerin aksine, her adımda geçmiş birikir (gerçek trading gibi).
-    # Eğitim dilimi [0 → split_i], test dilimi [split_i → end_i].
-    # Adımlar: veriyi (n_windows + 1) eşit parçaya böl, her adımda bir ek test dilimi.
-    #   Adım 1: train=[0, 2/(n+1)), test=[2/(n+1), 3/(n+1))
-    #   Adım 2: train=[0, 3/(n+1)), test=[3/(n+1), 4/(n+1))
+    # ── SLIDING (ROLLING) WINDOW ──
+    # Her pencerede train sabit boyutta kayar; eski veri düşer, yeni veri girer.
+    # Eğitim dilimi [w*step → w*step + train_size], test dilimi [train_end → train_end + step].
+    #   Adım 1: train=[0,       2*step), test=[2*step, 3*step)
+    #   Adım 2: train=[step,    3*step), test=[3*step, 4*step)
     #   ...
-    #   Adım n: train=[0, (n+1)/(n+1)=end), — son adım test = son dilim
-    # Her test dilimi birbirinden bağımsız OOS, hiçbiri train'de görülmez.
+    #   Adım n: train=[(n-1)*step, (n+1)*step), test=[(n+1)*step, end)
+    # Her pencerede train boyutu sabittir → daha kararlı parametre seçimi.
     # Ek olarak purge (train sonu) ve embargo (test başı) uygulanır.
     n_steps = max(n_windows, 2)
     step_size = n // (n_steps + 1)
@@ -1324,13 +1328,14 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
         return default, None
 
     windows = []
-    # İlk train minimum ~2 dilim olacak şekilde başla
-    min_train_start = 2 * step_size
+    train_size = 2 * step_size   # sabit train penceresi
     for w in range(n_steps):
-        train_start = 0
-        train_end   = min_train_start + w * step_size
+        train_start = w * step_size
+        train_end   = train_start + train_size
         test_start  = train_end
         test_end    = min(test_start + step_size, n) if w < n_steps - 1 else n
+        if test_end > n:
+            break
 
         # Purge: train sonundan purge_bars kes
         train_end_purged = train_end - purge_bars

@@ -62,6 +62,7 @@ _defaults = {
     "rsi_period":    14,
     "rsi_lower":     30,
     "rsi_upper":     70,
+    "rsi_trend_period": 200,
     "bb_period":     20,
     "bb_std":        2.0,
     "macd_fast":     12,
@@ -511,9 +512,10 @@ with st.sidebar:
 PARAM_GRIDS = {
     "SMA Crossover":  {"sma_s":         [10, 20, 50],
                        "sma_l":         [100, 150, 200]},
-    "RSI":            {"rsi_period":    [10, 14, 21],
-                       "rsi_lower":     [25, 30, 35],
-                       "rsi_upper":     [65, 70, 75]},
+    "RSI":            {"rsi_period":       [10, 14, 21],
+                       "rsi_lower":        [25, 30, 35],
+                       "rsi_upper":        [65, 70, 75],
+                       "rsi_trend_period": [50, 100, 200]},
     "Bollinger Bands":{"bb_period":     [15, 20, 30],
                        "bb_std":        [1.5, 2.0, 2.5]},
     "MACD":           {"macd_fast":     [8, 12, 16],
@@ -914,24 +916,25 @@ def sig_sma(close, atr_high, sma_s=20, sma_l=100):
     return pd.Series(sig, index=close.index), sh, sl
 
 
-def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70, ema200=None):
-    """RSI sinyali — EMA200 trend filtreli.
-    - AL sinyali yalnızca fiyat EMA200 üzerindeyken geçerli (boğa trendi teyidi).
-    - SAT sinyali yalnızca fiyat EMA200 altındayken geçerli (ayı trendi teyidi).
-    - EMA200 henüz hesaplanamadıysa (ilk 200 bar) filtre devre dışı kalır.
+def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70, trend_period=200):
+    """RSI sinyali — SMA trend filtreli (catching a falling knife önlemi).
+    - AL sinyali yalnızca fiyat SMA(trend_period) üzerindeyken geçerli.
+    - SAT sinyali yalnızca fiyat SMA(trend_period) altındayken geçerli.
+    - trend_period optimize edilebilir: [50, 100, 200]
+    - SMA henüz hesaplanamadıysa (ilk trend_period bar) filtre devre dışı kalır.
     """
     d   = close.diff()
     g   = d.where(d > 0, 0.0).rolling(rsi_period).mean()
     l   = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
     rsi = 100 - (100 / (1 + g / l.replace(0, np.nan)))
     sig = np.where(rsi < rsi_lower, 1, np.where(rsi > rsi_upper, -1, 0))
-    if ema200 is not None:
-        above = (close > ema200).values
-        below = (close < ema200).values
-        valid = ema200.notna().values
-        sig = np.where(valid & (sig == 1)  & above, 1,
-              np.where(valid & (sig == -1) & below, -1,
-              np.where(~valid, sig, 0)))
+    trend_sma = close.rolling(trend_period, min_periods=trend_period).mean()
+    above = (close > trend_sma).values
+    below = (close < trend_sma).values
+    valid = trend_sma.notna().values
+    sig = np.where(valid & (sig == 1)  & above, 1,
+          np.where(valid & (sig == -1) & below, -1,
+          np.where(~valid, sig, 0)))
     return pd.Series(sig, index=close.index), rsi
 
 
@@ -1674,10 +1677,9 @@ if ticker:
                         return fn
                 elif algo_name == "RSI":
                     def make_fn():
-                        ema200_opt = close.ewm(span=200, adjust=False).mean()
                         def fn(p):
                             if p["rsi_lower"] >= p["rsi_upper"]: return None
-                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"], ema200=ema200_opt); return s
+                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"], p["rsi_trend_period"]); return s
                         return fn
                 elif algo_name == "Bollinger Bands":
                     def make_fn():
@@ -1740,6 +1742,7 @@ if ticker:
             st.session_state["rsi_period"]    = int(p["RSI"]["rsi_period"])
             st.session_state["rsi_lower"]     = int(p["RSI"]["rsi_lower"])
             st.session_state["rsi_upper"]     = int(p["RSI"]["rsi_upper"])
+            st.session_state["rsi_trend_period"] = int(p["RSI"]["rsi_trend_period"])
             st.session_state["bb_period"]     = int(p["Bollinger Bands"]["bb_period"])
             st.session_state["bb_std"]        = float(p["Bollinger Bands"]["bb_std"])
             st.session_state["macd_fast"]     = int(p["MACD"]["macd_fast"])
@@ -1764,7 +1767,8 @@ if ticker:
             opt_stats  = st.session_state[OPT_KEY]["stats"]
 
         p_sma  = {"sma_s": sma_short,   "sma_l": sma_long}
-        p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper}
+        p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper,
+                  "rsi_trend_period": ss.get("rsi_trend_period", 200)}
         p_bb   = {"bb_period": bb_period,   "bb_std": bb_std}
         p_macd = {"macd_fast": macd_fast,   "macd_slow": macd_slow, "macd_signal": macd_signal}
         p_z    = {"z_period": z_period,     "z_thresh": z_thresh}
@@ -1781,7 +1785,7 @@ if ticker:
 
         df["Sig_RSI"], df["RSI"] = sig_rsi_fn(
             close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"],
-            ema200=df["EMA200"])
+            p_rsi["rsi_trend_period"])
         df["RSI_MA"] = df["RSI"].rolling(rsi_ma_period).mean()
 
         df["Sig_BB"], df["Mid"], df["Up"], df["Low_BB"] = sig_bb(

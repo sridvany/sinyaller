@@ -968,12 +968,32 @@ def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70, trend_period=200):
     return pd.Series(sig, index=close.index), rsi
 
 
-def sig_bb(close, bb_period, bb_std_val=2.0):
+def sig_bb(close, bb_period, bb_std_val=2.0, trend_period=200):
+    """Bollinger Bands sinyali — SMA trend filtreli mean reversion.
+
+    Hesaplama:
+    - Orta çizgi: SMA(bb_period)
+    - Üst/alt bantlar: orta ± bb_std_val * std
+    - Giriş: fiyat alt bandın altında → AL, üst bandın üstünde → SAT
+    - Trend filtresi: SMA(trend_period)
+      AL yalnızca fiyat trend SMA üstündeyse geçerli (yükselen trendde dip alımı).
+      SAT yalnızca fiyat trend SMA altındaysa geçerli (düşen trendde tepe satışı).
+      Bu, BB mean reversion'un trendli piyasada whipsaw yapmasını önler.
+    """
     mid = close.rolling(bb_period).mean()
     std = close.rolling(bb_period).std()
     up  = mid + bb_std_val * std
     lo  = mid - bb_std_val * std
     sig = np.where(close < lo, 1, np.where(close > up, -1, 0))
+
+    # Trend filtresi: SMA(trend_period)
+    trend_sma = close.rolling(trend_period, min_periods=trend_period).mean()
+    above = (close > trend_sma).values
+    below = (close < trend_sma).values
+    valid = trend_sma.notna().values
+    sig = np.where(valid & (sig == 1)  & above, 1,
+          np.where(valid & (sig == -1) & below, -1,
+          np.where(~valid, sig, 0)))
     return pd.Series(sig, index=close.index), mid, up, lo
 
 

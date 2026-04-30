@@ -914,12 +914,24 @@ def sig_sma(close, atr_high, sma_s=20, sma_l=100):
     return pd.Series(sig, index=close.index), sh, sl
 
 
-def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70):
+def sig_rsi_fn(close, rsi_period, rsi_lower=30, rsi_upper=70, ema200=None):
+    """RSI sinyali — EMA200 trend filtreli.
+    - AL sinyali yalnızca fiyat EMA200 üzerindeyken geçerli (boğa trendi teyidi).
+    - SAT sinyali yalnızca fiyat EMA200 altındayken geçerli (ayı trendi teyidi).
+    - EMA200 henüz hesaplanamadıysa (ilk 200 bar) filtre devre dışı kalır.
+    """
     d   = close.diff()
     g   = d.where(d > 0, 0.0).rolling(rsi_period).mean()
     l   = (-d.where(d < 0, 0.0)).rolling(rsi_period).mean()
     rsi = 100 - (100 / (1 + g / l.replace(0, np.nan)))
     sig = np.where(rsi < rsi_lower, 1, np.where(rsi > rsi_upper, -1, 0))
+    if ema200 is not None:
+        above = (close > ema200).values
+        below = (close < ema200).values
+        valid = ema200.notna().values
+        sig = np.where(valid & (sig == 1)  & above, 1,
+              np.where(valid & (sig == -1) & below, -1,
+              np.where(~valid, sig, 0)))
     return pd.Series(sig, index=close.index), rsi
 
 
@@ -1662,9 +1674,10 @@ if ticker:
                         return fn
                 elif algo_name == "RSI":
                     def make_fn():
+                        ema200_opt = close.ewm(span=200, adjust=False).mean()
                         def fn(p):
                             if p["rsi_lower"] >= p["rsi_upper"]: return None
-                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"]); return s
+                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"], ema200=ema200_opt); return s
                         return fn
                 elif algo_name == "Bollinger Bands":
                     def make_fn():
@@ -1767,7 +1780,8 @@ if ticker:
         df["SMA200"] = close.rolling(200, min_periods=200).mean()
 
         df["Sig_RSI"], df["RSI"] = sig_rsi_fn(
-            close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"])
+            close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"],
+            ema200=df["EMA200"])
         df["RSI_MA"] = df["RSI"].rolling(rsi_ma_period).mean()
 
         df["Sig_BB"], df["Mid"], df["Up"], df["Low_BB"] = sig_bb(

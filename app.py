@@ -509,8 +509,8 @@ with st.sidebar:
 # 3. OPTİMİZASYON PARAMETRE GRİDLERİ
 # ============================================================
 PARAM_GRIDS = {
-    "SMA Crossover":  {"sma_s":         [5, 10, 20, 30],
-                       "sma_l":         [50, 100, 150, 200]},
+    "SMA Crossover":  {"sma_s":         [10, 20, 50],
+                       "sma_l":         [100, 150, 200]},
     "RSI":            {"rsi_period":    [10, 14, 21],
                        "rsi_lower":     [25, 30, 35],
                        "rsi_upper":     [65, 70, 75]},

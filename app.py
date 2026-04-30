@@ -514,8 +514,7 @@ PARAM_GRIDS = {
                        "sma_l":         [100, 150, 200]},
     "RSI":            {"rsi_period":       [10, 14, 21],
                        "rsi_lower":        [25, 30, 35],
-                       "rsi_upper":        [65, 70, 75],
-                       "rsi_trend_period": [50, 100, 200]},
+                       "rsi_upper":        [65, 70, 75]},
     "Bollinger Bands":{"bb_period":     [15, 20, 30],
                        "bb_std":        [1.5, 2.0, 2.5]},
     "MACD":           {"macd_fast":     [8, 12, 16],
@@ -1693,7 +1692,7 @@ if ticker:
         # ── Veri uzunluğu uyarısı ─────────────────────────────────────────────
         _n_bars = len(close)
         _max_trend = max(
-            max(PARAM_GRIDS["RSI"].get("rsi_trend_period", [200])),
+            200,  # RSI trend filtresi sabit 200
             max(PARAM_GRIDS["SMA Crossover"].get("sma_l", [200])),
         )
         _min_recommended = _max_trend * 3  # train + test + warmup için güvenli alt sınır
@@ -1726,7 +1725,7 @@ if ticker:
                     def make_fn():
                         def fn(p):
                             if p["rsi_lower"] >= p["rsi_upper"]: return None
-                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"], p["rsi_trend_period"]); return s
+                            s, _ = sig_rsi_fn(close, p["rsi_period"], p["rsi_lower"], p["rsi_upper"]); return s
                         return fn
                 elif algo_name == "Bollinger Bands":
                     def make_fn():
@@ -1789,7 +1788,6 @@ if ticker:
             st.session_state["rsi_period"]    = int(p["RSI"]["rsi_period"])
             st.session_state["rsi_lower"]     = int(p["RSI"]["rsi_lower"])
             st.session_state["rsi_upper"]     = int(p["RSI"]["rsi_upper"])
-            st.session_state["rsi_trend_period"] = int(p["RSI"]["rsi_trend_period"])
             st.session_state["bb_period"]     = int(p["Bollinger Bands"]["bb_period"])
             st.session_state["bb_std"]        = float(p["Bollinger Bands"]["bb_std"])
             st.session_state["macd_fast"]     = int(p["MACD"]["macd_fast"])
@@ -1814,8 +1812,7 @@ if ticker:
             opt_stats  = st.session_state[OPT_KEY]["stats"]
 
         p_sma  = {"sma_s": sma_short,   "sma_l": sma_long}
-        p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper,
-                  "rsi_trend_period": ss.get("rsi_trend_period", 200)}
+        p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper}
         p_bb   = {"bb_period": bb_period,   "bb_std": bb_std}
         p_macd = {"macd_fast": macd_fast,   "macd_slow": macd_slow, "macd_signal": macd_signal}
         p_z    = {"z_period": z_period,     "z_thresh": z_thresh}
@@ -1831,8 +1828,7 @@ if ticker:
         df["SMA200"] = close.rolling(200, min_periods=200).mean()
 
         df["Sig_RSI"], df["RSI"] = sig_rsi_fn(
-            close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"],
-            p_rsi["rsi_trend_period"])
+            close, p_rsi["rsi_period"], p_rsi["rsi_lower"], p_rsi["rsi_upper"])
         df["RSI_MA"] = df["RSI"].rolling(rsi_ma_period).mean()
 
         df["Sig_BB"], df["Mid"], df["Up"], df["Low_BB"] = sig_bb(

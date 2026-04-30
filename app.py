@@ -1690,6 +1690,22 @@ if ticker:
         # ============================================================
         OPT_KEY = f"opt_v6_dsr_{ticker}_{period}_{interval}_{n_windows}"
 
+        # ── Veri uzunluğu uyarısı ─────────────────────────────────────────────
+        _n_bars = len(close)
+        _max_trend = max(
+            max(PARAM_GRIDS["RSI"].get("rsi_trend_period", [200])),
+            max(PARAM_GRIDS["SMA Crossover"].get("sma_l", [200])),
+        )
+        _min_recommended = _max_trend * 3  # train + test + warmup için güvenli alt sınır
+        if _n_bars < _min_recommended:
+            st.warning(
+                f"⚠️ **Yetersiz veri:** {_n_bars} bar mevcut, "
+                f"SMA{_max_trend} filtresi için en az **{_min_recommended} bar** önerilir. "
+                f"Daha uzun periyot seçin (örn. 5 yıl) veya SMA200 içeren kombinasyonlar "
+                f"optimize edilemeyebilir."
+            )
+        # ─────────────────────────────────────────────────────────────────────
+
         if run_opt or OPT_KEY not in st.session_state:
             opt_params = {}
             opt_stats  = {}

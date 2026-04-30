@@ -264,7 +264,7 @@ def build_ai_prompt(*, detail, ticker, close, interval,
             "   NW için zarf pozisyonu + yönünü dikkate al)\n\n"
             "   **🔹 Hacim ve Seviye** — OBV, Swing S/R, Fibonacci, VWAP\n"
             "   (OBV için SMA farkı ve fark büyüklüğünü dikkate al)\n\n"
-            "   **🔹 Uyarı Sinyalleri** — ADX (+DI/-DI), Divergence (RSI + MACD)\n\n"
+            "   **🔹 Uyarı Sinyalleri** — ADX (+DI/-DI), Divergence (RSI + MACD + OBV)\n\n"
             "3. **⚠️ Ana Risk Faktörleri** — en kritik 2-3 uyarı ve nedenleri\n\n"
             "4. **📍 Aksiyon Planı**\n"
             "   - Önerilen giriş seviyesi\n"
@@ -1874,6 +1874,7 @@ if ticker:
 
         df["Div_RSI"]  = detect_divergence(close, df["RSI"],  window=div_window)
         df["Div_MACD"] = detect_divergence(close, df["MACD"], window=div_window)
+        df["Div_OBV"]  = detect_divergence(close, df["OBV"],  window=div_window)
 
         # ============================================================
         # ANA GRAFİK + VRP
@@ -1959,8 +1960,8 @@ if ticker:
                         ), row=1, col=1)
 
             # ── Divergence marker katmanı (ana grafik) ────────────
-            bull_div = (df["Div_RSI"] == 1) | (df["Div_MACD"] == 1)
-            bear_div = (df["Div_RSI"] == -1) | (df["Div_MACD"] == -1)
+            bull_div = (df["Div_RSI"] == 1) | (df["Div_MACD"] == 1) | (df["Div_OBV"] == 1)
+            bear_div = (df["Div_RSI"] == -1) | (df["Div_MACD"] == -1) | (df["Div_OBV"] == -1)
             if bull_div.any():
                 fig.add_trace(go.Scatter(
                     x=df.index[bull_div], y=df["Low"][bull_div] * 0.998,
@@ -3486,6 +3487,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
         last_div_rsi  = safe_scalar(last["Div_RSI"])
         last_div_macd = safe_scalar(last["Div_MACD"])
+        last_div_obv  = safe_scalar(last["Div_OBV"])
         if last_div_rsi == 1:
             res.append(["BİLGİ", "Divergence (RSI)", "🔺 Bullish Divergence — güçlü dip sinyali olabilir"])
         elif last_div_rsi == -1:
@@ -3498,6 +3500,12 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             res.append(["BİLGİ", "Divergence (MACD)", "🔻 Bearish Divergence"])
         else:
             res.append(["BİLGİ", "Divergence (MACD)", "Aktif divergence yok"])
+        if last_div_obv == 1:
+            res.append(["BİLGİ", "Divergence (OBV)", "🔺 Bullish Divergence — fiyat dip yapıyor, hacim desteği zayıflıyor (alıcı tükenmesi)"])
+        elif last_div_obv == -1:
+            res.append(["BİLGİ", "Divergence (OBV)", "🔻 Bearish Divergence — fiyat tepe yapıyor, hacim desteklemiyor (satıcı tükenmesi)"])
+        else:
+            res.append(["BİLGİ", "Divergence (OBV)", "Aktif divergence yok"])
 
         if fib_levels:
             closest_lvl = min(fib_levels.items(), key=lambda x: abs(x[1] - last_close))

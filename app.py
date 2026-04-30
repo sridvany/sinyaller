@@ -68,8 +68,6 @@ _defaults = {
     "macd_fast":     12,
     "macd_slow":     26,
     "macd_signal":   9,
-    "z_period":      30,
-    "z_thresh":      2.0,
     "adx_period":    14,
     "adx_threshold": 25,
     "st_period":     10,
@@ -266,7 +264,7 @@ def build_ai_prompt(*, detail, ticker, close, interval,
             "   NW için zarf pozisyonu + yönünü dikkate al)\n\n"
             "   **🔹 Hacim ve Seviye** — OBV, Swing S/R, Fibonacci, VWAP\n"
             "   (OBV için SMA farkı ve fark büyüklüğünü dikkate al)\n\n"
-            "   **🔹 Uyarı Sinyalleri** — ADX (+DI/-DI), Divergence (RSI + MACD), Mean Reversion\n\n"
+            "   **🔹 Uyarı Sinyalleri** — ADX (+DI/-DI), Divergence (RSI + MACD)\n\n"
             "3. **⚠️ Ana Risk Faktörleri** — en kritik 2-3 uyarı ve nedenleri\n\n"
             "4. **📍 Aksiyon Planı**\n"
             "   - Önerilen giriş seviyesi\n"
@@ -426,8 +424,6 @@ with st.sidebar:
     macd_fast        = st.slider("MACD Hızlı EMA:",          5,   20,  value=ss["macd_fast"])
     macd_slow        = st.slider("MACD Yavaş EMA:",          15,  40,  value=ss["macd_slow"])
     macd_signal      = st.slider("MACD Sinyal:",             5,   15,  value=ss["macd_signal"])
-    z_period         = st.slider("Z-Score Pencere:",         10,  60,  value=ss["z_period"])
-    z_thresh         = st.slider("Z-Score Eşik:",            1.0, 3.0, value=ss["z_thresh"],      step=0.5)
     obv_short        = st.slider("OBV Kısa SMA:",            5,   20,  value=ss["obv_short"])
     obv_long         = st.slider("OBV Uzun SMA:",            15,  50,  value=ss["obv_long"])
     adx_period       = st.slider("ADX Periyodu:",            7,   30,  value=ss["adx_period"])
@@ -520,8 +516,6 @@ PARAM_GRIDS = {
     "MACD":           {"macd_fast":     [8, 12, 16],
                        "macd_slow":     [20, 26, 30],
                        "macd_signal":   [7, 9, 12]},
-    "Mean Reversion": {"z_period":      [20, 30, 50],
-                       "z_thresh":      [1.5, 2.0, 2.5]},
     "ADX":            {"adx_period":    [10, 14, 20],
                        "adx_threshold": [20, 25, 30]},
     "SuperTrend":     {"st_period":     [7, 10, 14],
@@ -1005,14 +999,6 @@ def sig_macd(close, atr_high, macd_fast=12, macd_slow=26, macd_sig_p=9):
     sig  = np.where(macd > ms, 1, -1)
     sig  = np.where(atr_high | (sig == 0), sig, 0)
     return pd.Series(sig, index=close.index), macd, ms
-
-
-def sig_z(close, z_period, z_thresh=2.0):
-    zm  = close.rolling(z_period).mean()
-    zs  = close.rolling(z_period).std().replace(0, np.nan)
-    z   = (close - zm) / zs
-    sig = np.where(z < -z_thresh, 1, np.where(z > z_thresh, -1, 0))
-    return pd.Series(sig, index=close.index), z
 
 
 def sig_obv(close, volume, obv_short, obv_long):
@@ -1641,7 +1627,6 @@ if ticker:
             "Bollinger Bands":  bb_period,
             "RSI":              rsi_period * 2,
             "MACD":             macd_slow + macd_signal,
-            "Mean Reversion":   z_period,
             "OBV":              obv_long,
             "ADX":              adx_period * 3,
             "Stoch RSI":        rsi_period + stoch_rsi_period,
@@ -1758,11 +1743,6 @@ if ticker:
                             if p["macd_fast"] >= p["macd_slow"]: return None
                             s, _, _ = sig_macd(close, atr_high, p["macd_fast"], p["macd_slow"], p["macd_signal"]); return s
                         return fn
-                elif algo_name == "Mean Reversion":
-                    def make_fn():
-                        def fn(p):
-                            s, _ = sig_z(close, p["z_period"], p["z_thresh"]); return s
-                        return fn
                 elif algo_name == "ADX":
                     def make_fn():
                         def fn(p):
@@ -1813,8 +1793,6 @@ if ticker:
             st.session_state["macd_fast"]     = int(p["MACD"]["macd_fast"])
             st.session_state["macd_slow"]     = int(p["MACD"]["macd_slow"])
             st.session_state["macd_signal"]   = int(p["MACD"]["macd_signal"])
-            st.session_state["z_period"]      = int(p["Mean Reversion"]["z_period"])
-            st.session_state["z_thresh"]      = float(p["Mean Reversion"]["z_thresh"])
             st.session_state["adx_period"]    = int(p["ADX"]["adx_period"])
             st.session_state["adx_threshold"] = int(p["ADX"]["adx_threshold"])
             st.session_state["st_period"]     = int(p["SuperTrend"]["st_period"])
@@ -1835,7 +1813,6 @@ if ticker:
         p_rsi  = {"rsi_period": rsi_period, "rsi_lower": rsi_lower, "rsi_upper": rsi_upper}
         p_bb   = {"bb_period": bb_period,   "bb_std": bb_std}
         p_macd = {"macd_fast": macd_fast,   "macd_slow": macd_slow, "macd_signal": macd_signal}
-        p_z    = {"z_period": z_period,     "z_thresh": z_thresh}
         p_adx  = {"adx_period": adx_period, "adx_threshold": adx_threshold}
         p_st   = {"st_period": st_period,   "st_multiplier": st_multiplier}
         p_lrc  = {"lrc_period": lrc_period, "lrc_std_mult": lrc_std_mult}
@@ -1856,8 +1833,6 @@ if ticker:
 
         df["Sig_MACD"], df["MACD"], df["MACD_S"] = sig_macd(
             close, atr_high, p_macd["macd_fast"], p_macd["macd_slow"], p_macd["macd_signal"])
-
-        df["Sig_Z"], df["Z"] = sig_z(close, p_z["z_period"], p_z["z_thresh"])
 
         df["Sig_OBV"], df["OBV"], obv_sma_short, obv_sma_long = sig_obv(
             close, volume, obv_short, obv_long)
@@ -3071,13 +3046,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                         f"MACD ({p_macd['macd_fast']},{p_macd['macd_slow']},{macd_signal})", macd_desc])
         else:
             res.append(["N/A", "MACD", "Yetersiz veri."])
-
-        lz = safe_scalar(last["Z"])
-        if not np.isnan(lz):
-            dec = "AL" if lz < -p_z["z_thresh"] else ("SAT" if lz > p_z["z_thresh"] else "TUT")
-            res.append([dec, f"Mean Reversion (z={p_z['z_thresh']})", f"Z: {lz:.2f}"])
-        else:
-            res.append(["N/A", "Mean Reversion", "Yetersiz veri."])
 
         lo = safe_scalar(last["Sig_OBV"])
         if lo != 0 and not np.isnan(lo):

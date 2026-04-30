@@ -2520,6 +2520,16 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 name=f"OBV SMA {obv_short}", line=dict(color="orange", dash="dot")))
             f.add_trace(go.Scatter(x=df.index, y=obv_sma_long,
                 name=f"OBV SMA {obv_long}", line=dict(color="cyan", dash="dot")))
+            bull_div_obv = df["Div_OBV"] == 1
+            bear_div_obv = df["Div_OBV"] == -1
+            if bull_div_obv.any():
+                f.add_trace(go.Scatter(x=df.index[bull_div_obv], y=df["OBV"][bull_div_obv],
+                    name="Bullish Div", mode="markers",
+                    marker=dict(color="lime", size=10, symbol="triangle-up")))
+            if bear_div_obv.any():
+                f.add_trace(go.Scatter(x=df.index[bear_div_obv], y=df["OBV"][bear_div_obv],
+                    name="Bearish Div", mode="markers",
+                    marker=dict(color="red", size=10, symbol="triangle-down")))
             f.update_layout(**sub_layout())
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 OBV Nasıl Okunur?"):
@@ -2535,6 +2545,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 
 - **Kısa SMA (turuncu) > Uzun SMA (cyan):** OBV momentumu pozitif → AL eğilimi.
 - **Kısa SMA < Uzun SMA:** OBV momentumu negatif → SAT eğilimi.
+- **Bullish Divergence 🔺:** Fiyat yeni dip yaparken OBV yapmıyor → satıcı tükenmesi, dönüş habercisi.
+- **Bearish Divergence 🔻:** Fiyat yeni tepe yaparken OBV yapmıyor → alıcı yorgunluğu, zayıflama.
 - OBV'nin mutlak değeri değil, eğimi önemlidir.
                 """)
 
@@ -2873,6 +2885,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             bear_div_r = df["Div_RSI"]  == -1
             bull_div_m = df["Div_MACD"] == 1
             bear_div_m = df["Div_MACD"] == -1
+            bull_div_o = df["Div_OBV"]  == 1
+            bear_div_o = df["Div_OBV"]  == -1
             if bull_div_r.any():
                 f.add_trace(go.Scatter(x=df.index[bull_div_r], y=close[bull_div_r],
                     name="RSI Bullish Div", mode="markers",
@@ -2889,6 +2903,14 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 f.add_trace(go.Scatter(x=df.index[bear_div_m], y=close[bear_div_m],
                     name="MACD Bearish Div", mode="markers",
                     marker=dict(color="salmon", size=10, symbol="diamond")))
+            if bull_div_o.any():
+                f.add_trace(go.Scatter(x=df.index[bull_div_o], y=close[bull_div_o],
+                    name="OBV Bullish Div", mode="markers",
+                    marker=dict(color="gold", size=10, symbol="star")))
+            if bear_div_o.any():
+                f.add_trace(go.Scatter(x=df.index[bear_div_o], y=close[bear_div_o],
+                    name="OBV Bearish Div", mode="markers",
+                    marker=dict(color="orange", size=10, symbol="star")))
             f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False,
                 title_text="Divergence Noktaları (Fiyat Grafiği Üzerinde)")
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
@@ -2932,6 +2954,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         r_obv_sig  = safe_scalar(last["Sig_OBV"])
         r_div_rsi  = safe_scalar(last["Div_RSI"])
         r_div_mac  = safe_scalar(last["Div_MACD"])
+        r_div_obv  = safe_scalar(last["Div_OBV"])
         r_ichi     = safe_scalar(last["Sig_Ichimoku"])
         r_wt1      = safe_scalar(last["WT1"])
         r_atr_hi   = bool(last["ATR_High"]) if not pd.isna(last["ATR_High"]) else False

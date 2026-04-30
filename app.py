@@ -1369,7 +1369,7 @@ def optimize_algo(param_grid, signal_fn, close_arr, cost_pct,
     # Her pencerede train boyutu sabittir → daha kararlı parametre seçimi.
     # Ek olarak purge (train sonu) ve embargo (test başı) uygulanır.
     n_steps = max(n_windows, 2)
-    step_size = n // (n_steps + 1)
+    step_size = n // (n_steps + 2)  # sliding: train(2*step) + n_steps*step ≤ n
     if step_size < 15:
         return default, None
 

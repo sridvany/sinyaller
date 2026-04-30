@@ -3599,6 +3599,17 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         styled = opt_df.style.format(fmt, na_rep="—").map(opt_color, subset=color_cols)
         if "p-değeri" in opt_df.columns:
             styled = styled.map(pval_color, subset=["p-değeri"])
+        # Seçim k/n: k == n olanları (tüm pencerelerde seçilenler) koyu gri yap
+        if "Seçim" in opt_df.columns:
+            def _sel_highlight(v):
+                try:
+                    k, n_ = str(v).split("/")
+                    if int(k) == int(n_) and int(n_) > 0:
+                        return "background-color: #2a2a2a; font-weight: bold;"
+                except Exception:
+                    pass
+                return ""
+            styled = styled.map(_sel_highlight, subset=["Seçim"])
         st.dataframe(styled, use_container_width=True, hide_index=True)
         st.caption(
             "💡 **Sharpe (OOS)**: Yalnız out-of-sample test dilimlerinden yıllıklandırılmış risk ayarlı getiri. "

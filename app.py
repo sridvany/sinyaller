@@ -578,8 +578,13 @@ def calc_adx(high, low, close, period=14):
 
 
 def calc_kama(close, period=10, fast=2, slow=30):
+    """Kaufman Adaptive Moving Average — KAMA + Efficiency Ratio.
+    ER (0..1): yön etkinliği. 1=mükemmel trend, 0=tam gürültü.
+    Returns (kama_series, er_series).
+    """
     ca   = close.values.astype(float)
     kama = np.full(len(ca), np.nan)
+    er_a = np.full(len(ca), np.nan)
     kama[period - 1] = ca[period - 1]
     fsc = 2.0 / (fast + 1)
     ssc = 2.0 / (slow + 1)
@@ -587,9 +592,10 @@ def calc_kama(close, period=10, fast=2, slow=30):
         direction  = abs(ca[i] - ca[i - period])
         volatility = np.sum(np.abs(np.diff(ca[i - period:i + 1])))
         er  = 0.0 if volatility == 0 else direction / volatility
+        er_a[i] = er
         sc  = (er * (fsc - ssc) + ssc) ** 2
         kama[i] = kama[i - 1] + sc * (ca[i] - kama[i - 1])
-    return pd.Series(kama, index=close.index)
+    return pd.Series(kama, index=close.index), pd.Series(er_a, index=close.index)
 
 
 def calc_supertrend(high, low, close, period=10, multiplier=3.0):
@@ -622,21 +628,39 @@ def calc_supertrend(high, low, close, period=10, multiplier=3.0):
 
 
 def calc_linear_regression_channel(close, period=50, std_mult=2.0):
+    """Linear Regression Channel — Raff 1996.
+
+    Her bar için son `period` kapanışına OLS regresyon uygulanır.
+    Returns (mid, upper, lower, slope, r2):
+      - mid    : son tahmin (regresyon çizgisinin son noktası)
+      - upper  : mid + std_mult × rezidüel_std
+      - lower  : mid - std_mult × rezidüel_std
+      - slope  : regresyon eğimi (birim: fiyat/bar)
+      - r2     : R² (0..1) — regresyonun veriye uyum kalitesi
+    """
     n = len(close)
     mid   = np.full(n, np.nan)
     upper = np.full(n, np.nan)
     lower = np.full(n, np.nan)
+    slope_a = np.full(n, np.nan)
+    r2_a    = np.full(n, np.nan)
     for i in range(period - 1, n):
         y = close.values[i - period + 1:i + 1].astype(float)
         x = np.arange(period)
         sl, ic = np.polyfit(x, y, 1)
         yp  = sl * x + ic
-        std = np.std(y - yp)
+        resid = y - yp
+        std = np.std(resid)
         mid[i]   = yp[-1]
         upper[i] = yp[-1] + std_mult * std
         lower[i] = yp[-1] - std_mult * std
-    return (pd.Series(mid, index=close.index), pd.Series(upper, index=close.index),
-            pd.Series(lower, index=close.index))
+        slope_a[i] = sl
+        # R² = 1 - SS_res / SS_tot
+        ss_tot = np.sum((y - y.mean()) ** 2)
+        r2_a[i] = 1.0 - (np.sum(resid ** 2) / ss_tot) if ss_tot > 0 else np.nan
+    return (pd.Series(mid, index=close.index),  pd.Series(upper, index=close.index),
+            pd.Series(lower, index=close.index), pd.Series(slope_a, index=close.index),
+            pd.Series(r2_a, index=close.index))
 
 
 def calc_nadaraya_watson(close, bandwidth=8, window=100):
@@ -904,12 +928,11 @@ def detect_divergence(price, indicator, window=5):
 # ============================================================
 # 5. SİNYAL FONKSİYONLARI
 # ============================================================
-def sig_sma(close, atr_high, sma_s=20, sma_l=100):
+def sig_sma(close, sma_s=20, sma_l=100):
     sh  = close.rolling(sma_s, min_periods=sma_s).mean()
     sl  = close.rolling(sma_l, min_periods=sma_l).mean()
     sig = np.where(sh > sl, 1, -1)
     sig = np.where(sh.isna() | sl.isna(), 0, sig)
-    sig = np.where(atr_high | (sig == 0), sig, 0)
     return pd.Series(sig, index=close.index), sh, sl
 
 
@@ -995,13 +1018,13 @@ def sig_bb(close, bb_period, bb_std_val=2.0, trend_period=200):
     return pd.Series(sig, index=close.index), mid, up, lo
 
 
-def sig_macd(close, atr_high, macd_fast=12, macd_slow=26, macd_sig_p=9):
+def sig_macd(close, macd_fast=12, macd_slow=26, macd_sig_p=9):
     ef   = close.ewm(span=macd_fast, adjust=False).mean()
     es   = close.ewm(span=macd_slow, adjust=False).mean()
     macd = ef - es
     ms   = macd.ewm(span=macd_sig_p, adjust=False).mean()
     sig  = np.where(macd > ms, 1, -1)
-    sig  = np.where(atr_high | (sig == 0), sig, 0)
+    sig  = np.where(macd.isna() | ms.isna(), 0, sig)
     return pd.Series(sig, index=close.index), macd, ms
 
 
@@ -1014,10 +1037,9 @@ def sig_obv(close, volume, obv_short, obv_long):
     return pd.Series(sig, index=close.index), obv, s, l
 
 
-def sig_adx_fn(high, low, close, atr_high, adx_period, adx_threshold=25):
+def sig_adx_fn(high, low, close, adx_period, adx_threshold=25):
     adx_v, pdi, mdi = calc_adx(high, low, close, period=adx_period)
     sig = np.where(adx_v > adx_threshold, np.where(pdi > mdi, 1, -1), 0)
-    sig = np.where(atr_high | (sig == 0), sig, 0)
     return pd.Series(sig, index=close.index), adx_v, pdi, mdi
 
 
@@ -1054,8 +1076,8 @@ def sig_stochrsi(close, rsi_series, rsi_ma_series, srsi_period, sd_period, sl, s
     return pd.Series(sig, index=close.index), k, d
 
 
-def sig_ichimoku(high, low, close, atr_high, it, ik, isb):
-    """Ichimoku Kinko Hyo — klasik 5'li set, dörtlü teyitli sinyal.
+def sig_ichimoku(high, low, close, it, ik, isb):
+    """Ichimoku Kinko Hyo — klasik 5'li set, üçlü teyitli sinyal (Hosoda).
 
     Bileşenler:
     - Tenkan-sen   : Kısa vade denge çizgisi (it bar)
@@ -1063,12 +1085,10 @@ def sig_ichimoku(high, low, close, atr_high, it, ik, isb):
     - Senkou A/B   : Bulut sınırları (ik bar İLERİ kaydırılır)
     - Chikou Span  : Kapanışın ik bar GERİ kaydırılmış hali (trend teyidi)
 
-    Sinyal — dört koşul birden gerekli:
+    Sinyal — üç koşul birden gerekli (Hosoda klasiği):
     1. TK Cross           : Tenkan > Kijun (AL) / Tenkan < Kijun (SAT)
     2. Fiyat-Bulut        : close > cloud_top (AL) / close < cloud_bottom (SAT)
-    3. Chikou onayı       : close > close.shift(ik) yani fiyat ik bar öncesinden yüksek (AL)
-                            close < close.shift(ik) (SAT)
-    4. ATR yüksek         : volatilite teyidi (false breakout filtresi)
+    3. Chikou onayı       : close > close.shift(ik) (AL) / close < close.shift(ik) (SAT)
     """
     tenkan   = (high.rolling(it).max()  + low.rolling(it).min())  / 2
     kijun    = (high.rolling(ik).max()  + low.rolling(ik).min())  / 2
@@ -1085,31 +1105,97 @@ def sig_ichimoku(high, low, close, atr_high, it, ik, isb):
     cb = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
     sig = np.where((tenkan > kijun) & (close > ct) & chikou_bull,  1,
                    np.where((tenkan < kijun) & (close < cb) & chikou_bear, -1, 0))
-    sig = np.where(atr_high | (sig == 0), sig, 0)
     return pd.Series(sig, index=close.index), tenkan, kijun, senkou_a, senkou_b, chikou
 
 
-def sig_kama_fn(close, atr_high, kp, kf, ks):
-    kama = calc_kama(close, period=kp, fast=kf, slow=ks)
-    sig  = np.where(close > kama, 1, np.where(close < kama, -1, 0))
-    sig  = np.where(kama.isna(), 0, sig)
-    sig  = np.where(atr_high | (sig == 0), sig, 0)
-    return pd.Series(sig, index=close.index), kama
+def sig_kama_fn(close, kp, kf, ks, er_threshold=0.30, slope_window=3):
+    """KAMA sinyali — Kaufman'ın felsefesine uygun: eğim + ER filtresi.
+
+    Cross değil, eğim:
+    - KAMA son `slope_window` barda yukarı eğimli VE ER yeterli → AL
+    - KAMA son `slope_window` barda aşağı eğimli VE ER yeterli → SAT
+    - ER < threshold → trendsiz, sinyal sıfırla (ATR filtresine gerek yok;
+      ER zaten yön kalitesini doğrudan ölçüyor)
+
+    Notlar:
+    - ATR filtresi kaldırıldı: ATR mutlak volatiliteyi ölçer, KAMA için
+      kritik olan yön etkinliği (ER). Yüksek ATR + düşük ER = yatay zikzak.
+    - Eğim 1-bar diff yerine `slope_window` barlık fark: tek bar gürültüsünü
+      filtreler, küçük yatay dalgalanmalarda sinyal çıkmaz.
+    """
+    kama, er = calc_kama(close, period=kp, fast=kf, slow=ks)
+    slope    = kama.diff(slope_window)
+
+    sig = np.where((slope > 0) & (er >= er_threshold),  1,
+          np.where((slope < 0) & (er >= er_threshold), -1, 0))
+    sig = np.where(kama.isna() | er.isna(), 0, sig)
+    return pd.Series(sig, index=close.index), kama, er
 
 
-def sig_supertrend_fn(high, low, close, atr_high, stp, stm):
+def sig_supertrend_fn(high, low, close, stp, stm):
+    """SuperTrend — flip-based event sinyali.
+
+    Klasik ATR-trailing yapı (Seban 2008) state machine olarak çalışır:
+    yön değişimi yalnızca fiyat bandı kırınca olur.
+
+    Sinyal mantığı:
+    - direction[t] != direction[t-1] AND direction[t] == 1  → AL  (+1, flip-up)
+    - direction[t] != direction[t-1] AND direction[t] == -1 → SAT (-1, flip-down)
+    - aksi halde 0 (yön korunuyor, yeni sinyal yok)
+
+    Notlar:
+    - ATR filtresi KALDIRILDI: SuperTrend zaten ATR-bazlı bir göstergedir
+      (band genişliği = ATR × multiplier). Düşük volatilitede band daralır,
+      flip nadir olur — ek ATR filtresi çift filtre olur.
+    - Eski "her bar direction" davranışı SMA200 trend filtresi gibi çalışıyordu;
+      bu sürüm SuperTrend'in özgün event-based karakterini ortaya çıkarır.
+    - Yön bilgisi (direction serisi) ayrıca döndürülür — grafik renklendirme,
+      trailing stop kullanımı ve rejim göstergesi olarak ihtiyaç var.
+    """
     st, std, lb, ub = calc_supertrend(high, low, close, period=stp, multiplier=stm)
-    sig = std.values.copy()
-    sig = np.where(st.isna(), 0, sig)
-    sig = np.where(atr_high | (sig == 0), sig, 0)
-    return pd.Series(sig, index=close.index), st, std, lb, ub
+    d = std.values
+    flip = np.zeros(len(d), dtype=float)
+    for i in range(1, len(d)):
+        if not np.isnan(d[i]) and not np.isnan(d[i-1]) and d[i] != d[i-1]:
+            flip[i] = d[i]   # +1 flip-up, -1 flip-down
+    flip = np.where(st.isna(), 0, flip)
+    return pd.Series(flip, index=close.index), st, std, lb, ub
 
 
 def sig_lrc(close, lrc_period, lrc_std_mult=2.0):
-    mid, up, lo = calc_linear_regression_channel(close, period=lrc_period, std_mult=lrc_std_mult)
-    sig = np.where(close < lo, 1, np.where(close > up, -1, 0))
-    sig = np.where(mid.isna(), 0, sig)
-    return pd.Series(sig, index=close.index), mid, up, lo
+    """LR Channel sinyali — slope-aware mean reversion.
+
+    Klasik bant dokunma + slope filtresi:
+    - slope >= 0 (yükselen/yatay regresyon):
+        close < lower  → AL  (trend yönünde dip alımı)
+        close > upper  → 0   (trend yönüne ters mean reversion — ele)
+    - slope < 0 (düşen regresyon):
+        close > upper  → SAT (trend yönünde tepe satışı)
+        close < lower  → 0   (trend yönüne ters — ele)
+
+    Felsefe:
+    LRC'nin gücü "kanalın eğimli" olmasıdır. Slope yönü zaten bir trend filtresidir.
+    Trende ters mean reversion sinyalleri (yükselen kanalda üst banda dokunma → SAT)
+    whipsaw üretir; bu sürüm onları siler.
+    """
+    mid, up, lo, slope, r2 = calc_linear_regression_channel(
+        close, period=lrc_period, std_mult=lrc_std_mult)
+    cv = close.values
+    sl_v = slope.values
+    up_v = up.values
+    lo_v = lo.values
+
+    bullish_trend = sl_v >= 0
+    bearish_trend = sl_v <  0
+
+    # AL: yükselen/yatay kanalda alt banda dokunma
+    bull_signal = bullish_trend & (cv < lo_v)
+    # SAT: düşen kanalda üst banda dokunma
+    bear_signal = bearish_trend & (cv > up_v)
+
+    sig = np.where(bull_signal,  1, np.where(bear_signal, -1, 0))
+    sig = np.where(mid.isna() | slope.isna(), 0, sig)
+    return pd.Series(sig, index=close.index), mid, up, lo, slope, r2
 
 
 def sig_vwap_fn(high, low, close, volume, vwap_band_pct):
@@ -1764,7 +1850,7 @@ if ticker:
                     def make_fn():
                         def fn(p):
                             if p["sma_s"] >= p["sma_l"]: return None
-                            s, _, _ = sig_sma(close, atr_high, p["sma_s"], p["sma_l"]); return s
+                            s, _, _ = sig_sma(close, p["sma_s"], p["sma_l"]); return s
                         return fn
                 elif algo_name == "RSI":
                     def make_fn():
@@ -1781,22 +1867,22 @@ if ticker:
                     def make_fn():
                         def fn(p):
                             if p["macd_fast"] >= p["macd_slow"]: return None
-                            s, _, _ = sig_macd(close, atr_high, p["macd_fast"], p["macd_slow"], p["macd_signal"]); return s
+                            s, _, _ = sig_macd(close, p["macd_fast"], p["macd_slow"], p["macd_signal"]); return s
                         return fn
                 elif algo_name == "ADX":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _ = sig_adx_fn(high, low, close, atr_high, p["adx_period"], p["adx_threshold"]); return s
+                            s, _, _, _ = sig_adx_fn(high, low, close, p["adx_period"], p["adx_threshold"]); return s
                         return fn
                 elif algo_name == "SuperTrend":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _, _ = sig_supertrend_fn(high, low, close, atr_high, p["st_period"], p["st_multiplier"]); return s
+                            s, _, _, _, _ = sig_supertrend_fn(high, low, close, p["st_period"], p["st_multiplier"]); return s
                         return fn
                 elif algo_name == "LR Channel":
                     def make_fn():
                         def fn(p):
-                            s, _, _, _ = sig_lrc(close, p["lrc_period"], p["lrc_std_mult"]); return s
+                            s, _, _, _, _, _ = sig_lrc(close, p["lrc_period"], p["lrc_std_mult"]); return s
                         return fn
                 elif algo_name == "WaveTrend":
                     def make_fn():
@@ -1859,7 +1945,7 @@ if ticker:
         p_wt   = {"wt_n1": wt_n1,           "wt_n2": wt_n2}
 
         df["Sig_SMA"], df["SMA_SHORT"], df["SMA_LONG"] = sig_sma(
-            close, atr_high, p_sma["sma_s"], p_sma["sma_l"])
+            close, p_sma["sma_s"], p_sma["sma_l"])
 
         # SMA 200 (EMA 200 ile karşılaştırma için — daha yavaş, daha stabil)
         df["SMA200"] = close.rolling(200, min_periods=200).mean()
@@ -1872,27 +1958,27 @@ if ticker:
             close, p_bb["bb_period"], p_bb["bb_std"])
 
         df["Sig_MACD"], df["MACD"], df["MACD_S"] = sig_macd(
-            close, atr_high, p_macd["macd_fast"], p_macd["macd_slow"], p_macd["macd_signal"])
+            close, p_macd["macd_fast"], p_macd["macd_slow"], p_macd["macd_signal"])
 
         df["Sig_OBV"], df["OBV"], obv_sma_short, obv_sma_long = sig_obv(
             close, volume, obv_short, obv_long)
 
         df["Sig_ADX"], df["ADX"], df["PLUS_DI"], df["MINUS_DI"] = sig_adx_fn(
-            high, low, close, atr_high, p_adx["adx_period"], p_adx["adx_threshold"])
+            high, low, close, p_adx["adx_period"], p_adx["adx_threshold"])
 
         df["Sig_StochRSI"], df["StochRSI_K"], df["StochRSI_D"] = sig_stochrsi(
             close, df["RSI"], df["RSI_MA"], stoch_rsi_period, stoch_d_period, stoch_lower, stoch_upper)
 
         df["Sig_Ichimoku"], df["Tenkan"], df["Kijun"], df["Senkou_A"], df["Senkou_B"], df["Chikou"] = sig_ichimoku(
-            high, low, close, atr_high, ichi_tenkan, ichi_kijun, ichi_senkou_b)
+            high, low, close, ichi_tenkan, ichi_kijun, ichi_senkou_b)
 
-        df["Sig_KAMA"], df["KAMA"] = sig_kama_fn(
-            close, atr_high, kama_period, kama_fast, kama_slow)
+        df["Sig_KAMA"], df["KAMA"], df["KAMA_ER"] = sig_kama_fn(
+            close, kama_period, kama_fast, kama_slow)
 
         df["Sig_SuperTrend"], df["SuperTrend"], df["ST_Direction"], df["ST_Lower"], df["ST_Upper"] = sig_supertrend_fn(
-            high, low, close, atr_high, p_st["st_period"], p_st["st_multiplier"])
+            high, low, close, p_st["st_period"], p_st["st_multiplier"])
 
-        df["Sig_LRC"], df["LRC_Mid"], df["LRC_Upper"], df["LRC_Lower"] = sig_lrc(
+        df["Sig_LRC"], df["LRC_Mid"], df["LRC_Upper"], df["LRC_Lower"], df["LRC_Slope"], df["LRC_R2"] = sig_lrc(
             close, p_lrc["lrc_period"], p_lrc["lrc_std_mult"])
 
         df["NW_Line"], df["NW_Upper"], df["NW_Lower"] = calc_nadaraya_watson(
@@ -2684,14 +2770,15 @@ Goichi Hosoda'nın 1930'larda geliştirdiği klasik 5'li set kullanılır.
 - **Chikou geçmiş fiyatların üstünde:** 🟢 Trend teyitli — bugünkü kapanış 26 bar öncesinden yüksek.
 - **Chikou geçmiş fiyatların altında:** 🔴 Trend teyitli — bugünkü kapanış 26 bar öncesinden düşük.
 
-**Sinyal Mantığı (Dörtlü Teyit):**
-Sistem AL/SAT üretmek için **dört koşulun birden** sağlanmasını ister:
+**Sinyal Mantığı (Üçlü Teyit — Hosoda klasiği):**
+Sistem AL/SAT üretmek için **üç koşulun birden** sağlanmasını ister:
 1. Tenkan-Kijun cross (kısa vade momentum)
 2. Fiyat-Bulut pozisyonu (uzun vade trend)
 3. Chikou onayı (geçmişle kıyas — Hosoda'nın klasik kullanımı)
-4. ATR yüksek (volatilite teyidi, false breakout filtresi)
 
-Bu konservatif yapı sinyali nadir ama güvenilir kılar.
+Bu konservatif yapı sinyali nadir ama güvenilir kılar. Düşük volatilite dönemlerinde
+sinyal yine üretilir ama karar matrisinde "düşük vol" uyarısı görürsünüz — kararı
+kullanıcı bağlama göre değerlendirir.
 
 ⚠️ **Parametreler:** 9-26-52 değerleri Hosoda'nın orijinal ayarlarıdır ve dünya çapında izlenir.
 Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etmek değil, **sabitlemek** doğrudur.
@@ -2725,18 +2812,41 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 SuperTrend Nasıl Okunur?"):
                 st.markdown("""
-**SuperTrend** — ATR tabanlı dinamik destek/direnç çizgisidir.
+**SuperTrend** (Olivier Seban, 2008) — ATR tabanlı dinamik destek/direnç + trailing stop göstergesidir.
+
+**İki katmanlı bilgi sağlar:**
+
+**1. Rejim (sürekli):** Çizgi rengi mevcut trendi gösterir, her bar günceldir.
 
 | Durum | Anlam |
 |---|---|
-| Çizgi yeşil (fiyatın altında) | 🟢 Yükseliş trendi — uzun pozisyon |
-| Çizgi kırmızı (fiyatın üstünde) | 🔴 Düşüş trendi — kısa pozisyon |
-| 🟩 AL kutusu | ⚡ Ayıdan boğaya geçiş — trend dönüşü |
-| 🟥 SAT kutusu | ⚡ Boğadan ayıya geçiş — trend dönüşü |
+| Çizgi yeşil (fiyatın altında) | 🟢 Yükseliş rejimi — çizgi destek seviyesi (trailing stop) |
+| Çizgi kırmızı (fiyatın üstünde) | 🔴 Düşüş rejimi — çizgi direnç seviyesi |
 
-- **ATR Çarpanı (multiplier):** Yüksek değer → daha az sinyal, daha az gürültü.
-- **En güçlü sinyal:** SuperTrend AL/SAT + ADX > eşik değeri kombinasyonu.
-- Yatay piyasalarda yanlış sinyal üretebilir; ADX filtresiyle kullanın.
+**2. Sinyal (event-based):** Yalnızca yön değişiminde (flip) üretilir.
+
+| İşaret | Anlam |
+|---|---|
+| 🟩 AL kutusu | ⚡ Flip-up: ayıdan boğaya geçiş, **yeni** AL sinyali |
+| 🟥 SAT kutusu | ⚡ Flip-down: boğadan ayıya geçiş, **yeni** SAT sinyali |
+
+Trend devam ettiği sürece (flip yok) yeni sinyal üretilmez — bu **doğru** davranıştır.
+SuperTrend'in özgün gücü "bant kırılımıyla yön değişir" mantığında saklıdır;
+her bar AL/SAT üretmek bu güçten faydalanmaz.
+
+**Trailing Stop kullanımı:**
+- Boğa modunda → SuperTrend çizgisi = stop loss seviyesi
+- Fiyat çizginin altına düşerse → otomatik flip + çıkış sinyali
+- Karar matrisinde "Çizgi: X (fiyatın %Y altında)" şeklinde görürsünüz
+
+**Parametreler:**
+- **ATR Periyodu:** Volatilite hesabı penceresi (klasik 10).
+- **ATR Çarpanı:** Band genişliği. Yüksek değer → az sinyal, az whipsaw, ama geç giriş/çıkış. (klasik 3.0)
+
+**İpuçları:**
+- "Flip yakın" uyarısı (çizgi-fiyat mesafesi <%1): pozisyon kapama hazırlığı yap.
+- "Flip'ten X bar" göstergesi: trendin ne kadar olgunlaştığını söyler.
+- ADX > eşik ile birlikte kullanım sinyal kalitesini artırır.
                 """)
 
         with tab8:
@@ -2754,20 +2864,61 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
             st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
             with st.expander("📖 KAMA & LR Channel Nasıl Okunur?"):
                 st.markdown("""
-**KAMA (Kaufman Adaptive Moving Average)** — piyasa koşullarına göre hız adapte eden akıllı bir ortalamadır.
+**KAMA (Kaufman Adaptive Moving Average)** — Perry Kaufman 1995. Piyasa koşullarına göre hızını adapte eden akıllı ortalama.
 
-| Durum | Anlam |
+**Felsefe:**
+KAMA klasik MA gibi **cross sinyali için değil, eğim için** tasarlanmıştır.
+"Fiyat KAMA üstünde" SMA'larla zaten ölçülüyor — KAMA'nın değeri **kendi yönü ve ER kalitesidir**.
+
+| Bileşen | Anlam |
 |---|---|
-| Fiyat > KAMA | 🟢 Yükseliş eğilimi |
-| Fiyat < KAMA | 🔴 Düşüş eğilimi |
-| KAMA düz seyrediyor | ⚪ Piyasa yatay, bekle |
+| **KAMA eğimi** | Yukarı = trend yukarı, aşağı = trend aşağı, yatay = beklemede |
+| **ER (Efficiency Ratio)** | 0–1 arası "yön etkinliği". 1 = mükemmel trend, 0 = tam gürültü |
 
-**LR Channel (Linear Regression Channel)**
+**Sinyal Mantığı:**
+- KAMA son 3 barda yukarı eğimli **VE** ER ≥ 0.30 → 🟢 AL
+- KAMA son 3 barda aşağı eğimli **VE** ER ≥ 0.30 → 🔴 SAT
+- ER < 0.30 → ⚠️ Yatay/gürültü, sinyal sıfırlanır
 
-| Durum | Anlam |
+**ER yorumu:**
+| ER | Anlam |
 |---|---|
-| Fiyat alt banda değiyor | 🟢 Potansiyel destek / AL bölgesi |
-| Fiyat üst banda değiyor | 🔴 Potansiyel direnç / SAT bölgesi |
+| > 0.50 | 🔥 Güçlü trend — sinyal çok güvenilir |
+| 0.30 – 0.50 | ⚖️ Orta momentum — sinyal geçerli |
+| < 0.30 | ⚠️ Yatay/gürültü — KAMA susar |
+
+**Ek bilgi (bağlamsal):**
+- Fiyat-KAMA arası yüzde uzaklık trend gücünü gösterir ama tek başına sinyal değildir.
+- ATR filtresi yerine ER filtresi kullanılır: ATR mutlak volatiliteyi, ER yön kalitesini ölçer.
+  Yüksek ATR + düşük ER = yatay zikzak (KAMA'nın **çıkması gereken** durum).
+
+**LR Channel (Linear Regression Channel)** — Gilbert Raff 1996.
+
+Son N barın kapanışına OLS regresyon uygulanır. Mid çizgisi regresyon tahmini, bantlar rezidüel std ile çizilir.
+BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip eder.
+
+**Sinyal Mantığı (slope-aware mean reversion):**
+- Slope ≥ 0 (yükselen/yatay kanal) **VE** fiyat alt bantta → 🟢 AL (trende uyumlu dip)
+- Slope < 0 (alçalan kanal) **VE** fiyat üst bantta → 🔴 SAT (trende uyumlu tepe)
+- Trende **ters** mean reversion sinyalleri (yükselen kanalda üst bant dokunma → SAT) silinir.
+  Bu whipsaw'ı önler — trend devam ediyorsa sapma sinyal değil, momentum'dur.
+
+**Bağlamsal Bilgiler (karar matrisinde):**
+
+| Bilgi | Anlam |
+|---|---|
+| **Slope** | Bar başına fiyat değişimi. + → yükselen, − → alçalan, 0 → yatay |
+| **R²** | Regresyon kalitesi. Yüksekse veri doğrusal, sinyaller güvenilir |
+| **Bant genişliği** | Lokal volatilite ölçüsü. Daralma = squeeze (patlama yakın), genişleme = trend olgunlaşıyor |
+
+**R² yorumu:**
+| R² | Anlam |
+|---|---|
+| > 0.70 | 🔥 Güçlü doğrusal trend — LRC sinyalleri çok güvenilir |
+| 0.40 – 0.70 | ⚖️ Orta uyum — sinyaller geçerli |
+| < 0.40 | ⚠️ Zayıf uyum — veri zikzaklı, kanal anlamsız |
+
+**LRC vs BB:** LRC'nin orta çizgisi **eğimli** (regresyon), BB'ninki düz (SMA). Trendli piyasada LRC bantları trendle birlikte hareket ettiği için mean reversion sinyalleri **daha doğru** verir. Yatay piyasada ikisi yakınsar.
                 """)
 
         with tab9:
@@ -3049,7 +3200,10 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
         res        = []
 
         def trend_dec(raw_dec, atr_ok):
-            return raw_dec if atr_ok else "TUT (düşük vol.)"
+            # E sürümü: ATR artık kararı override etmiyor. Düşük volatilite
+            # bağlamsal bilgi olarak ayrı (ATR satırında ve Ichimoku gibi
+            # bazı satırlarda) gösteriliyor. Karar olduğu gibi geçer.
+            return raw_dec
 
         # ── Hiyerarşi satırı: SMA/EMA/KAMA/Fiyat sıralaması ──
         # Kullanıcıya "her şey nerede" tek bakışta göstersin (bullish/bearish hizalama)
@@ -3293,18 +3447,23 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
             if regime_note:
                 desc += f" | {regime_note}"
 
-            if not last_ath and lis != 0:
-                res.append(["TUT (düşük vol.)", "Ichimoku", desc + " | ATR filtresi aktif."])
-            elif lis == 1:
-                res.append(["AL",  "Ichimoku", desc])
+            if lis == 1:
+                # Düşük volatilite uyarısı (artık otomatik silmiyor, sadece bağlamsal not)
+                if not last_ath:
+                    res.append(["AL", "Ichimoku", desc + " | ⚠️ Düşük vol — sinyal güvenilirliği azalmış olabilir."])
+                else:
+                    res.append(["AL", "Ichimoku", desc])
             elif lis == -1:
-                res.append(["SAT", "Ichimoku", desc])
+                if not last_ath:
+                    res.append(["SAT", "Ichimoku", desc + " | ⚠️ Düşük vol — sinyal güvenilirliği azalmış olabilir."])
+                else:
+                    res.append(["SAT", "Ichimoku", desc])
             else:
                 res.append(["TUT", "Ichimoku", desc])
 
         lk = safe_scalar(last["KAMA"])
         if not np.isnan(lk):
-            # 1) Fiyat-KAMA ilişkisi + yüzde uzaklık
+            # 1) Fiyat-KAMA ilişkisi + yüzde uzaklık (bağlam bilgisi)
             dist_pct_k = (last_close - lk) / lk * 100
             if last_close > lk:
                 rel_k = f"Fiyat {last_close:.2f} > KAMA {lk:.2f} (+%{dist_pct_k:.2f})"
@@ -3313,27 +3472,46 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
             else:
                 rel_k = f"Fiyat = KAMA ({lk:.2f})"
 
-            # 2) Efficiency Ratio (ER) — piyasanın trend gücü
-            # ER = |fiyat[t] - fiyat[t-N]| / son N bar'ın toplam mutlak değişimi
-            if len(close) >= kama_period + 1:
-                c_arr = close.values.astype(float)
-                direction  = abs(c_arr[-1] - c_arr[-kama_period - 1])
-                volatility = float(np.sum(np.abs(np.diff(c_arr[-kama_period - 1:]))))
-                er = 0.0 if volatility == 0 else direction / volatility
+            # 2) KAMA eğimi (son 3 barlık fark) — ASIL sinyal kaynağı
+            slope_window = 3
+            if len(df["KAMA"]) >= slope_window + 1:
+                kama_slope = lk - safe_scalar(df["KAMA"].iloc[-slope_window - 1])
+                if not np.isnan(kama_slope):
+                    if kama_slope > 0:
+                        slope_desc = f"KAMA ↑ (+{kama_slope:.2f}, {slope_window} bar)"
+                    elif kama_slope < 0:
+                        slope_desc = f"KAMA ↓ ({kama_slope:.2f}, {slope_window} bar)"
+                    else:
+                        slope_desc = "KAMA yatay"
+                else:
+                    slope_desc = "Eğim: yetersiz veri"
+            else:
+                slope_desc = "Eğim: yetersiz veri"
+
+            # 3) Efficiency Ratio — sinyal kalite filtresi (df'ten direkt)
+            er = safe_scalar(last["KAMA_ER"])
+            if not np.isnan(er):
                 if er > 0.5:
                     er_desc = f"ER: {er:.2f} (güçlü trend 🔥)"
-                elif er > 0.2:
+                elif er > 0.30:
                     er_desc = f"ER: {er:.2f} (orta momentum)"
                 else:
-                    er_desc = f"ER: {er:.2f} (yatay/gürültü ⚠️)"
+                    er_desc = f"ER: {er:.2f} (yatay/gürültü ⚠️ sinyal yok)"
             else:
-                er_desc = ""
+                er_desc = "ER: yetersiz veri"
 
-            kama_desc = rel_k
-            if er_desc:
-                kama_desc += f" | {er_desc}"
+            kama_desc = f"{slope_desc} | {er_desc} | {rel_k}"
 
-            res.append([trend_dec("AL" if last_close > lk else "SAT", last_ath),
+            # Karar: artık eğim + ER tabanlı (Sig_KAMA)
+            lks = safe_scalar(last["Sig_KAMA"])
+            if lks == 1:
+                kama_dec = "AL"
+            elif lks == -1:
+                kama_dec = "SAT"
+            else:
+                kama_dec = "TUT"
+
+            res.append([trend_dec(kama_dec, last_ath),
                         f"KAMA ({kama_period},{kama_fast},{kama_slow})", kama_desc])
         else:
             res.append(["N/A", "KAMA", "Yetersiz veri."])
@@ -3383,7 +3561,18 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
             parts.append(flip_str)
             st_desc = " | ".join(parts)
 
-            res.append([trend_dec("AL" if lstd == 1 else "SAT", last_ath),
+            # Karar: flip event-bazlı (Sig_SuperTrend)
+            # +1 = flip-up (yeni AL), -1 = flip-down (yeni SAT), 0 = trend devam
+            lsts = safe_scalar(last["Sig_SuperTrend"])
+            if lsts == 1:
+                st_dec = "AL"
+            elif lsts == -1:
+                st_dec = "SAT"
+            else:
+                # Flip yok — yön bilgisi mevcut (lstd) ama yeni event yok → TUT
+                st_dec = "TUT"
+
+            res.append([trend_dec(st_dec, last_ath),
                         f"SuperTrend ({p_st['st_period']}, x{p_st['st_multiplier']})", st_desc])
         else:
             res.append(["N/A", "SuperTrend", "Yetersiz veri."])
@@ -3407,13 +3596,9 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
                     pct_mid = (llm - last_close) / llm * 100
                     pos_lrc = f"Fiyat {last_close:.2f} kanal içinde (orta altı, -%{pct_mid:.2f})"
 
-            # 2) Slope yönü (regresyon eğimi — trend matematik ölçüsü)
-            lrc_period = p_lrc["lrc_period"]
-            if len(close) >= lrc_period:
-                y_slope = close.values[-lrc_period:].astype(float)
-                x_slope = np.arange(lrc_period)
-                slope, _ = np.polyfit(x_slope, y_slope, 1)
-                # Slope'u bar başına % değişime çevir (daha anlamlı)
+            # 2) Slope yönü (df'ten direkt — sig_lrc içinde hesaplandı)
+            slope = safe_scalar(last["LRC_Slope"])
+            if not np.isnan(slope):
                 slope_pct = slope / llm * 100 if llm > 0 else 0.0
                 if slope > 0:
                     slope_desc = f"Slope: +{slope:.3f} ↗ (yükselen, bar başı +%{slope_pct:.3f})"
@@ -3424,13 +3609,30 @@ Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etme
             else:
                 slope_desc = ""
 
-            # 3) Bant genişliği (volatilite göstergesi)
+            # 3) R² — regresyon kalitesi (LRC sinyallerinin güvenilirliği)
+            r2 = safe_scalar(last["LRC_R2"])
+            if not np.isnan(r2):
+                if r2 > 0.7:
+                    r2_desc = f"R²: {r2:.2f} (güçlü doğrusal trend 🔥)"
+                elif r2 > 0.4:
+                    r2_desc = f"R²: {r2:.2f} (orta uyum)"
+                else:
+                    r2_desc = f"R²: {r2:.2f} (zayıf uyum ⚠️ kanal anlamsız)"
+            else:
+                r2_desc = ""
+
+            # 4) Bant genişliği (lokal volatilite — normalize)
             bant_width = llu - lll
-            bant_desc  = f"Bant: ±{bant_width/2:.1f}"
+            if llm > 0:
+                bant_pct = bant_width / llm * 100
+                bant_desc = f"Bant: ±{bant_width/2:.2f} (kanal genişliği %{bant_pct:.2f})"
+            else:
+                bant_desc = f"Bant: ±{bant_width/2:.2f}"
 
             # Birleştir
             parts = [pos_lrc]
             if slope_desc: parts.append(slope_desc)
+            if r2_desc:    parts.append(r2_desc)
             parts.append(bant_desc)
             lrc_desc = " | ".join(parts)
 

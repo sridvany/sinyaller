@@ -259,9 +259,8 @@ def build_ai_prompt(*, detail, ticker, close, interval,
             "   **🔹 Momentum Göstergeleri** — RSI, Stoch RSI, MACD, WaveTrend\n"
             "   (Stoch RSI için K/D ilişkisi ve teyit durumunu, MACD için histogram "
             "   rengi/yönü/zero line'ı, WaveTrend için histogram rengini dikkate al)\n\n"
-            "   **🔹 Volatilite ve Kanallar** — Bollinger, ATR Filtre, LR Channel, Nadaraya-Watson\n"
-            "   (ATR için son 5 bar yönünü, LRC için slope yönü + bant genişliğini, "
-            "   NW için zarf pozisyonu + yönünü dikkate al)\n\n"
+            "   **🔹 Volatilite ve Kanallar** — Bollinger, ATR Filtre, LR Channel\n"
+            "   (ATR için son 5 bar yönünü, LRC için slope yönü + bant genişliğini dikkate al)\n\n"
             "   **🔹 Hacim ve Seviye** — OBV, Swing S/R, Fibonacci, VWAP\n"
             "   (OBV için SMA farkı ve fark büyüklüğünü dikkate al)\n\n"
             "   **🔹 Uyarı Sinyalleri** — ADX (+DI/-DI), Divergence (RSI + MACD + OBV)\n\n"
@@ -447,8 +446,6 @@ with st.sidebar:
     kama_slow        = st.slider("KAMA Yavaş EMA:",          20,  40,  30)
     lrc_period       = st.slider("LRC Periyodu:",            20,  100, value=ss["lrc_period"])
     lrc_std_mult     = st.slider("LRC Standart Sapma:",      1.0, 3.0, value=ss["lrc_std_mult"],  step=0.5)
-    nw_bandwidth     = st.slider("NW Bant Genişliği (h):",   3,   20,  8)
-    nw_window        = st.slider("NW Pencere (son N bar):",  50,  300, 100)
     vwap_band_pct    = st.slider("VWAP Nötr Bant (%):",     0.0, 1.0, 0.1, step=0.05)
 
     st.write("---")
@@ -661,20 +658,6 @@ def calc_linear_regression_channel(close, period=50, std_mult=2.0):
     return (pd.Series(mid, index=close.index),  pd.Series(upper, index=close.index),
             pd.Series(lower, index=close.index), pd.Series(slope_a, index=close.index),
             pd.Series(r2_a, index=close.index))
-
-
-def calc_nadaraya_watson(close, bandwidth=8, window=100):
-    n     = len(close)
-    nwl   = np.full(n, np.nan)
-    start = max(0, n - window)
-    y = close.values[start:].astype(float)
-    m = len(y)
-    for i in range(m):
-        w = np.exp(-((i - np.arange(m)) ** 2) / (2 * bandwidth ** 2))
-        nwl[start + i] = np.sum(w * y) / np.sum(w)
-    nws = pd.Series(nwl, index=close.index)
-    mae = np.nanmean(np.abs(close.values[start:] - nwl[start:]))
-    return nws, nws + 2 * mae, nws - 2 * mae
 
 
 def calc_vwap_daily(high, low, close, volume):
@@ -1981,9 +1964,6 @@ if ticker:
         df["Sig_LRC"], df["LRC_Mid"], df["LRC_Upper"], df["LRC_Lower"], df["LRC_Slope"], df["LRC_R2"] = sig_lrc(
             close, p_lrc["lrc_period"], p_lrc["lrc_std_mult"])
 
-        df["NW_Line"], df["NW_Upper"], df["NW_Lower"] = calc_nadaraya_watson(
-            close, bandwidth=nw_bandwidth, window=nw_window)
-
         df["ATR"]      = atr_series
         df["ATR_High"] = atr_high
 
@@ -2187,16 +2167,6 @@ if ticker:
             name="LRC Alt", visible=False, showlegend=False,
             line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
             fill="tonexty", fillcolor="rgba(150,150,150,0.05)"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Line"],
-            name="NW Orta", visible=False, showlegend=False,
-            line=dict(color="gold", width=1.5)), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"],
-            name="NW Üst", visible=False, showlegend=False,
-            line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot")), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"],
-            name="NW Alt", visible=False, showlegend=False,
-            line=dict(color="rgba(255,215,0,0.4)", width=1, dash="dot"),
-            fill="tonexty", fillcolor="rgba(255,215,0,0.04)"), row=1, col=1)
 
         if is_intraday:
             fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
@@ -2412,10 +2382,6 @@ Her mum 4 kategoriden birine atanır. Hiyerarşik sıralama: önce **Cyan** kont
 | **LRC Orta** | Beyaz kesikli | Linear Regression Channel — periyoda göre fiyatın istatistiksel orta çizgisi |
 | **LRC Üst** | Gri noktalı | Orta + N standart sapma. Fiyat burada = kanalın üst sınırı, olası SAT bölgesi |
 | **LRC Alt** | Gri noktalı | Orta - N standart sapma. Fiyat burada = kanalın alt sınırı, olası AL bölgesi |
-| **NW Orta** | Altın sarısı | Nadaraya-Watson kernel smoother — fiyatın yumuşatılmış trendi |
-| **NW Üst/Alt** | Sarı soluk + dolgu | NW zarfı — fiyat üstündeyse aşırı alım, altındaysa aşırı satım |
-
-**LRC vs NW farkı:** LRC doğrusal regresyon (sabit açı), NW lokal ağırlıklı regresyon (kıvrımlı). Trendli piyasada LRC, dönüş noktalarında NW daha iyi çalışır.
 
 ---
 
@@ -2521,8 +2487,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         # ============================================================
         # ALT GRAFİKLER
         # ============================================================
-        tab_nw, tab_bb, tab_adx, tab_ichi, tab_kama, tab_st, tab_stoch, tab_wt, tab_rsi, tab_macd, tab_obv, tab_div = st.tabs([
-            "Nadaraya-Watson", "Bollinger Bands", "ADX", "Ichimoku", "KAMA & LRC", "SuperTrend",
+        tab_bb, tab_adx, tab_ichi, tab_kama, tab_st, tab_stoch, tab_wt, tab_rsi, tab_macd, tab_obv, tab_div = st.tabs([
+            "Bollinger Bands", "ADX", "Ichimoku", "KAMA & LRC", "SuperTrend",
             "Stoch RSI", "WaveTrend", "RSI", "MACD", "OBV", "Divergence"])
 
         # Eski tab1..tab11 değişken isimlerini koru (içerik bloklarını değiştirmemek için)
@@ -2534,7 +2500,6 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
         tab6  = tab_ichi
         tab7  = tab_st
         tab8  = tab_kama
-        tab9  = tab_nw
         tab10 = tab_wt
         tab11 = tab_div
 
@@ -2921,36 +2886,6 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
 **LRC vs BB:** LRC'nin orta çizgisi **eğimli** (regresyon), BB'ninki düz (SMA). Trendli piyasada LRC bantları trendle birlikte hareket ettiği için mean reversion sinyalleri **daha doğru** verir. Yatay piyasada ikisi yakınsar.
                 """)
 
-        with tab9:
-            f = go.Figure()
-            f.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat", line=dict(color="white", width=1)))
-            f.add_trace(go.Scatter(x=df.index, y=df["NW_Line"], name="NW Orta", line=dict(color="gold", width=2)))
-            f.add_trace(go.Scatter(x=df.index, y=df["NW_Upper"], name="NW Üst",
-                line=dict(color="red", width=1, dash="dot")))
-            f.add_trace(go.Scatter(x=df.index, y=df["NW_Lower"], name="NW Alt",
-                line=dict(color="lime", width=1, dash="dot"),
-                fill="tonexty", fillcolor="rgba(255,215,0,0.05)"))
-            nw_ob = close > df["NW_Upper"]
-            nw_os = close < df["NW_Lower"]
-            if nw_ob.any():
-                f.add_trace(go.Scatter(x=df.index[nw_ob], y=close[nw_ob],
-                    name="Aşırı Alım", mode="markers", marker=dict(color="red", size=6)))
-            if nw_os.any():
-                f.add_trace(go.Scatter(x=df.index[nw_os], y=close[nw_os],
-                    name="Aşırı Satım", mode="markers", marker=dict(color="lime", size=6)))
-            f.update_layout(**sub_layout(height=350), xaxis_rangeslider_visible=False)
-            st.plotly_chart(f, use_container_width=True, config=PLOTLY_CONFIG)
-            with st.expander("📖 Nadaraya-Watson Nasıl Okunur?"):
-                st.markdown("""
-**Nadaraya-Watson Envelope** — çekirdek regresyon ile hesaplanan non-parametrik bir zarf göstergesidir.
-
-| Durum | Anlam |
-|---|---|
-| Fiyat üst zarfın üstünde 🔴 | Aşırı alım — geri çekilme beklenebilir |
-| Fiyat alt zarfın altında 🟢 | Aşırı satım — toparlanma beklenebilir |
-| Fiyat zarf içinde | Normal seyir |
-                """)
-
         with tab_bb:
             f = go.Figure()
             # Üst-alt bant arası şeffaf mavi dolgu (önce alt bandı ekleyip,
@@ -3155,9 +3090,6 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
         r_lrc_mid  = safe_scalar(last["LRC_Mid"])
         r_lrc_up   = safe_scalar(last["LRC_Upper"])
         r_lrc_lo   = safe_scalar(last["LRC_Lower"])
-        r_nw       = safe_scalar(last["NW_Line"])
-        r_nw_up    = safe_scalar(last["NW_Upper"])
-        r_nw_lo    = safe_scalar(last["NW_Lower"])
         r_vwap     = safe_scalar(last["VWAP"])     if is_intraday else np.nan
         r_vwap_sig = safe_scalar(last["Sig_VWAP"]) if is_intraday else 0
         r_obv_sig  = safe_scalar(last["Sig_OBV"])
@@ -3681,55 +3613,6 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
             res.append(["BİLGİ", "ATR Filtre", atr_desc])
         else:
             res.append(["N/A", "ATR Filtre", "Yetersiz veri."])
-
-        lnw = safe_scalar(last["NW_Line"])
-        lnu = safe_scalar(last["NW_Upper"])
-        lnl = safe_scalar(last["NW_Lower"])
-        if not np.isnan(lnw) and not np.isnan(lnu) and not np.isnan(lnl):
-            # 1) Fiyat-NW ilişkisi + yüzde uzaklık
-            if lnw > 0:
-                dist_pct_nw = (last_close - lnw) / lnw * 100
-                if last_close > lnw:
-                    rel_nw = f"Fiyat {last_close:.2f} > NW {lnw:.2f} (+%{dist_pct_nw:.2f})"
-                elif last_close < lnw:
-                    rel_nw = f"Fiyat {last_close:.2f} < NW {lnw:.2f} ({dist_pct_nw:+.2f}%)"
-                else:
-                    rel_nw = f"Fiyat = NW ({lnw:.2f})"
-            else:
-                rel_nw = f"NW: {lnw:.2f}"
-
-            # 2) Zarf pozisyonu
-            if last_close > lnu:
-                zarf_desc = f"ÜST zarf üstünde ({lnu:.2f}) ❌ aşırı alım"
-            elif last_close < lnl:
-                zarf_desc = f"ALT zarf altında ({lnl:.2f}) ✅ aşırı satım"
-            else:
-                zarf_desc = f"Zarf içinde (üst: {lnu:.2f} / alt: {lnl:.2f})"
-
-            # 3) NW çizgisinin yönü (son 3 bar bakış)
-            nw_series = df["NW_Line"].values
-            if len(nw_series) >= 4:
-                recent_nw = nw_series[-3:]
-                older_nw  = nw_series[-4:-1]
-                if np.all(np.isfinite(recent_nw)) and np.all(np.isfinite(older_nw)):
-                    if np.mean(recent_nw) > np.mean(older_nw):
-                        yon_nw = "NW yönü: yukarı ↗"
-                    elif np.mean(recent_nw) < np.mean(older_nw):
-                        yon_nw = "NW yönü: aşağı ↘"
-                    else:
-                        yon_nw = "NW yönü: yatay →"
-                else:
-                    yon_nw = ""
-            else:
-                yon_nw = ""
-
-            parts = [rel_nw, zarf_desc]
-            if yon_nw:
-                parts.append(yon_nw)
-            nw_desc = " | ".join(parts)
-            res.append(["BİLGİ", "Nadaraya-Watson", nw_desc])
-        else:
-            res.append(["N/A", "Nadaraya-Watson", "Yetersiz veri."])
 
         lwt1    = safe_scalar(last["WT1"])
         lwt2    = safe_scalar(last["WT2"])

@@ -852,22 +852,103 @@ def find_trendlines(high, low, close, pivot_window=10, max_lines=3, tolerance=0.
 # ============================================================
 # FİBONACCİ, WAVETREND, DIVERGENCE
 # ============================================================
-def calc_fibonacci(high, low, lookback=100):
-    recent_high = float(high.rolling(lookback, min_periods=1).max().iloc[-1])
-    recent_low  = float(low.rolling(lookback, min_periods=1).min().iloc[-1])
-    diff = recent_high - recent_low
+def calc_fibonacci(high, low, close, lookback=100, swing_window=5):
+    """Fibonacci Retracement — trend yönü ve swing-tabanlı pivot ile.
+
+    Klasik Fibonacci kullanımı:
+    - Yükseliş trendinde: swing LOW → swing HIGH yönünde çizilir.
+      Seviyeler retracement (geri çekilme) seviyeleri olur — destek olarak görev yapar.
+    - Düşüş trendinde:    swing HIGH → swing LOW yönünde çizilir.
+      Seviyeler tepki seviyeleri olur — direnç olarak görev yapar.
+
+    Algoritma:
+    1. Trend yönü: son lookback barın ilk %25'i ile son %25'inin ortalama
+       fiyatları kıyaslanır. Son ortalama yüksekse trend yukarı.
+    2. Swing pivotu: lookback içindeki gerçek swing high/low (fractal pivot)
+       seçilir; trend yönüne göre uygun pivot ve karşıt extremum kullanılır.
+       - Yukarı trend: en son swing LOW (pivot) + ardından gelen en yüksek HIGH
+       - Aşağı trend: en son swing HIGH (pivot) + ardından gelen en düşük LOW
+    3. Seviyeler statik kalır (mevcut swing range içinde sabit).
+
+    Returns: (levels_dict, swing_high, swing_low, direction)
+      direction: "up" / "down" / "none"
+    """
+    if len(close) < lookback:
+        lookback = len(close)
+    if lookback < swing_window * 4:
+        # Yetersiz veri için basit min-max'a düş
+        recent_high = float(high.iloc[-lookback:].max())
+        recent_low  = float(low.iloc[-lookback:].min())
+        diff = recent_high - recent_low
+        if diff == 0:
+            return {}, recent_high, recent_low, "none"
+        levels = {
+            "0.0%":   recent_low,   "23.6%":  recent_low + 0.236 * diff,
+            "38.2%":  recent_low + 0.382 * diff, "50.0%":  recent_low + 0.500 * diff,
+            "61.8%":  recent_low + 0.618 * diff, "78.6%":  recent_low + 0.786 * diff,
+            "100.0%": recent_high,
+        }
+        return levels, recent_high, recent_low, "none"
+
+    # 1) Trend yönü tespiti
+    seg = close.iloc[-lookback:]
+    q   = max(lookback // 4, 5)
+    avg_first = float(seg.iloc[:q].mean())
+    avg_last  = float(seg.iloc[-q:].mean())
+    if avg_last > avg_first * 1.005:    # %0.5 üstü → yukarı trend
+        direction = "up"
+    elif avg_last < avg_first * 0.995:  # %0.5 altı → aşağı trend
+        direction = "down"
+    else:
+        direction = "none"
+
+    # 2) Swing pivotları (lookback penceresi içinde fractal high/low)
+    h_seg = high.iloc[-lookback:].reset_index(drop=True)
+    l_seg = low.iloc[-lookback:].reset_index(drop=True)
+    swing_highs = []  # (index_in_seg, price)
+    swing_lows  = []
+    n_seg = len(h_seg)
+    for i in range(swing_window, n_seg - swing_window):
+        if h_seg.iloc[i] == h_seg.iloc[i - swing_window:i + swing_window + 1].max():
+            swing_highs.append((i, float(h_seg.iloc[i])))
+        if l_seg.iloc[i] == l_seg.iloc[i - swing_window:i + swing_window + 1].min():
+            swing_lows.append((i, float(l_seg.iloc[i])))
+
+    swing_high = swing_low = None
+
+    if direction == "up" and swing_lows:
+        # Trend yukarı: son swing LOW pivotu, ardından gelen en yüksek HIGH
+        last_low_idx, last_low_price = swing_lows[-1]
+        after = h_seg.iloc[last_low_idx:]
+        swing_high = float(after.max())
+        swing_low  = last_low_price
+    elif direction == "down" and swing_highs:
+        # Trend aşağı: son swing HIGH pivotu, ardından gelen en düşük LOW
+        last_high_idx, last_high_price = swing_highs[-1]
+        after = l_seg.iloc[last_high_idx:]
+        swing_low  = float(after.min())
+        swing_high = last_high_price
+    else:
+        # Yön belirsiz: lookback range'inin global high/low'u
+        swing_high = float(h_seg.max())
+        swing_low  = float(l_seg.min())
+
+    diff = swing_high - swing_low
     if diff == 0:
-        return {}, recent_high, recent_low
+        return {}, swing_high, swing_low, direction
+
+    # 3) Seviyeler — retracement her iki yön için aynı oranlarda hesaplanır
+    # Görsel/yorum yön bilgisiyle yapılır (dokümantasyonda)
     levels = {
-        "0.0%":   recent_low,
-        "23.6%":  recent_low + 0.236 * diff,
-        "38.2%":  recent_low + 0.382 * diff,
-        "50.0%":  recent_low + 0.500 * diff,
-        "61.8%":  recent_low + 0.618 * diff,
-        "78.6%":  recent_low + 0.786 * diff,
-        "100.0%": recent_high,
+        "0.0%":   swing_low,
+        "23.6%":  swing_low + 0.236 * diff,
+        "38.2%":  swing_low + 0.382 * diff,
+        "50.0%":  swing_low + 0.500 * diff,
+        "61.8%":  swing_low + 0.618 * diff,
+        "78.6%":  swing_low + 0.786 * diff,
+        "100.0%": swing_high,
     }
-    return levels, recent_high, recent_low
+    return levels, swing_high, swing_low, direction
 
 
 def calc_wavetrend(high, low, close, n1=10, n2=21):
@@ -2013,7 +2094,8 @@ if ticker:
             high, low, close, df["RSI"], df["RSI_MA"],
             p_wt["wt_n1"], p_wt["wt_n2"], wt_ob, wt_os)
 
-        fib_levels, fib_high, fib_low = calc_fibonacci(high, low, lookback=fib_lookback)
+        fib_levels, fib_high, fib_low, fib_direction = calc_fibonacci(
+            high, low, close, lookback=fib_lookback)
 
         df["Div_RSI"]  = detect_divergence(close, df["RSI"],  window=div_window)
         df["Div_MACD"] = detect_divergence(close, df["MACD"], window=div_window)
@@ -2424,19 +2506,29 @@ Her mum 4 kategoriden birine atanır. Hiyerarşik sıralama: önce **Cyan** kont
 
 ### 📐 Fibonacci Seviyeleri
 
-Son `fib_lookback` bar içindeki en yüksek ve en düşük fiyat arasına çizilir. Yedi seviye:
+**Trend yönüne göre dinamik çizilir:**
+- **Yükseliş trendinde** (📈 bull retracement): Son swing LOW pivotundan sonraki swing HIGH'a kadar çizilir.
+  Seviyeler **destek** olarak görev yapar — fiyat geri çekilince bu seviyelerden tepki bekler.
+- **Düşüş trendinde** (📉 bear retracement): Son swing HIGH pivotundan sonraki swing LOW'a kadar çizilir.
+  Seviyeler **direnç** olarak görev yapar — fiyat tepki yaparken bu seviyelerden satıcı bekler.
+- **Yatay/range piyasada**: Lookback range'inin global high-low'u kullanılır (geleneksel davranış).
 
-| Seviye | Renk (tipik) | Yorum |
-|---|---|---|
-| **0.0%** | Kırmızı | Swing dibi (aşağı hareket) / Swing tepesi (yukarı hareket) |
-| **23.6%** | Turuncu | Hafif geri çekilme — güçlü trendde burada dönüş beklenir |
-| **38.2%** | Sarı | Orta seviye geri çekilme — normal trend correction |
-| **50.0%** | Yeşil | Yarı yarıya geri çekilme — psikolojik seviye (Fib değil ama eklenmiştir) |
-| **61.8%** | Mavi | Altın oran — en önemli fib, burası kırılırsa trend zayıflar |
-| **78.6%** | Mor | Derin geri çekilme — trendin sonu yaklaşıyor |
-| **100.0%** | Kırmızı | Swing'in diğer ucu — tam tersine çevirmiş demek |
+Trend tespiti: Son `fib_lookback` barın ilk %25 ortalama fiyatı ile son %25 ortalaması karşılaştırılır.
+%0.5'ten büyük fark varsa yön belirlenir.
 
-💡 Fiyatın hangi Fib seviyesinde durduğu Rapor'da "**Büyük Resim**" adımında gösterilir.
+**Yedi seviye:**
+
+| Seviye | Renk (tipik) | Bull retracement (destek) | Bear retracement (direnç) |
+|---|---|---|---|
+| **0.0%** | Kırmızı | Swing dibi (pivot) | Swing dibi (hedef) |
+| **23.6%** | Turuncu | Hafif geri çekilme — güçlü trendde tepki beklenir | Zayıf direnç |
+| **38.2%** | Sarı | Normal correction seviyesi | Orta direnç |
+| **50.0%** | Yeşil | Psikolojik seviye (Fib değil ama eklenmiştir) | Psikolojik direnç |
+| **61.8%** | Mavi | Altın oran — en önemli destek | Altın oran — en önemli direnç |
+| **78.6%** | Mor | Derin geri çekilme — trend zayıflıyor | Trend dönüş yakın |
+| **100.0%** | Kırmızı | Swing tepesi | Swing tepesi (pivot) |
+
+💡 Karar matrisinde Fibonacci satırında **trend yönü** (bull/bear/range) ve **en yakın seviye** gösterilir.
 
 ---
 
@@ -3729,8 +3821,15 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
 
         if fib_levels:
             closest_lvl = min(fib_levels.items(), key=lambda x: abs(x[1] - last_close))
+            if fib_direction == "up":
+                dir_str = "📈 Bull retracement (destek arıyor)"
+            elif fib_direction == "down":
+                dir_str = "📉 Bear retracement (direnç test ediyor)"
+            else:
+                dir_str = "↔️ Yatay (range — yön belirsiz)"
             res.append(["BİLGİ", f"Fibonacci ({fib_lookback} bar)",
-                        f"En yakın seviye: {closest_lvl[0]} ({closest_lvl[1]:.2f}) | Swing: {fib_low:.2f} — {fib_high:.2f}"])
+                        f"En yakın seviye: {closest_lvl[0]} ({closest_lvl[1]:.2f}) | "
+                        f"Swing: {fib_low:.2f} — {fib_high:.2f} | {dir_str}"])
 
         # ============================================================
         # (Kombine Sinyal Skoru kaldırıldı)

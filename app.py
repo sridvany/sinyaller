@@ -433,9 +433,13 @@ with st.sidebar:
     stoch_d_period   = st.slider("Stoch RSI %D Smoothing:",  2,   5,   3)
     stoch_lower      = st.slider("Stoch RSI Alt Eşik:",      5,   30,  20)
     stoch_upper      = st.slider("Stoch RSI Üst Eşik:",      70,  95,  80)
-    ichi_tenkan      = st.slider("Tenkan-sen:",              5,   20,  9)
-    ichi_kijun       = st.slider("Kijun-sen:",               20,  40,  26)
-    ichi_senkou_b    = st.slider("Senkou Span B:",           40,  65,  52)
+    ichi_tenkan      = st.slider("Tenkan-sen:",              5,   20,  9,
+        help="⚠️ Ichimoku'da klasik değer 9'dur (Hosoda 1930'lar). Değiştirmek önerilmez — "
+             "9-26-52 Schelling noktasıdır, dünya çapında bu değerler izlenir.")
+    ichi_kijun       = st.slider("Kijun-sen:",               20,  40,  26,
+        help="⚠️ Ichimoku'da klasik değer 26'dır. Değiştirmek önerilmez.")
+    ichi_senkou_b    = st.slider("Senkou Span B:",           40,  65,  52,
+        help="⚠️ Ichimoku'da klasik değer 52'dir. Değiştirmek önerilmez.")
     st_period        = st.slider("SuperTrend ATR Periyodu:", 5,   20,  value=ss["st_period"])
     st_multiplier    = st.slider("SuperTrend Çarpan:",       1.0, 5.0, value=ss["st_multiplier"], step=0.5)
     kama_period      = st.slider("KAMA Etkinlik Periyodu:",  5,   20,  10)
@@ -1051,16 +1055,38 @@ def sig_stochrsi(close, rsi_series, rsi_ma_series, srsi_period, sd_period, sl, s
 
 
 def sig_ichimoku(high, low, close, atr_high, it, ik, isb):
+    """Ichimoku Kinko Hyo — klasik 5'li set, dörtlü teyitli sinyal.
+
+    Bileşenler:
+    - Tenkan-sen   : Kısa vade denge çizgisi (it bar)
+    - Kijun-sen    : Orta vade denge çizgisi (ik bar)
+    - Senkou A/B   : Bulut sınırları (ik bar İLERİ kaydırılır)
+    - Chikou Span  : Kapanışın ik bar GERİ kaydırılmış hali (trend teyidi)
+
+    Sinyal — dört koşul birden gerekli:
+    1. TK Cross           : Tenkan > Kijun (AL) / Tenkan < Kijun (SAT)
+    2. Fiyat-Bulut        : close > cloud_top (AL) / close < cloud_bottom (SAT)
+    3. Chikou onayı       : close > close.shift(ik) yani fiyat ik bar öncesinden yüksek (AL)
+                            close < close.shift(ik) (SAT)
+    4. ATR yüksek         : volatilite teyidi (false breakout filtresi)
+    """
     tenkan   = (high.rolling(it).max()  + low.rolling(it).min())  / 2
     kijun    = (high.rolling(ik).max()  + low.rolling(ik).min())  / 2
     senkou_a = ((tenkan + kijun) / 2).shift(ik)
     senkou_b = ((high.rolling(isb).max() + low.rolling(isb).min()) / 2).shift(ik)
+    chikou   = close.shift(-ik)  # Bugünün kapanışı, ik bar geriye
+
+    # Chikou teyidi: bugünün kapanışı, ik bar önceki kapanıştan yüksek mi?
+    # (Hosoda: Chikou geçmiş fiyatların üstünde → boğa, altında → ayı)
+    chikou_bull = close > close.shift(ik)
+    chikou_bear = close < close.shift(ik)
+
     ct = pd.concat([senkou_a, senkou_b], axis=1).max(axis=1)
     cb = pd.concat([senkou_a, senkou_b], axis=1).min(axis=1)
-    sig = np.where((tenkan > kijun) & (close > ct), 1,
-                   np.where((tenkan < kijun) & (close < cb), -1, 0))
+    sig = np.where((tenkan > kijun) & (close > ct) & chikou_bull,  1,
+                   np.where((tenkan < kijun) & (close < cb) & chikou_bear, -1, 0))
     sig = np.where(atr_high | (sig == 0), sig, 0)
-    return pd.Series(sig, index=close.index), tenkan, kijun, senkou_a, senkou_b
+    return pd.Series(sig, index=close.index), tenkan, kijun, senkou_a, senkou_b, chikou
 
 
 def sig_kama_fn(close, atr_high, kp, kf, ks):
@@ -1857,7 +1883,7 @@ if ticker:
         df["Sig_StochRSI"], df["StochRSI_K"], df["StochRSI_D"] = sig_stochrsi(
             close, df["RSI"], df["RSI_MA"], stoch_rsi_period, stoch_d_period, stoch_lower, stoch_upper)
 
-        df["Sig_Ichimoku"], df["Tenkan"], df["Kijun"], df["Senkou_A"], df["Senkou_B"] = sig_ichimoku(
+        df["Sig_Ichimoku"], df["Tenkan"], df["Kijun"], df["Senkou_A"], df["Senkou_B"], df["Chikou"] = sig_ichimoku(
             high, low, close, atr_high, ichi_tenkan, ichi_kijun, ichi_senkou_b)
 
         df["Sig_KAMA"], df["KAMA"] = sig_kama_fn(
@@ -2596,6 +2622,8 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 low=df["Low"], close=df["Close"], name="Fiyat"))
             f.add_trace(go.Scatter(x=df.index, y=df["Tenkan"], name="Tenkan-sen", line=dict(color="cyan",  width=1)))
             f.add_trace(go.Scatter(x=df.index, y=df["Kijun"],  name="Kijun-sen",  line=dict(color="red",   width=1)))
+            f.add_trace(go.Scatter(x=df.index, y=df["Chikou"], name="Chikou Span",
+                line=dict(color="rgba(120,180,255,0.7)", width=1, dash="dash")))
 
             # Senkou A ve B çizgileri (görsel referans)
             f.add_trace(go.Scatter(x=df.index, y=df["Senkou_A"], name="Senkou A",
@@ -2636,6 +2664,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             with st.expander("📖 Ichimoku Nasıl Okunur?"):
                 st.markdown("""
 **Ichimoku Kinko Hyo** — trend yönü, destek/direnç ve momentum'u tek grafikte gösterir.
+Goichi Hosoda'nın 1930'larda geliştirdiği klasik 5'li set kullanılır.
 
 | Unsur | Renk | Anlam |
 |---|---|---|
@@ -2643,6 +2672,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 | Kijun-sen | Kırmızı | Orta vadeli denge çizgisi (26 bar) |
 | Senkou Span A | Yeşil | Bulutun üst sınırı |
 | Senkou Span B | Kırmızı | Bulutun alt sınırı |
+| **Chikou Span** | **Mavi (kesikli)** | **Kapanışın 26 bar geriye kaydırılmış hali — trend teyit çizgisi** |
 
 **Okuma Kuralları:**
 - **Fiyat bulutun üstünde:** 🟢 Yükseliş trendi.
@@ -2651,6 +2681,20 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
 - **Tenkan > Kijun:** 🟢 Kısa vadeli momentum pozitif.
 - **Yeşil bulut (Span A > Span B):** Boğa piyasası.
 - **Kırmızı bulut (Span B > Span A):** Ayı piyasası.
+- **Chikou geçmiş fiyatların üstünde:** 🟢 Trend teyitli — bugünkü kapanış 26 bar öncesinden yüksek.
+- **Chikou geçmiş fiyatların altında:** 🔴 Trend teyitli — bugünkü kapanış 26 bar öncesinden düşük.
+
+**Sinyal Mantığı (Dörtlü Teyit):**
+Sistem AL/SAT üretmek için **dört koşulun birden** sağlanmasını ister:
+1. Tenkan-Kijun cross (kısa vade momentum)
+2. Fiyat-Bulut pozisyonu (uzun vade trend)
+3. Chikou onayı (geçmişle kıyas — Hosoda'nın klasik kullanımı)
+4. ATR yüksek (volatilite teyidi, false breakout filtresi)
+
+Bu konservatif yapı sinyali nadir ama güvenilir kılar.
+
+⚠️ **Parametreler:** 9-26-52 değerleri Hosoda'nın orijinal ayarlarıdır ve dünya çapında izlenir.
+Schelling noktası etkisiyle bu seviyelerde fiyat tepkisi oluşur. Optimize etmek değil, **sabitlemek** doğrudur.
                 """)
 
         with tab7:
@@ -3215,7 +3259,24 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
             # 3) Bulut rengi (Senkou A vs B)
             cloud_color = "Yeşil 🟢" if l_seka > l_sekb else ("Kırmızı 🔴" if l_seka < l_sekb else "Eşit ⚪")
 
-            # 4) Rejim bazlı dinamik uyarı (ADX'e göre)
+            # 4) Chikou teyidi: bugünün kapanışı, ik bar önceki kapanışla kıyaslama
+            #    (Hosoda: Chikou geçmiş fiyatların üstünde → boğa onayı)
+            chikou_ref_idx = -ichi_kijun - 1
+            if len(close) >= ichi_kijun + 1:
+                close_ref = safe_scalar(close.iloc[chikou_ref_idx])
+                if not np.isnan(close_ref):
+                    if last_close > close_ref:
+                        chikou_note = f"Chikou ↑ (kapanış {ichi_kijun} bar öncesinden yüksek)"
+                    elif last_close < close_ref:
+                        chikou_note = f"Chikou ↓ (kapanış {ichi_kijun} bar öncesinden düşük)"
+                    else:
+                        chikou_note = "Chikou ="
+                else:
+                    chikou_note = "Chikou: yetersiz veri"
+            else:
+                chikou_note = "Chikou: yetersiz veri"
+
+            # 5) Rejim bazlı dinamik uyarı (ADX'e göre)
             #    Adaptif eşik kullanıyoruz — tutarlılık için
             if not np.isnan(la):
                 if la > adx_threshold_adaptive:
@@ -3228,7 +3289,7 @@ Görsel bir **çoklu-teyit sistemi** olarak tasarlanmış. Tek bir sinyale deği
                 regime_note = ""
 
             # Karar + açıklama birleşimi
-            desc = f"{tk_rel} | {cloud_pos} | {cloud_color}"
+            desc = f"{tk_rel} | {cloud_pos} | {cloud_color} | {chikou_note}"
             if regime_note:
                 desc += f" | {regime_note}"
 

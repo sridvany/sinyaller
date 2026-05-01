@@ -1189,12 +1189,40 @@ def sig_vwap_fn(high, low, close, volume, vwap_band_pct):
     return pd.Series(sig, index=close.index), vwap
 
 
-def sig_wavetrend_fn(high, low, close, n1=10, n2=21, ob=60, os_=-60):
+def sig_wavetrend_fn(high, low, close, rsi_series, rsi_ma_series, n1=10, n2=21, ob=60, os_=-60):
+    """WaveTrend (LazyBear 2014) — bölge + cross + RSI MA momentum filtreli sinyal.
+
+    Çift teyit (klasik):
+    1. Aşırı satım (WT1 < os_) VE WT1 yukarı kesti WT2'yi → AL bölge sinyali
+    2. Aşırı alım  (WT1 > ob)  VE WT1 aşağı kesti WT2'yi → SAT bölge sinyali
+
+    Üçüncü teyit (RSI MA momentum filtresi):
+    - AL  yalnızca RSI > RSI_MA ise geçerli (momentum yukarı eğimli)
+    - SAT yalnızca RSI < RSI_MA ise geçerli (momentum aşağı eğimli)
+
+    Felsefe:
+    WaveTrend salt mean reversion göstergesi olarak trendli piyasada whipsaw üretir.
+    StochRSI'da uyguladığımız aynı RSI_MA filtresi WaveTrend'e de uygulanır —
+    iki gösterge artık simetrik mimaride: farklı veri kaynağından (RSI vs fiyat)
+    aynı kalite filtresinden geçen mean reversion sinyalleri.
+    """
     wt1, wt2   = calc_wavetrend(high, low, close, n1=n1, n2=n2)
     cross_up   = (wt1 > wt2) & (wt1.shift(1) <= wt2.shift(1))
     cross_down = (wt1 < wt2) & (wt1.shift(1) >= wt2.shift(1))
-    sig = np.where(cross_up & (wt1 < os_), 1,
-                   np.where(cross_down & (wt1 > ob), -1, 0))
+
+    # Klasik bölge + cross sinyalleri
+    bull = cross_up   & (wt1 < os_)
+    bear = cross_down & (wt1 > ob)
+
+    # RSI MA momentum filtresi
+    rsi_ma_v = rsi_ma_series.values
+    rsi_v    = rsi_series.values
+    momentum_up   = rsi_v > rsi_ma_v
+    momentum_down = rsi_v < rsi_ma_v
+    valid_ma      = ~np.isnan(rsi_ma_v)
+
+    sig = np.where(valid_ma & bull & momentum_up,   1,
+          np.where(valid_ma & bear & momentum_down, -1, 0))
     return pd.Series(sig, index=close.index), wt1, wt2
 
 
@@ -1868,9 +1896,17 @@ if ticker:
                             s, _, _, _, _, _ = sig_lrc(close, p["lrc_period"], p["lrc_std_mult"]); return s
                         return fn
                 elif algo_name == "WaveTrend":
+                    # WaveTrend filtresi için baseline RSI(14) + RSI_MA(14) kullan
+                    # (optimize sırasında rsi_period'tan bağımsız tutarlı filtre)
+                    _wt_rsi_delta = close.diff()
+                    _wt_rsi_gain  = _wt_rsi_delta.clip(lower=0).ewm(alpha=1/14, adjust=False).mean()
+                    _wt_rsi_loss  = (-_wt_rsi_delta.clip(upper=0)).ewm(alpha=1/14, adjust=False).mean()
+                    _wt_rsi       = 100 - 100 / (1 + _wt_rsi_gain / _wt_rsi_loss.replace(0, np.nan))
+                    _wt_rsi_ma    = _wt_rsi.rolling(14).mean()
                     def make_fn():
                         def fn(p):
-                            s, _, _ = sig_wavetrend_fn(high, low, close, p["wt_n1"], p["wt_n2"], wt_ob, wt_os); return s
+                            s, _, _ = sig_wavetrend_fn(high, low, close, _wt_rsi, _wt_rsi_ma,
+                                                       p["wt_n1"], p["wt_n2"], wt_ob, wt_os); return s
                         return fn
                 elif algo_name == "OBV":
                     def make_fn():
@@ -1974,7 +2010,8 @@ if ticker:
             df["VWAP"]     = np.nan
 
         df["Sig_WaveTrend"], df["WT1"], df["WT2"] = sig_wavetrend_fn(
-            high, low, close, p_wt["wt_n1"], p_wt["wt_n2"], wt_ob, wt_os)
+            high, low, close, df["RSI"], df["RSI_MA"],
+            p_wt["wt_n1"], p_wt["wt_n2"], wt_ob, wt_os)
 
         fib_levels, fib_high, fib_low = calc_fibonacci(high, low, lookback=fib_lookback)
 

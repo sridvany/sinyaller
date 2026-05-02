@@ -865,10 +865,13 @@ def calc_fibonacci(high, low, close, lookback=100, swing_window=5):
     1. Trend yönü: son lookback barın ilk %25'i ile son %25'inin ortalama
        fiyatları kıyaslanır. Son ortalama yüksekse trend yukarı.
     2. Swing pivotu: lookback içindeki gerçek swing high/low (fractal pivot)
-       seçilir; trend yönüne göre uygun pivot ve karşıt extremum kullanılır.
-       - Yukarı trend: en son swing LOW (pivot) + ardından gelen en yüksek HIGH
-       - Aşağı trend: en son swing HIGH (pivot) + ardından gelen en düşük LOW
-    3. Seviyeler statik kalır (mevcut swing range içinde sabit).
+       seçilir; trend yönüne göre **en derin/en yüksek** pivot kullanılır
+       (major swing yakalama — kısa vade gürültüsü yerine asıl trend hareketi):
+       - Yukarı trend: en derin swing LOW (lookback içindeki en düşük pivot)
+                       + ardından gelen en yüksek HIGH
+       - Aşağı trend: en yüksek swing HIGH (lookback içindeki en yüksek pivot)
+                      + ardından gelen en düşük LOW
+    3. Seviyeler statik kalır (mevcut major swing range içinde sabit).
 
     Returns: (levels_dict, swing_high, swing_low, direction)
       direction: "up" / "down" / "none"
@@ -917,17 +920,21 @@ def calc_fibonacci(high, low, close, lookback=100, swing_window=5):
     swing_high = swing_low = None
 
     if direction == "up" and swing_lows:
-        # Trend yukarı: son swing LOW pivotu, ardından gelen en yüksek HIGH
-        last_low_idx, last_low_price = swing_lows[-1]
-        after = h_seg.iloc[last_low_idx:]
+        # Trend yukarı: lookback içindeki EN DÜŞÜK swing LOW (anlamlı major dip)
+        # ve sonrasında oluşan EN YÜKSEK HIGH
+        deepest = min(swing_lows, key=lambda x: x[1])
+        deepest_idx, deepest_price = deepest
+        after = h_seg.iloc[deepest_idx:]
         swing_high = float(after.max())
-        swing_low  = last_low_price
+        swing_low  = deepest_price
     elif direction == "down" and swing_highs:
-        # Trend aşağı: son swing HIGH pivotu, ardından gelen en düşük LOW
-        last_high_idx, last_high_price = swing_highs[-1]
-        after = l_seg.iloc[last_high_idx:]
+        # Trend aşağı: lookback içindeki EN YÜKSEK swing HIGH (anlamlı major tepe)
+        # ve sonrasında oluşan EN DÜŞÜK LOW
+        highest = max(swing_highs, key=lambda x: x[1])
+        highest_idx, highest_price = highest
+        after = l_seg.iloc[highest_idx:]
         swing_low  = float(after.min())
-        swing_high = last_high_price
+        swing_high = highest_price
     else:
         # Yön belirsiz: lookback range'inin global high/low'u
         swing_high = float(h_seg.max())

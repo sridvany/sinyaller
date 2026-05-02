@@ -3794,6 +3794,42 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
         else:
             res.append(["N/A", "EMA 200", "Yetersiz veri (min 200 bar gerekli)."])
 
+        # ── YENİ: Fibonacci + Swing S/R Confluence ────────────────
+        # Bağımsız iki teknik (swing pivot + Fib retracement) aynı seviyeye
+        # işaret ediyorsa "güçlü destek/direnç bandı" — trader için kritik bilgi.
+        # Eşik: %0.5 fiyat mesafesi (çok yakın değil, çok uzak değil)
+        if swing_levels and fib_levels and last_close > 0:
+            confluence_threshold = 0.005   # %0.5
+            confluences = []
+            for sw in swing_levels:
+                if sw.get("broken"):       # kırılmış seviyeler hariç
+                    continue
+                sw_price = sw["price"]
+                for fib_name, fib_price in fib_levels.items():
+                    if fib_name in ("0.0%", "100.0%"):   # uçlar zaten swing
+                        continue
+                    dist = abs(sw_price - fib_price) / last_close
+                    if dist <= confluence_threshold:
+                        # Ortalama band: iki seviyenin orta noktası
+                        band_mid = (sw_price + fib_price) / 2
+                        confluences.append({
+                            "type":      sw["type"],
+                            "swing":     sw_price,
+                            "touches":   sw["touches"],
+                            "fib_name":  fib_name,
+                            "fib_price": fib_price,
+                            "band_mid":  band_mid,
+                            "dist_to_price": abs(band_mid - last_close) / last_close,
+                        })
+            # Fiyata yakınlık sırası, en fazla 3 confluence göster
+            confluences.sort(key=lambda x: x["dist_to_price"])
+            for c in confluences[:3]:
+                role = "Güçlü Destek" if c["type"] == "S" else "Güçlü Direnç"
+                lo, hi = sorted([c["swing"], c["fib_price"]])
+                desc = (f"{lo:.2f}–{hi:.2f} "
+                        f"(Swing {c['type']} [{c['touches']}x dokunuş] + Fib {c['fib_name']})")
+                res.append(["🎯 Confluence", role, desc])
+
         # ── YENİ: En yakın S/R seviyesi karar satırı ──────────────
         if swing_levels:
             closest_sr = min(swing_levels, key=lambda x: abs(x["price"] - last_close))

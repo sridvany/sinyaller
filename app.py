@@ -3275,45 +3275,128 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
 
         # ── Hiyerarşi satırı: SMA/EMA/KAMA/Fiyat sıralaması ──
         # Kullanıcıya "her şey nerede" tek bakışta göstersin (bullish/bearish hizalama)
-        hiyerarsi_items = []
+        # A: yön okları, B: golden/death cross uyarısı, D: ADX bağlam, G: yakınlık uyarısı
+        hiyerarsi_items = []  # (name, value, slope_arrow, near_price_warn)
         lss_h = safe_scalar(last["SMA_SHORT"])
         lsl_h = safe_scalar(last["SMA_LONG"])
         lk_h  = safe_scalar(last["KAMA"])
         le_h  = safe_scalar(last["EMA200"])
         ls200 = safe_scalar(last["SMA200"]) if "SMA200" in df.columns else np.nan
 
-        if not np.isnan(lss_h): hiyerarsi_items.append((f"SMA{p_sma['sma_s']}",  lss_h))
-        hiyerarsi_items.append(("Fiyat", last_close))
-        if not np.isnan(lsl_h): hiyerarsi_items.append((f"SMA{p_sma['sma_l']}",  lsl_h))
-        if not np.isnan(lk_h):  hiyerarsi_items.append(("KAMA",                  lk_h))
-        if not np.isnan(ls200): hiyerarsi_items.append(("SMA200",                ls200))
-        if not np.isnan(le_h):  hiyerarsi_items.append(("EMA200",                le_h))
+        # A) Yön oku helper: son 3 barlık fark işareti (↑ ↓ →)
+        def _slope_arrow(series_name):
+            if series_name not in df.columns or len(df) < 4:
+                return ""
+            s = df[series_name]
+            cur  = safe_scalar(s.iloc[-1])
+            prev = safe_scalar(s.iloc[-4])
+            if np.isnan(cur) or np.isnan(prev) or prev == 0:
+                return ""
+            change_pct = (cur - prev) / prev * 100
+            if change_pct > 0.05:    return "↑"
+            if change_pct < -0.05:   return "↓"
+            return "→"
+
+        # G) Fiyat-ortalama yakınlık eşiği: %0.5
+        near_price_pct = 0.005
+        def _near_price(val):
+            return abs(val - last_close) / last_close < near_price_pct if last_close > 0 else False
+
+        if not np.isnan(lss_h):
+            hiyerarsi_items.append((f"SMA{p_sma['sma_s']}",  lss_h, _slope_arrow("SMA_SHORT"), _near_price(lss_h)))
+        hiyerarsi_items.append(("Fiyat", last_close, "", False))
+        if not np.isnan(lsl_h):
+            hiyerarsi_items.append((f"SMA{p_sma['sma_l']}",  lsl_h, _slope_arrow("SMA_LONG"),  _near_price(lsl_h)))
+        if not np.isnan(lk_h):
+            hiyerarsi_items.append(("KAMA",                  lk_h,  _slope_arrow("KAMA"),      _near_price(lk_h)))
+        if not np.isnan(ls200):
+            hiyerarsi_items.append(("SMA200",                ls200, _slope_arrow("SMA200"),    _near_price(ls200)))
+        if not np.isnan(le_h):
+            hiyerarsi_items.append(("EMA200",                le_h,  _slope_arrow("EMA200"),    _near_price(le_h)))
 
         # Değere göre büyükten küçüğe sırala
         hiyerarsi_items.sort(key=lambda x: x[1], reverse=True)
-        hiyerarsi_str = " > ".join(
-            f"**{name}** ({val:.2f})" if name == "Fiyat" else f"{name} ({val:.2f})"
-            for name, val in hiyerarsi_items
-        )
+
+        # Format: "Fiyat (4639) > SMA10 (4625) ↑ ⚠️ > KAMA (4598) ↑ > ..."
+        def _fmt(item):
+            name, val, arrow, near = item
+            txt = f"**{name}** ({val:.2f})" if name == "Fiyat" else f"{name} ({val:.2f})"
+            if arrow:  txt += f" {arrow}"
+            if near:   txt += " ⚠️"
+            return txt
+        hiyerarsi_str = " > ".join(_fmt(it) for it in hiyerarsi_items)
 
         # Tüm ortalamalar fiyatın altında → bullish hizalama (trend yukarı)
         # Tüm ortalamalar fiyatın üstünde → bearish hizalama (trend aşağı)
-        fiyat_idx = next((i for i, (n, _) in enumerate(hiyerarsi_items) if n == "Fiyat"), -1)
+        fiyat_idx = next((i for i, it in enumerate(hiyerarsi_items) if it[0] == "Fiyat"), -1)
         total     = len(hiyerarsi_items) - 1  # fiyat hariç
         if fiyat_idx == 0:
-            hiz_desc = "🟢 Güçlü Bullish hizalama (fiyat tüm ortalamaların üstünde)"
+            hiz_desc = "🟢 Güçlü Bullish hizalama"
         elif fiyat_idx == len(hiyerarsi_items) - 1:
-            hiz_desc = "🔴 Güçlü Bearish hizalama (fiyat tüm ortalamaların altında)"
+            hiz_desc = "🔴 Güçlü Bearish hizalama"
         elif fiyat_idx <= total / 3:
-            hiz_desc = "🟢 Zayıf Bullish (fiyat ortalamaların büyük kısmının üstünde)"
+            hiz_desc = "🟢 Zayıf Bullish hizalama"
         elif fiyat_idx >= 2 * total / 3:
-            hiz_desc = "🔴 Zayıf Bearish (fiyat ortalamaların büyük kısmının altında)"
+            hiz_desc = "🔴 Zayıf Bearish hizalama"
         else:
-            hiz_desc = "⚪ Karışık / geçiş (fiyat ortalar arasında)"
+            hiz_desc = "⚪ Karışık / geçiş"
+
+        # D) ADX bağlam — hizalama gerçek mi yoksa yatay piyasada tesadüf mü?
+        adx_val = safe_scalar(last["ADX"])
+        if not np.isnan(adx_val):
+            if adx_val > adx_threshold:
+                adx_note = f"ADX: {adx_val:.0f} (trend güçlü ✅)"
+            elif adx_val < max(adx_threshold - 5, 15):
+                adx_note = f"ADX: {adx_val:.0f} (trend zayıf — hizalama yanıltıcı olabilir ⚠️)"
+            else:
+                adx_note = f"ADX: {adx_val:.0f} (geçiş rejimi)"
+            hiz_desc += f" | {adx_note}"
+
+        # G) En yakın ortalama uyarısı (kırılım riski) — desc satırına eklenir
+        near_warns = [it for it in hiyerarsi_items if it[3] and it[0] != "Fiyat"]
+        if near_warns:
+            closest = min(near_warns, key=lambda it: abs(it[1] - last_close))
+            dist_pct = abs(closest[1] - last_close) / last_close * 100
+            hiz_desc += f" | ⚠️ Fiyat-{closest[0]} mesafesi %{dist_pct:.2f} (kırılım riski)"
+
+        # B) Golden/Death Cross yakın mı? Hareketli ortalamalar arasında %0.5 altı mesafe
+        # ve aralarında uygun eğim ilişkisi varsa cross yakındır
+        cross_threshold = 0.005
+        cross_alerts = []
+        ma_pairs = []
+        if not np.isnan(lss_h) and not np.isnan(lsl_h):
+            ma_pairs.append((f"SMA{p_sma['sma_s']}", lss_h, "SMA_SHORT",
+                             f"SMA{p_sma['sma_l']}", lsl_h, "SMA_LONG"))
+        if not np.isnan(le_h) and not np.isnan(ls200):
+            ma_pairs.append(("EMA200", le_h, "EMA200", "SMA200", ls200, "SMA200"))
+        if not np.isnan(lk_h) and not np.isnan(lsl_h):
+            ma_pairs.append(("KAMA", lk_h, "KAMA",
+                             f"SMA{p_sma['sma_l']}", lsl_h, "SMA_LONG"))
+
+        for short_name, short_val, short_col, long_name, long_val, long_col in ma_pairs:
+            if long_val == 0:
+                continue
+            dist = abs(short_val - long_val) / long_val
+            if dist > cross_threshold:
+                continue
+            # Eğimleri al, yaklaşma yönünü tespit et
+            short_arrow = _slope_arrow(short_col)
+            long_arrow  = _slope_arrow(long_col)
+            # Golden cross: kısa MA, uzun MA'nın altında ama yukarı eğimli
+            if short_val < long_val and short_arrow == "↑":
+                cross_alerts.append(
+                    f"🎯 Golden Cross yaklaşıyor: {short_name} ↔ {long_name} "
+                    f"mesafesi %{dist*100:.2f}")
+            # Death cross: kısa MA, uzun MA'nın üstünde ama aşağı eğimli
+            elif short_val > long_val and short_arrow == "↓":
+                cross_alerts.append(
+                    f"💀 Death Cross yaklaşıyor: {short_name} ↔ {long_name} "
+                    f"mesafesi %{dist*100:.2f}")
 
         # Hiyerarşi tablo yerine başlık altında markdown olarak gösterilecek
         _hiyerarsi_md = hiyerarsi_str
         _hiz_desc_md  = hiz_desc
+        _cross_alert_md = "  \n".join(cross_alerts) if cross_alerts else ""
         # ──────────────────────────────────────────────────────────
 
         lss = safe_scalar(last["SMA_SHORT"])
@@ -3879,7 +3962,10 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
 
         st.subheader("🔍 Algoritmik Detaylar")
         # Hiyerarşi — tablonun üstünde markdown olarak (bold çalışır, tek satır)
-        st.markdown(f"**📊 Hiyerarşi:** {_hiyerarsi_md}  \n{_hiz_desc_md}")
+        _hier_block = f"**📊 Hiyerarşi:** {_hiyerarsi_md}  \n{_hiz_desc_md}"
+        if _cross_alert_md:
+            _hier_block += f"  \n{_cross_alert_md}"
+        st.markdown(_hier_block)
         res_df = pd.DataFrame(res, columns=["Karar", "Algoritma", "Durum/Sebep"])
 
         def color_map(val):

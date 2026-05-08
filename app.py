@@ -2241,13 +2241,15 @@ if ticker:
             name=f"SMA {p_sma['sma_l']}",
             line=dict(color="cyan")), row=1, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
-            name="KAMA", line=dict(color="violet", width=1.5)), row=1, col=1)
+            name="KAMA", line=dict(color="violet", width=1.5),
+            visible="legendonly"), row=1, col=1)
 
         # ── YENİ: 200 EMA trace ───────────────────────────────────
         fig.add_trace(go.Scatter(
             x=df.index, y=df["EMA200"],
             name="EMA 200",
             line=dict(color="yellow", width=2, dash="dot"),
+            visible="legendonly",
         ), row=1, col=1)
         # SMA 200 — daha stabil, EMA'ya göre yavaş, uzun vade referansı
         fig.add_trace(go.Scatter(
@@ -2278,6 +2280,7 @@ if ticker:
                 text="AL",
                 textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
+                visible="legendonly",
             ), row=1, col=1)
 
         if st_sell_signal.any():
@@ -2290,6 +2293,7 @@ if ticker:
                 text="SAT",
                 textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
+                visible="legendonly",
             ), row=1, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"],

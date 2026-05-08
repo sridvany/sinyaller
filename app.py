@@ -3410,9 +3410,15 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
 
         lss = safe_scalar(last["SMA_SHORT"])
         lsl = safe_scalar(last["SMA_LONG"])
-        if not (np.isnan(lss) or np.isnan(lsl)):
-            res.append([trend_dec("AL" if lss > lsl else "SAT", last_ath),
-                        f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})", "Trend yönü."])
+        if not (np.isnan(lss) or np.isnan(lsl) or np.isnan(last_close)):
+            if lss > lsl and last_close > lss:
+                _dec, _why = "AL", "Hiyerarşi: Fiyat > SMA_kısa > SMA_uzun."
+            elif lss < lsl and last_close < lss:
+                _dec, _why = "SAT", "Hiyerarşi: Fiyat < SMA_kısa < SMA_uzun."
+            else:
+                _dec, _why = "TUT", "Hiyerarşi çelişkili — fiyat kısa MA'nın yanlış tarafında."
+            res.append([trend_dec(_dec, last_ath),
+                        f"SMA ({p_sma['sma_s']}/{p_sma['sma_l']})", _why])
         else:
             res.append(["N/A", "SMA Crossover", "Yetersiz veri."])
 

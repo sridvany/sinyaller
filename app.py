@@ -1000,9 +1000,18 @@ def detect_divergence(price, indicator, window=5):
 # 5. SİNYAL FONKSİYONLARI
 # ============================================================
 def sig_sma(close, sma_s=20, sma_l=100):
+    """SMA Crossover — hiyerarşi onaylı.
+    AL  : SMA_short > SMA_long  VE  Fiyat > SMA_short
+    SAT : SMA_short < SMA_long  VE  Fiyat < SMA_short
+    Diğer tüm durumlar (fiyat kısa MA'nın yanlış tarafında) → NÖTR.
+    Bu, kısa MA'nın altına/üstüne sarkan ama crossover henüz dönmemiş
+    çelişkili durumlarda whipsaw'ı azaltır.
+    """
     sh  = close.rolling(sma_s, min_periods=sma_s).mean()
     sl  = close.rolling(sma_l, min_periods=sma_l).mean()
-    sig = np.where(sh > sl, 1, -1)
+    buy  = (sh > sl) & (close > sh)
+    sell = (sh < sl) & (close < sh)
+    sig = np.where(buy, 1, np.where(sell, -1, 0))
     sig = np.where(sh.isna() | sl.isna(), 0, sig)
     return pd.Series(sig, index=close.index), sh, sl
 

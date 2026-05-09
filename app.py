@@ -4216,11 +4216,12 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
             }
 
             @st.cache_data(ttl=1800, show_spinner=False)
-            def _fetch_economic_calendar(country, days):
-                """TradingView ekonomik takvimi → (events_list, error_msg)."""
+            def _fetch_economic_calendar(country, days, past_days=30):
+                """TradingView ekonomik takvimi → (events_list, error_msg).
+                past_days: geriye kaç günlük açıklanmış veri çekilsin."""
                 _now = datetime.now(timezone.utc)
                 _params = {
-                    "from":      _now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "from":      (_now - timedelta(days=past_days)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     "to":        (_now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     "countries": country,
                 }
@@ -4268,8 +4269,27 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
                 _TRT = timezone(timedelta(hours=3))
                 _IMP_MAP = {1: "YÜK", 0: "ORT", -1: "DÜŞ"}
 
+                # Geçmiş (actual dolu, son 5) + gelecek olarak ayır
+                _now_utc = datetime.now(timezone.utc)
+                _past, _future = [], []
+                for _ev in _cal_events:
+                    _d_raw = _ev.get("date", "")
+                    try:
+                        _edt = datetime.fromisoformat(_d_raw.replace("Z", "+00:00"))
+                    except (ValueError, TypeError):
+                        continue
+                    if _edt < _now_utc:
+                        if _ev.get("actual") is not None:
+                            _past.append(_ev)
+                    else:
+                        _future.append(_ev)
+
+                _past.sort(key=lambda x: x.get("date", ""), reverse=True)
+                _past = list(reversed(_past[:5]))  # son 5, kronolojik
+                _cal_events_view = _past + _future
+
                 _cal_rows = []
-                for _e in _cal_events:
+                for _e in _cal_events_view:
                     _d_str = _e.get("date", "")
                     try:
                         _dt = datetime.fromisoformat(_d_str.replace("Z", "+00:00"))
@@ -4300,8 +4320,8 @@ BB'den farkı: orta çizgi düz değil **eğimlidir** — kanal trendi takip ede
 
                 _cal_styled = _cal_df.style.map(_cal_imp_color, subset=["Önem"])
                 st.caption(
-                    f"{CAL_COUNTRIES[_cal_country]} · önümüzdeki {_cal_days} gün · "
-                    f"{len(_cal_events)} olay · cache 30dk"
+                    f"{CAL_COUNTRIES[_cal_country]} · son {len(_past)} açıklanan + "
+                    f"önümüzdeki {_cal_days} gün ({len(_future)} olay) · cache 30dk"
                 )
                 st.dataframe(_cal_styled, use_container_width=True, hide_index=True)
 

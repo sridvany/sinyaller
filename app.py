@@ -2490,6 +2490,14 @@ if ticker:
                 annotation_font=dict(color="lime" if lp >= pp else "red", size=12, family="monospace"),
                 annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
                 annotation_position="bottom right", row=2, col=2)
+        else:
+            # VP kapalı → son fiyat etiketi ana grafiğin sağ kenarında
+            fig.add_hline(y=lp, line_dash="dot", line_color="lime" if lp >= pp else "red",
+                annotation_text=f" {lp:.2f}",
+                annotation_font=dict(color="black", size=12, family="monospace"),
+                annotation_bgcolor="lime" if lp >= pp else "red",
+                annotation_bordercolor="rgba(0,0,0,0.6)",
+                annotation_position="right", row=2, col=1)
 
         _layout_common = dict(
             template="plotly_dark", height=720,

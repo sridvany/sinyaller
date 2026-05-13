@@ -2554,7 +2554,10 @@ if ticker:
             f"## {ticker} &nbsp;·&nbsp; "
             f"<span style='color:{_hdr_color}'>{_hdr_last_close:.2f}</span> &nbsp;&nbsp; "
             f"<span style='color:{_hdr_color};font-size:0.7em'>"
-            f"{_hdr_arrow} {_hdr_sign}{_hdr_diff:.2f} ({_hdr_sign}{_hdr_pct:.2f}%)</span>",
+            f"{_hdr_arrow} {_hdr_sign}{_hdr_diff:.2f} ({_hdr_sign}{_hdr_pct:.2f}%)</span>"
+            f" &nbsp;&nbsp;&nbsp;&nbsp; "
+            f"<span style='color:#888;font-size:0.55em;font-family:monospace'>"
+            f"{period.upper()} · {interval.upper()}</span>",
             unsafe_allow_html=True,
         )
         st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)

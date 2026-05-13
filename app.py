@@ -377,6 +377,7 @@ with st.sidebar:
     )
     st.write("---")
     chart_type = st.radio("📊 Grafik Tipi:", ["Mum", "Çizgi"], horizontal=True)
+    show_vp = st.checkbox("Fiyat Hacimlerini Göster", value=True)
 
     # ──────────────────────────────────────────────────────────
     # 🤖 AI RAPOR YORUMCUSU — Google Gemini
@@ -2133,42 +2134,51 @@ if ticker:
         pp = float(close.iloc[-2]) if len(close) > 1 else lp
 
         vrp_bins     = 40
-        price_min    = float(low.min())
-        price_max    = float(high.max())
-        bin_edges    = np.linspace(price_min, price_max, vrp_bins + 1)
-        bin_centers  = (bin_edges[:-1] + bin_edges[1:]) / 2
-        vol_at_price = np.zeros(vrp_bins)
-        for i in range(len(df)):
-            lo_i  = float(low.iloc[i])
-            hi_i  = float(high.iloc[i])
-            vol_i = float(volume.iloc[i])
-            if hi_i == lo_i:
-                idx = np.clip(np.searchsorted(bin_edges, lo_i, side="right") - 1, 0, vrp_bins - 1)
-                vol_at_price[idx] += vol_i
-            else:
-                for b in range(vrp_bins):
-                    overlap = min(hi_i, bin_edges[b+1]) - max(lo_i, bin_edges[b])
-                    if overlap > 0:
-                        vol_at_price[b] += vol_i * overlap / (hi_i - lo_i)
+        if show_vp:
+            price_min    = float(low.min())
+            price_max    = float(high.max())
+            bin_edges    = np.linspace(price_min, price_max, vrp_bins + 1)
+            bin_centers  = (bin_edges[:-1] + bin_edges[1:]) / 2
+            vol_at_price = np.zeros(vrp_bins)
+            for i in range(len(df)):
+                lo_i  = float(low.iloc[i])
+                hi_i  = float(high.iloc[i])
+                vol_i = float(volume.iloc[i])
+                if hi_i == lo_i:
+                    idx = np.clip(np.searchsorted(bin_edges, lo_i, side="right") - 1, 0, vrp_bins - 1)
+                    vol_at_price[idx] += vol_i
+                else:
+                    for b in range(vrp_bins):
+                        overlap = min(hi_i, bin_edges[b+1]) - max(lo_i, bin_edges[b])
+                        if overlap > 0:
+                            vol_at_price[b] += vol_i * overlap / (hi_i - lo_i)
 
-        poc_idx   = int(np.argmax(vol_at_price))
-        poc_price = bin_centers[poc_idx]
-        max_vol   = vol_at_price.max()
-        bar_colors = [
-            "rgba(255,165,0,1.0)" if b == poc_idx
-            else f"rgba(100,{int(80 + 175*(v/max_vol)) if max_vol > 0 else 200},255,0.85)"
-            for b, v in enumerate(vol_at_price)
-        ]
+            poc_idx   = int(np.argmax(vol_at_price))
+            poc_price = bin_centers[poc_idx]
+            max_vol   = vol_at_price.max()
+            bar_colors = [
+                "rgba(255,165,0,1.0)" if b == poc_idx
+                else f"rgba(100,{int(80 + 175*(v/max_vol)) if max_vol > 0 else 200},255,0.85)"
+                for b, v in enumerate(vol_at_price)
+            ]
 
-        fig = make_subplots(
-            rows=2, cols=2,
-            row_heights=[0.20, 0.80],
-            column_widths=[0.85, 0.15],
-            shared_xaxes=True,
-            shared_yaxes=True,
-            horizontal_spacing=0.0,
-            vertical_spacing=0.02,
-        )
+        if show_vp:
+            fig = make_subplots(
+                rows=2, cols=2,
+                row_heights=[0.20, 0.80],
+                column_widths=[0.85, 0.15],
+                shared_xaxes=True,
+                shared_yaxes=True,
+                horizontal_spacing=0.0,
+                vertical_spacing=0.02,
+            )
+        else:
+            fig = make_subplots(
+                rows=2, cols=1,
+                row_heights=[0.20, 0.80],
+                shared_xaxes=True,
+                vertical_spacing=0.02,
+            )
 
         # ── ÜST MİNİ PANEL: WT_CROSS_LB (bilgi amaçlı, saf cross) ─────
         # df["WT1"], df["WT2"] line ~2109'da zaten hesaplandı; yeniden hesaplamıyoruz.
@@ -2460,40 +2470,30 @@ if ticker:
                 ), row=2, col=1)
         # ──────────────────────────────────────────────────────────
 
-        fig.add_trace(go.Bar(
-            x=vol_at_price, y=bin_centers,
-            orientation="h",
-            marker_color=bar_colors,
-            name="Hacim Profili",
-            showlegend=False,
-            hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
-        ), row=2, col=2)
+        if show_vp:
+            fig.add_trace(go.Bar(
+                x=vol_at_price, y=bin_centers,
+                orientation="h",
+                marker_color=bar_colors,
+                name="Hacim Profili",
+                showlegend=False,
+                hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
+            ), row=2, col=2)
 
-        fig.add_hline(y=poc_price, line_dash="dash", line_color="orange",
-            annotation_text=f"POC {poc_price:.2f}",
-            annotation_font=dict(color="orange", size=10, family="monospace"),
-            annotation_bgcolor="rgba(255,165,0,0.15)",
-            annotation_position="top right", row=2, col=2)
-        fig.add_hline(y=lp, line_dash="dot", line_color="lime" if lp >= pp else "red",
-            annotation_text=f"  {lp:.2f}",
-            annotation_font=dict(color="lime" if lp >= pp else "red", size=12, family="monospace"),
-            annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
-            annotation_position="bottom right", row=2, col=2)
+            fig.add_hline(y=poc_price, line_dash="dash", line_color="orange",
+                annotation_text=f"POC {poc_price:.2f}",
+                annotation_font=dict(color="orange", size=10, family="monospace"),
+                annotation_bgcolor="rgba(255,165,0,0.15)",
+                annotation_position="top right", row=2, col=2)
+            fig.add_hline(y=lp, line_dash="dot", line_color="lime" if lp >= pp else "red",
+                annotation_text=f"  {lp:.2f}",
+                annotation_font=dict(color="lime" if lp >= pp else "red", size=12, family="monospace"),
+                annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
+                annotation_position="bottom right", row=2, col=2)
 
-        fig.update_layout(
+        _layout_common = dict(
             template="plotly_dark", height=720,
             dragmode="pan",
-            # row=1, col=1 → WT mini panel
-            xaxis=dict(showgrid=True, showticklabels=False, rangeslider_visible=False),
-            yaxis=dict(showgrid=False, tickfont=dict(size=9), zeroline=False),
-            # row=1, col=2 → boş köşe (üst sağ)
-            xaxis2=dict(showgrid=False, showticklabels=False, visible=False),
-            yaxis2=dict(showgrid=False, showticklabels=False, visible=False),
-            # row=2, col=1 → ana grafik
-            xaxis3=dict(rangeslider_visible=False),
-            # row=2, col=2 → hacim profili
-            xaxis4=dict(showgrid=False, showticklabels=False),
-            yaxis4=dict(showticklabels=False),
             legend=dict(
                 orientation="v",
                 x=-0.02, y=1,
@@ -2506,6 +2506,30 @@ if ticker:
             ),
             margin=dict(l=110, r=10, t=30, b=30),
         )
+        if show_vp:
+            fig.update_layout(
+                **_layout_common,
+                # row=1, col=1 → WT mini panel
+                xaxis=dict(showgrid=True, showticklabels=False, rangeslider_visible=False),
+                yaxis=dict(showgrid=False, tickfont=dict(size=9), zeroline=False),
+                # row=1, col=2 → boş köşe
+                xaxis2=dict(showgrid=False, showticklabels=False, visible=False),
+                yaxis2=dict(showgrid=False, showticklabels=False, visible=False),
+                # row=2, col=1 → ana grafik
+                xaxis3=dict(rangeslider_visible=False),
+                # row=2, col=2 → hacim profili
+                xaxis4=dict(showgrid=False, showticklabels=False),
+                yaxis4=dict(showticklabels=False),
+            )
+        else:
+            fig.update_layout(
+                **_layout_common,
+                # row=1, col=1 → WT mini panel
+                xaxis=dict(showgrid=True, showticklabels=False, rangeslider_visible=False),
+                yaxis=dict(showgrid=False, tickfont=dict(size=9), zeroline=False),
+                # row=2, col=1 → ana grafik
+                xaxis2=dict(rangeslider_visible=False),
+            )
 
         _hdr_last_close = float(df["Close"].iloc[-1])
         _hdr_prev_close = float(df["Close"].iloc[-2]) if len(df) > 1 else _hdr_last_close

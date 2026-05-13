@@ -2162,7 +2162,7 @@ if ticker:
 
         fig = make_subplots(
             rows=2, cols=2,
-            row_heights=[0.12, 0.88],
+            row_heights=[0.20, 0.80],
             column_widths=[0.85, 0.15],
             shared_xaxes=True,
             shared_yaxes=True,
@@ -2481,7 +2481,7 @@ if ticker:
             annotation_position="bottom right", row=2, col=2)
 
         fig.update_layout(
-            template="plotly_dark", height=640,
+            template="plotly_dark", height=720,
             dragmode="pan",
             # row=1, col=1 → WT mini panel
             xaxis=dict(showgrid=True, showticklabels=False, rangeslider_visible=False),

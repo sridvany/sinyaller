@@ -2161,11 +2161,51 @@ if ticker:
         ]
 
         fig = make_subplots(
-            rows=1, cols=2,
+            rows=2, cols=2,
+            row_heights=[0.12, 0.88],
             column_widths=[0.85, 0.15],
+            shared_xaxes=True,
             shared_yaxes=True,
             horizontal_spacing=0.0,
+            vertical_spacing=0.02,
         )
+
+        # ── ÜST MİNİ PANEL: WT_CROSS_LB (bilgi amaçlı, saf cross) ─────
+        # df["WT1"], df["WT2"] line ~2109'da zaten hesaplandı; yeniden hesaplamıyoruz.
+        # Buradaki cross noktaları BÖLGE FİLTRESİZ — LazyBear orijinal davranışı.
+        _wt1 = df["WT1"]; _wt2 = df["WT2"]
+        _wt_cu = (_wt1 > _wt2) & (_wt1.shift(1) <= _wt2.shift(1))
+        _wt_cd = (_wt1 < _wt2) & (_wt1.shift(1) >= _wt2.shift(1))
+        # OB/OS yatay çizgileri (referans)
+        fig.add_hline(y=wt_ob, line=dict(color="rgba(255,80,80,0.35)", width=1, dash="dot"), row=1, col=1)
+        fig.add_hline(y=wt_os, line=dict(color="rgba(80,255,80,0.35)", width=1, dash="dot"), row=1, col=1)
+        fig.add_hline(y=0,     line=dict(color="rgba(150,150,150,0.25)", width=1), row=1, col=1)
+        # WT çizgileri
+        fig.add_trace(go.Scatter(x=df.index, y=_wt1, name="WT1",
+            line=dict(color="#00e5ff", width=1.4), showlegend=False,
+            hovertemplate="WT1: %{y:.2f}<extra></extra>"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=_wt2, name="WT2",
+            line=dict(color="#ff9800", width=1.2, dash="dot"), showlegend=False,
+            hovertemplate="WT2: %{y:.2f}<extra></extra>"), row=1, col=1)
+        # Cross noktaları (filtresiz — tüm kesişimler)
+        if _wt_cu.any():
+            fig.add_trace(go.Scatter(x=df.index[_wt_cu], y=_wt2[_wt_cu],
+                mode="markers", name="WT bull cross",
+                marker=dict(color="#00e676", size=6, line=dict(color="#003d20", width=0.5)),
+                showlegend=False, hoverinfo="skip"), row=1, col=1)
+        if _wt_cd.any():
+            fig.add_trace(go.Scatter(x=df.index[_wt_cd], y=_wt2[_wt_cd],
+                mode="markers", name="WT bear cross",
+                marker=dict(color="#ff5252", size=6, line=dict(color="#3d0000", width=0.5)),
+                showlegend=False, hoverinfo="skip"), row=1, col=1)
+        # Panel başlığı (sol üst köşe, küçük)
+        fig.add_annotation(
+            xref="x domain", yref="y domain", x=0.005, y=0.92,
+            text="<b>WT_CROSS_LB</b>", showarrow=False,
+            font=dict(color="rgba(200,200,200,0.65)", size=9, family="monospace"),
+            row=1, col=1,
+        )
+        # ──────────────────────────────────────────────────────────────
 
         if chart_type == "Mum":
             # ── Sinyal bazlı mum renklendirme ─────────────────────
@@ -2198,7 +2238,7 @@ if ticker:
                             increasing_fillcolor=_fill, increasing_line_color=_color,
                             decreasing_fillcolor=_fill, decreasing_line_color=_color,
                             showlegend=False,
-                        ), row=1, col=1)
+                        ), row=2, col=1)
 
             # ── Divergence marker katmanı (ana grafik) ────────────
             bull_div = (df["Div_RSI"] == 1) | (df["Div_MACD"] == 1) | (df["Div_OBV"] == 1)
@@ -2208,16 +2248,16 @@ if ticker:
                     x=df.index[bull_div], y=df["Low"][bull_div] * 0.998,
                     mode="markers", name="Bullish Div 🔺",
                     marker=dict(symbol="triangle-up", color="lime", size=10),
-                ), row=1, col=1)
+                ), row=2, col=1)
             if bear_div.any():
                 fig.add_trace(go.Scatter(
                     x=df.index[bear_div], y=df["High"][bear_div] * 1.002,
                     mode="markers", name="Bearish Div 🔻",
                     marker=dict(symbol="triangle-down", color="red", size=16),
-                ), row=1, col=1)
+                ), row=2, col=1)
         else:
             fig.add_trace(go.Scatter(x=df.index, y=close, name="Fiyat",
-                line=dict(color="orange", width=1.5)), row=1, col=1)
+                line=dict(color="orange", width=1.5)), row=2, col=1)
 
         # ── Mum renk legend girişleri (dummy scatter) ─────────────
         if chart_type == "Mum":
@@ -2232,17 +2272,17 @@ if ticker:
                     name=_leg_name,
                     marker=dict(symbol="square", size=24, color=_leg_color),
                     showlegend=True,
-                ), row=1, col=1)
+                ), row=2, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_SHORT"],
             name=f"SMA {p_sma['sma_s']}",
-            line=dict(color="orange")), row=1, col=1)
+            line=dict(color="orange")), row=2, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["SMA_LONG"],
             name=f"SMA {p_sma['sma_l']}",
-            line=dict(color="cyan")), row=1, col=1)
+            line=dict(color="cyan")), row=2, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["KAMA"],
             name="KAMA", line=dict(color="violet", width=1.5),
-            visible="legendonly"), row=1, col=1)
+            visible="legendonly"), row=2, col=1)
 
         # ── YENİ: 200 EMA trace ───────────────────────────────────
         fig.add_trace(go.Scatter(
@@ -2250,25 +2290,25 @@ if ticker:
             name="EMA 200",
             line=dict(color="yellow", width=2, dash="dot"),
             visible="legendonly",
-        ), row=1, col=1)
+        ), row=2, col=1)
         # SMA 200 — daha stabil, EMA'ya göre yavaş, uzun vade referansı
         fig.add_trace(go.Scatter(
             x=df.index, y=df["SMA200"],
             name="SMA 200",
             line=dict(color="gold", width=2, dash="solid"),
-        ), row=1, col=1)
+        ), row=2, col=1)
         # ──────────────────────────────────────────────────────────
 
         fig.add_trace(go.Scatter(
             x=df.index[bull_st], y=df["SuperTrend"][bull_st],
             name="SuperTrend (Boğa çizgi)", mode="lines",
             line=dict(color="rgba(0,255,100,0.5)", width=1.5),
-            visible=False, showlegend=False), row=1, col=1)
+            visible=False, showlegend=False), row=2, col=1)
         fig.add_trace(go.Scatter(
             x=df.index[bear_st], y=df["SuperTrend"][bear_st],
             name="SuperTrend (Ayı çizgi)", mode="lines",
             line=dict(color="rgba(255,60,60,0.5)", width=1.5),
-            visible=False, showlegend=False), row=1, col=1)
+            visible=False, showlegend=False), row=2, col=1)
 
         if st_buy_signal.any():
             fig.add_trace(go.Scatter(
@@ -2281,7 +2321,7 @@ if ticker:
                 textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
                 visible="legendonly",
-            ), row=1, col=1)
+            ), row=2, col=1)
 
         if st_sell_signal.any():
             fig.add_trace(go.Scatter(
@@ -2294,23 +2334,23 @@ if ticker:
                 textfont=dict(color="white", size=8, family="Arial Black"),
                 textposition="middle center",
                 visible="legendonly",
-            ), row=1, col=1)
+            ), row=2, col=1)
 
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Mid"],
             name="LRC Orta", visible=False, showlegend=False,
-            line=dict(color="white", width=1, dash="dash")), row=1, col=1)
+            line=dict(color="white", width=1, dash="dash")), row=2, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Upper"],
             name="LRC Üst", visible=False, showlegend=False,
-            line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")), row=1, col=1)
+            line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot")), row=2, col=1)
         fig.add_trace(go.Scatter(x=df.index, y=df["LRC_Lower"],
             name="LRC Alt", visible=False, showlegend=False,
             line=dict(color="rgba(200,200,200,0.5)", width=1, dash="dot"),
-            fill="tonexty", fillcolor="rgba(150,150,150,0.05)"), row=1, col=1)
+            fill="tonexty", fillcolor="rgba(150,150,150,0.05)"), row=2, col=1)
 
         if is_intraday:
             fig.add_trace(go.Scatter(x=df.index, y=df["VWAP"],
                 name="VWAP", visible="legendonly",
-                line=dict(color="yellow", dash="dash", width=1.5)), row=1, col=1)
+                line=dict(color="yellow", dash="dash", width=1.5)), row=2, col=1)
 
         FIB_COLORS = {
             "0.0%":   "rgba(128,128,128,0.7)",
@@ -2330,7 +2370,7 @@ if ticker:
                 annotation_text=f"  Fib {lvl_name} {lvl_price:.2f}",
                 annotation_font=dict(color=FIB_COLORS.get(lvl_name, "gray"), size=9, family="monospace"),
                 annotation_position="top left",
-                row=1, col=1,
+                row=2, col=1,
             )
 
         # ── Yatay S/R çizgileri (legend toggle destekli, güce göre kalınlık) ──
@@ -2372,7 +2412,7 @@ if ticker:
                 legendgroup="swing_sr",
                 legendgrouptitle_text="Swing S/R" if _swing_first else None,
                 hovertemplate=f"{sr_label}<extra></extra>",
-            ), row=1, col=1)
+            ), row=2, col=1)
             _swing_first = False
 
         # ── Diyagonal Trend Çizgileri (legend toggle destekli) ────
@@ -2392,7 +2432,7 @@ if ticker:
                 visible="legendonly",
                 legendgroup="trendlines",
                 legendgrouptitle_text="Trend Çizgileri" if tl == trendlines[0] else None,
-            ), row=1, col=1)
+            ), row=2, col=1)
 
         # ── Kanal dolgusu (legend toggle destekli) ────────────────
         if tl_show_channel:
@@ -2417,7 +2457,7 @@ if ticker:
                     visible="legendonly",
                     legendgroup="trendlines",
                     showlegend=True,
-                ), row=1, col=1)
+                ), row=2, col=1)
         # ──────────────────────────────────────────────────────────
 
         fig.add_trace(go.Bar(
@@ -2427,25 +2467,33 @@ if ticker:
             name="Hacim Profili",
             showlegend=False,
             hovertemplate="Fiyat: %{y:.2f}<br>Hacim: %{x:,.0f}<extra></extra>",
-        ), row=1, col=2)
+        ), row=2, col=2)
 
         fig.add_hline(y=poc_price, line_dash="dash", line_color="orange",
             annotation_text=f"POC {poc_price:.2f}",
             annotation_font=dict(color="orange", size=10, family="monospace"),
             annotation_bgcolor="rgba(255,165,0,0.15)",
-            annotation_position="top right", row=1, col=2)
+            annotation_position="top right", row=2, col=2)
         fig.add_hline(y=lp, line_dash="dot", line_color="lime" if lp >= pp else "red",
             annotation_text=f"  {lp:.2f}",
             annotation_font=dict(color="lime" if lp >= pp else "red", size=12, family="monospace"),
             annotation_bgcolor="rgba(0,255,0,0.12)" if lp >= pp else "rgba(255,0,0,0.12)",
-            annotation_position="bottom right", row=1, col=2)
+            annotation_position="bottom right", row=2, col=2)
 
         fig.update_layout(
-            template="plotly_dark", height=580,
+            template="plotly_dark", height=640,
             dragmode="pan",
-            xaxis=dict(rangeslider_visible=False),
-            xaxis2=dict(showgrid=False, showticklabels=False),
-            yaxis2=dict(showticklabels=False),
+            # row=1, col=1 → WT mini panel
+            xaxis=dict(showgrid=True, showticklabels=False, rangeslider_visible=False),
+            yaxis=dict(showgrid=False, tickfont=dict(size=9), zeroline=False),
+            # row=1, col=2 → boş köşe (üst sağ)
+            xaxis2=dict(showgrid=False, showticklabels=False, visible=False),
+            yaxis2=dict(showgrid=False, showticklabels=False, visible=False),
+            # row=2, col=1 → ana grafik
+            xaxis3=dict(rangeslider_visible=False),
+            # row=2, col=2 → hacim profili
+            xaxis4=dict(showgrid=False, showticklabels=False),
+            yaxis4=dict(showticklabels=False),
             legend=dict(
                 orientation="v",
                 x=-0.02, y=1,

@@ -2524,11 +2524,12 @@ if ticker:
         else:
             fig.update_layout(
                 **_layout_common,
-                # row=1, col=1 → WT mini panel
+                # row=1, col=1 → WT mini panel (skala sağda)
                 xaxis=dict(showgrid=True, showticklabels=False, rangeslider_visible=False),
-                yaxis=dict(showgrid=False, tickfont=dict(size=9), zeroline=False),
-                # row=2, col=1 → ana grafik
+                yaxis=dict(showgrid=False, tickfont=dict(size=9), zeroline=False, side="right"),
+                # row=2, col=1 → ana grafik (fiyat skalası sağda)
                 xaxis2=dict(rangeslider_visible=False),
+                yaxis2=dict(side="right"),
             )
 
         _hdr_last_close = float(df["Close"].iloc[-1])
